@@ -117,6 +117,7 @@ export default function AccountingPeriodsPage() {
   const [previewDrilldownState, setPreviewDrilldownState] = useState({});
   const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
   const [previewStep, setPreviewStep] = useState('');
+  const [expandedPreviewReports, setExpandedPreviewReports] = useState({});
   const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
   const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const buildPreviewDrilldownKey = useCallback(
@@ -173,6 +174,7 @@ export default function AccountingPeriodsPage() {
     setPreviewResults([]);
     setPreviewDrilldownState({});
     setPreviewDrilldownSelection({});
+    setExpandedPreviewReports({});
     setSelectedSnapshot(null);
     setSnapshotDrilldownState({});
     setSnapshotDrilldownSelection({});
@@ -291,6 +293,7 @@ export default function AccountingPeriodsPage() {
     if (!companyId || parsedProcedures.length === 0) return;
     setPreviewing(true);
     setMessage('');
+    setExpandedPreviewReports({});
     setPreviewStep('Preparing report preview…');
     try {
       const results = [];
@@ -863,20 +866,32 @@ export default function AccountingPeriodsPage() {
                         {JSON.stringify(result.params, null, 2)}
                       </pre>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => handleSaveSnapshot(result)}
-                      disabled={savingSnapshots[result.name] || rows.length === 0}
-                      style={{ marginBottom: 8 }}
-                    >
-                      {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSnapshot(result)}
+                        disabled={savingSnapshots[result.name] || rows.length === 0}
+                      >
+                        {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
+                      </button>
+                      {rows.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedPreviewReports((prev) => ({
+                            ...prev,
+                            [result.name]: !prev[result.name],
+                          }))}
+                        >
+                          {expandedPreviewReports[result.name] ? 'Collapse table' : 'Expand table'}
+                        </button>
+                      ) : null}
+                    </div>
                     {rows.length > 0 ? (
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
                         rowGranularity={previewMeta?.rowGranularity || 'transaction'}
-                        drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
+                        drilldownEnabled={previewMeta?.drilldown?.mode === 'materialized'}
                         onDrilldown={({ row, rowId }) => {
                           handlePreviewDrilldown({ reportName: result.name, row, rowId });
                         }}
