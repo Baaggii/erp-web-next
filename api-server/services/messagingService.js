@@ -962,93 +962,85 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
 
-  let parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
-  let conversationId = null;
-  let normalizedPayload = payload;
+  const parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
   const requestedConversationId = readConversationId(payload);
-  if (parentMessageId && !requestedConversationId) {
-    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required when parentMessageId is provided');
-  }
-  if (requestedConversationId) {
-    const targetConversationMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
-    if (!targetConversationMessage || targetConversationMessage.deleted_at) {
-      throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
-    }
-    assertCanViewMessage(targetConversationMessage, session, user);
-    conversationId = toId(targetConversationMessage.conversation_id || targetConversationMessage.id);
-    if (Number(targetConversationMessage.id) !== Number(conversationId)) {
-      throw createError(409, 'CONVERSATION_ROOT_REQUIRED', 'conversationId must reference the root message of the conversation');
-    }
-
-    const rootMessage = targetConversationMessage;
-
-    if (parentMessageId) {
-      const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
-      if (!parentMessage || parentMessage.deleted_at) {
-        throw createError(404, 'PARENT_MESSAGE_NOT_FOUND', 'Reply parent message not found');
-      }
-      const parentConversationId = toId(parentMessage.conversation_id || parentMessage.id);
-      if (parentConversationId !== conversationId) {
-        throw createError(409, 'CONVERSATION_MISMATCH', 'parentMessageId must belong to the selected conversation');
-      }
-      assertCanViewMessage(parentMessage, session, user);
-      const depth = await resolveThreadDepth(db, scopedCompanyId, parentMessage);
-      if (depth >= MAX_REPLY_DEPTH) {
-        throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
-      }
-    } else {
-      parentMessageId = toId(rootMessage.id);
-    }
-
-    const privateParticipants = rootMessage.visibility_scope === 'private'
-      ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
-      : null;
-    if (privateParticipants) {
-      const requestedParticipants = Array.isArray(payload?.recipientEmpids)
-        ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
-        : [];
-      requestedParticipants.forEach((empid) => privateParticipants.add(empid));
-      privateParticipants.add(String(user?.empid || '').trim());
-      normalizedPayload = {
-        ...payload,
-        linkedType: rootMessage.linked_type,
-        linkedId: rootMessage.linked_id,
-        visibilityScope: rootMessage.visibility_scope,
-        visibilityDepartmentId: rootMessage.visibility_department_id,
-        visibilityEmpid: Array.from(privateParticipants).join(','),
-        recipientEmpids: Array.from(privateParticipants),
-      };
-    } else {
-      normalizedPayload = {
-        ...payload,
-        linkedType: rootMessage.linked_type,
-        linkedId: rootMessage.linked_id,
-        visibilityScope: rootMessage.visibility_scope,
-        visibilityDepartmentId: rootMessage.visibility_department_id,
-        visibilityEmpid: rootMessage.visibility_empid,
-      };
-    }
+  if (!requestedConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
   }
 
-  return createMessageInternal({
+  const [conversationRows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    'SELECT * FROM {{table}} WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+    [requestedConversationId],
+  );
+  const conversation = conversationRows[0];
+  if (!conversation) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+
+  if (parentMessageId) {
+    const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
+    if (!parentMessage || parentMessage.deleted_at) throw createError(404, 'PARENT_MESSAGE_NOT_FOUND', 'Reply parent message not found');
+    if (toId(parentMessage.conversation_id) !== requestedConversationId) {
+      throw createError(409, 'CONVERSATION_MISMATCH', 'parentMessageId must belong to the selected conversation');
+    }
+    assertCanViewMessage(parentMessage, session, user);
+  }
+
+  const created = await createMessageInternal({
     db,
     ctx,
-    payload: normalizedPayload,
+    payload,
     parentMessageId,
-    conversationId,
+    conversationId: requestedConversationId,
     eventName: 'message.created',
   });
+
+  await db.query(
+    `UPDATE erp_conversations
+        SET last_message_id = ?,
+            last_message_at = COALESCE(?, CURRENT_TIMESTAMP)
+      WHERE id = ? AND company_id = ?`,
+    [created.message.id, created.message.created_at ?? null, requestedConversationId, scopedCompanyId],
+  );
+
+  return created;
 }
 
 export async function createConversationRoot(args) {
-  const nextPayload = {
-    ...(args?.payload || {}),
-    parentMessageId: null,
-    parent_message_id: null,
-    conversationId: null,
-    conversation_id: null,
-  };
-  return postMessage({ ...args, payload: nextPayload });
+  const { user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession } = args || {};
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
+
+  const visibility = normalizeVisibility(payload?.visibilityScope, payload?.visibilityDepartmentId, payload?.visibilityEmpid, session, user);
+  const linked = validateLinkedContext(payload?.linkedType, payload?.linkedId);
+  const [conversationInsert] = await db.query(
+    `INSERT INTO erp_conversations
+      (company_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, created_by_empid, created_at, last_message_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    [scopedCompanyId, linked.linkedType, linked.linkedId, visibility.visibilityScope, visibility.visibilityDepartmentId, visibility.visibilityEmpid, user.empid],
+  );
+  const conversationId = conversationInsert.insertId;
+  if (!sanitizeBody(payload?.body)) {
+    return { conversation: { id: conversationId, company_id: scopedCompanyId } };
+  }
+
+  const created = await postMessage({
+    user,
+    companyId: scopedCompanyId,
+    correlationId,
+    db,
+    getSession: async () => session,
+    payload: {
+      ...(payload || {}),
+      conversationId,
+      conversation_id: conversationId,
+      parentMessageId: null,
+      parent_message_id: null,
+    },
+  });
+  return { conversation: { id: conversationId, company_id: scopedCompanyId }, message: created.message };
 }
 
 export async function postConversationMessage({ conversationId, payload, ...rest }) {
@@ -1067,10 +1059,31 @@ export async function postConversationMessage({ conversationId, payload, ...rest
 }
 
 export async function listConversations(args) {
-  const result = await getMessages(args);
+  const { user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession } = args;
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:list' });
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+  const params = [parsedLimit + 1];
+  const cursorClause = cursorId ? 'AND id < ?' : '';
+  if (cursorId) params.push(cursorId);
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    `SELECT * FROM {{table}}
+      WHERE deleted_at IS NULL ${cursorClause}
+      ORDER BY last_message_at DESC, id DESC
+      LIMIT ?`,
+    cursorId ? [cursorId, parsedLimit + 1] : [parsedLimit + 1],
+  );
+  const hasMore = rows.length > parsedLimit;
+  const items = hasMore ? rows.slice(0, parsedLimit) : rows;
   return {
-    ...result,
-    items: result.items || [],
+    correlationId,
+    items,
+    pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
 }
 
@@ -1079,7 +1092,41 @@ export async function getConversationMessages({ conversationId, ...rest }) {
   if (!normalizedConversationId) {
     throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
   }
-  return getThread({ ...rest, messageId: normalizedConversationId });
+  const { user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession } = rest;
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
+  const [conversationRows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    'SELECT * FROM {{table}} WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+    [normalizedConversationId],
+  );
+  if (!conversationRows[0]) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    `SELECT * FROM {{table}}
+      WHERE conversation_id = ?
+        AND deleted_at IS NULL
+        ${cursorId ? 'AND id < ?' : ''}
+      ORDER BY id DESC
+      LIMIT ?`,
+    cursorId ? [normalizedConversationId, cursorId, parsedLimit + 1] : [normalizedConversationId, parsedLimit + 1],
+  );
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  return {
+    correlationId,
+    conversationId: normalizedConversationId,
+    items,
+    pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
+  };
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
