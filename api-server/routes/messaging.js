@@ -12,9 +12,11 @@ import {
   getMessages,
   listConversations,
   getPresence,
+  getThread,
   patchMessage,
   postMessage,
   postConversationMessage,
+  postReply,
   presenceHeartbeat,
   switchCompanyContext,
   toStructuredError,
@@ -199,8 +201,6 @@ router.get('/conversations/:conversationId/messages', (req, res) =>
       user: req.user,
       companyId: req.query.companyId,
       conversationId: Number(req.params.conversationId),
-      cursor: req.query.cursor,
-      limit: req.query.limit,
       correlationId: req.correlationId,
     })));
 
@@ -284,6 +284,29 @@ router.get('/messages', (req, res) =>
       correlationId: req.correlationId,
     })));
 
+router.get('/messages/:id/thread', (req, res) =>
+  handle(res, req, () =>
+    getThread({
+      user: req.user,
+      companyId: req.query.companyId,
+      messageId: Number(req.params.id),
+      correlationId: req.correlationId,
+    })));
+
+router.post('/messages/:id/reply', normalizeConversationPayload, (req, res) =>
+  handle(
+    res,
+    req,
+    () =>
+      postReply({
+        user: req.user,
+        companyId: req.body?.companyId ?? req.query.companyId,
+        messageId: Number(req.params.id),
+        payload: req.body,
+        correlationId: req.correlationId,
+      }),
+    201,
+  ));
 
 router.patch('/messages/:id', (req, res) =>
   handle(res, req, () =>
