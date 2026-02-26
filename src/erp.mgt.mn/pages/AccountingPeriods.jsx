@@ -10,10 +10,49 @@ const DEFAULT_REPORT_PROCS = [
 
 const INTERNAL_COLS = new Set([
   '__row_ids',
+  '__row_count',
   '__drilldown_report',
   '__drilldown_level',
   '__detail_report',
 ]);
+
+function parseDrilldownLevel(value) {
+  const level = Number.parseInt(value, 10);
+  return Number.isFinite(level) && level >= 0 ? level : 0;
+}
+
+function resolveTempTableByLevel(drilldownCapabilities, level = 0) {
+  const direct = drilldownCapabilities?.detailTempTable;
+  const grouped = drilldownCapabilities?.detailTempTables;
+  const source = grouped ?? direct;
+  if (!source) return '';
+
+  if (typeof source === 'string') {
+    return source.trim();
+  }
+
+  if (Array.isArray(source)) {
+    if (!source.length) return '';
+    const normalizedLevel = Math.max(0, level);
+    const candidate = source[normalizedLevel] ?? source[source.length - 1];
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  if (typeof source === 'object') {
+    const key = String(Math.max(0, level));
+    const fallback = source.default ?? source['*'] ?? source[0] ?? source['0'];
+    const candidate = source[key] ?? fallback;
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  return '';
+}
+
+function normalizeParamName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
 
 
 async function parseJsonResponse(response) {
@@ -64,7 +103,17 @@ export default function AccountingPeriodsPage() {
   const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
   const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
+  const previewDrilldownStateRef = useRef(previewDrilldownState);
+  const snapshotDrilldownStateRef = useRef(snapshotDrilldownState);
   const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
+
+  useEffect(() => {
+    previewDrilldownStateRef.current = previewDrilldownState;
+  }, [previewDrilldownState]);
+
+  useEffect(() => {
+    snapshotDrilldownStateRef.current = snapshotDrilldownState;
+  }, [snapshotDrilldownState]);
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -216,12 +265,76 @@ export default function AccountingPeriodsPage() {
     const paramNames = await fetchDrilldownParams(reportName);
     if (!paramNames.length) return [rowIdsValue];
     return paramNames.map((paramName) => {
-      const normalized = String(paramName || '').toLowerCase().replace(/^@+/, '');
+      const normalized = normalizeParamName(paramName);
       if (normalized.includes('rowid')) return rowIdsValue;
       if (normalized.includes('company')) return companyId || null;
       return null;
     });
   }, [companyId, fetchDrilldownParams]);
+
+  const fetchTempDetail = useCallback(async (drilldownConfig, rowIds, level = 0) => {
+    const detailTempTable = resolveTempTableByLevel(drilldownConfig, level);
+    if (!detailTempTable) return null;
+    const ids = String(rowIds || '').split(',').map((id) => id.trim()).filter(Boolean);
+    if (!ids.length) return null;
+    try {
+      const res = await fetch('/api/report/tmp-detail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        skipErrorToast: true,
+        body: JSON.stringify({
+          table: detailTempTable,
+          pk: drilldownConfig?.detailPkColumn || 'id',
+          ids,
+        }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => ([]));
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const loadDrilldownRows = useCallback(async ({ reportMeta, row }) => {
+    const rowIds = String(row?.__row_ids || '').trim();
+    const normalizedMeta = normalizeReportMeta(reportMeta);
+    const drilldownConfig = normalizedMeta?.drilldown;
+    const drilldownLevel = parseDrilldownLevel(row?.__drilldown_level);
+
+    if (drilldownConfig?.mode === 'materialized') {
+      const rows = await fetchTempDetail(drilldownConfig, rowIds, drilldownLevel);
+      if (rows) {
+        return { rows, fieldLineage: {}, fieldTypeMap: {} };
+      }
+    }
+
+    const detailProcedure = String(
+      row?.__drilldown_report || row?.__detail_report || drilldownConfig?.fallbackProcedure || '',
+    ).trim();
+    if (!detailProcedure) {
+      throw new Error('Missing drilldown procedure.');
+    }
+
+    const detailParams = await buildDrilldownParams(detailProcedure, rowIds);
+    const res = await fetch('/api/procedures', {
+      credentials: 'include',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: detailProcedure,
+        params: detailParams,
+      }),
+    });
+    const json = await parseJsonResponse(res);
+    if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
+    return {
+      rows: Array.isArray(json?.row) ? json.row : [],
+      fieldLineage: json?.fieldLineage || {},
+      fieldTypeMap: json?.fieldTypeMap || {},
+    };
+  }, [buildDrilldownParams, fetchTempDetail, normalizeReportMeta]);
 
   const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
@@ -242,7 +355,7 @@ export default function AccountingPeriodsPage() {
       return;
     }
 
-    const reportState = previewDrilldownState[reportName] || {};
+    const reportState = previewDrilldownStateRef.current[reportName] || {};
     const existing = reportState[rowId];
     const nextExpanded = !existing?.expanded;
     setPreviewDrilldownState((prev) => ({
@@ -273,41 +386,9 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const normalizedMeta = normalizeReportMeta(reportMeta);
-    const drilldownConfig = normalizedMeta?.drilldown;
-    const detailProcedure = String(
-      drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
-    ).trim();
-    if (!detailProcedure) {
-      setPreviewDrilldownState((prev) => ({
-        ...prev,
-        [reportName]: {
-          ...(prev[reportName] || {}),
-          [rowId]: {
-            ...((prev[reportName] || {})[rowId] || {}),
-            status: 'error',
-            error: 'Missing drilldown procedure.',
-            rows: [],
-          },
-        },
-      }));
-      return;
-    }
-
     try {
-      const detailParams = await buildDrilldownParams(detailProcedure, rowIds);
-      const res = await fetch('/api/procedures', {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: detailProcedure,
-          params: detailParams,
-        }),
-      });
-      const json = await parseJsonResponse(res);
-      if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
-      const detailRows = Array.isArray(json?.row) ? json.row : [];
+      const detail = await loadDrilldownRows({ reportMeta, row });
+      const detailRows = detail.rows;
       const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
       setPreviewDrilldownState((prev) => ({
         ...prev,
@@ -321,8 +402,8 @@ export default function AccountingPeriodsPage() {
             rowIds,
             rows: detailRows,
             columns: detailColumns,
-            fieldLineage: json?.fieldLineage || {},
-            fieldTypeMap: json?.fieldTypeMap || {},
+            fieldLineage: detail.fieldLineage,
+            fieldTypeMap: detail.fieldTypeMap,
           },
         },
       }));
@@ -342,7 +423,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, normalizeReportMeta, previewDrilldownState]);
+  }, [loadDrilldownRows]);
 
   const handlePreviewDrilldownSelectionChange = useCallback((reportName, updater) => {
     setPreviewDrilldownSelection((prev) => {
@@ -356,7 +437,6 @@ export default function AccountingPeriodsPage() {
   }, []);
 
   const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
-    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setSnapshotDrilldownState((prev) => ({
@@ -372,7 +452,7 @@ export default function AccountingPeriodsPage() {
       return;
     }
 
-    const existing = snapshotDrilldownState[rowId];
+    const existing = snapshotDrilldownStateRef.current[rowId];
     const nextExpanded = !existing?.expanded;
     setSnapshotDrilldownState((prev) => ({
       ...prev,
@@ -396,36 +476,9 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || reportName || '',
-    ).trim();
-    if (!detailProcedure) {
-      setSnapshotDrilldownState((prev) => ({
-        ...prev,
-        [rowId]: {
-          ...(prev[rowId] || {}),
-          status: 'error',
-          error: 'Missing drilldown procedure.',
-          rows: [],
-        },
-      }));
-      return;
-    }
-
     try {
-      const detailParams = await buildDrilldownParams(detailProcedure, rowIds);
-      const res = await fetch('/api/procedures', {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: detailProcedure,
-          params: detailParams,
-        }),
-      });
-      const json = await parseJsonResponse(res);
-      if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
-      const detailRows = Array.isArray(json?.row) ? json.row : [];
+      const detail = await loadDrilldownRows({ reportMeta: selectedSnapshot?.artifact?.reportMeta, row });
+      const detailRows = detail.rows;
       const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
       setSnapshotDrilldownState((prev) => ({
         ...prev,
@@ -437,8 +490,8 @@ export default function AccountingPeriodsPage() {
           rowIds,
           rows: detailRows,
           columns: detailColumns,
-          fieldLineage: json?.fieldLineage || {},
-          fieldTypeMap: json?.fieldTypeMap || {},
+          fieldLineage: detail.fieldLineage,
+          fieldTypeMap: detail.fieldTypeMap,
         },
       }));
     } catch (err) {
@@ -454,7 +507,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
+  }, [loadDrilldownRows, selectedSnapshot?.artifact?.reportMeta]);
 
   const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
     setSnapshotDrilldownSelection((prev) => (
