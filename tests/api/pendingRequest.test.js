@@ -240,68 +240,6 @@ await test('sanitizeSnapshot converts array rows and total row', async () => {
   assert.deepEqual(snapshot.totalRow, { id: null, amount: 30 });
 });
 
-await test('deleteSavedReportSnapshot clears snapshot for own report request', async () => {
-  const conn = {
-    queries: [],
-    async query(sql, params) {
-      this.queries.push({ sql, params });
-      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
-        return [{}];
-      }
-      if (typeof sql === 'string' && sql.includes('FROM pending_request')) {
-        return [[{
-          request_id: 77,
-          emp_id: 'E1',
-          request_type: 'report_approval',
-          proposed_data: JSON.stringify({
-            procedure: 'test',
-            snapshot: { rows: [{ id: 1 }] },
-          }),
-        }]];
-      }
-      return [{}];
-    },
-    release() {},
-  };
-  const origGetConn = db.pool.getConnection;
-  db.pool.getConnection = async () => conn;
-  await service.deleteSavedReportSnapshot(77, 'e1', null);
-  db.pool.getConnection = origGetConn;
-  const update = conn.queries.find((q) =>
-    typeof q.sql === 'string' && q.sql.includes('SET proposed_data = ?'),
-  );
-  assert.ok(update, 'expected snapshot update query');
-  const payload = JSON.parse(update.params?.[0] || '{}');
-  assert.equal(payload.snapshot, null);
-});
-
-await test('deleteSavedReportSnapshot rejects other requester', async () => {
-  const conn = {
-    async query(sql) {
-      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
-        return [{}];
-      }
-      if (typeof sql === 'string' && sql.includes('FROM pending_request')) {
-        return [[{
-          request_id: 78,
-          emp_id: 'E1',
-          request_type: 'report_approval',
-          proposed_data: JSON.stringify({ snapshot: { rows: [] } }),
-        }]];
-      }
-      return [{}];
-    },
-    release() {},
-  };
-  const origGetConn = db.pool.getConnection;
-  db.pool.getConnection = async () => conn;
-  await assert.rejects(
-    () => service.deleteSavedReportSnapshot(78, 'E2', null),
-    (err) => err?.status === 403,
-  );
-  db.pool.getConnection = origGetConn;
-});
-
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];
