@@ -96,8 +96,30 @@ function isImageAttachment(file) {
   return /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(\?.*)?$/.test(url);
 }
 
+
+function resolveMessageBody(message) {
+  return message?.body
+    ?? message?.body_text
+    ?? message?.bodyText
+    ?? message?.content
+    ?? message?.message
+    ?? '';
+}
+
+function resolveMessageAuthorEmpid(message) {
+  return message?.author_empid
+    ?? message?.authorEmpid
+    ?? message?.created_by_empid
+    ?? message?.createdByEmpid
+    ?? null;
+}
+
+function resolveMessageCreatedAt(message) {
+  return message?.created_at ?? message?.createdAt ?? null;
+}
+
 function extractMessageAttachments(message) {
-  const decoded = decodeMessageContent(message?.body);
+  const decoded = decodeMessageContent(resolveMessageBody(message));
   if (decoded.attachments.length > 0) return decoded;
   const fallbackAttachments = Array.isArray(message?.attachments)
     ? message.attachments.filter((entry) => entry && typeof entry.url === 'string')
@@ -233,7 +255,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const key = `message:${resolvedRootMessageId}`;
+    const key = `conversation:${resolvedRootMessageId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -320,8 +342,8 @@ function createIdempotencyKey() {
 function conversationRootIdFromSelection(conversationId) {
   const raw = normalizeId(conversationId);
   if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('message:')) {
-    const candidate = raw.slice('message:'.length);
+  if (raw.startsWith('conversation:')) {
+    const candidate = raw.slice('conversation:'.length);
     return /^\d+$/.test(candidate) ? candidate : null;
   }
   return /^\d+$/.test(raw) ? raw : null;
@@ -560,7 +582,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
-  const authorLabel = resolveEmployeeLabel(message.author_empid);
+  const authorLabel = resolveEmployeeLabel(resolveMessageAuthorEmpid(message));
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
 
   return (
@@ -581,7 +603,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{formatLastActivity(resolveMessageCreatedAt(message))}</span>
         {isMentionedViewer && (
           <span style={{ fontSize: 11, color: '#7c2d12', borderRadius: 999, background: '#ffedd5', padding: '1px 7px', fontWeight: 700 }}>
             Mentioned you
@@ -712,8 +734,8 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
-      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
       return null;
     })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
@@ -916,8 +938,8 @@ export default function MessagingWidget() {
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const storedConversationId = (() => {
           if (!rawStoredConversationId) return null;
-          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
-          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('conversation:')) return rawStoredConversationId;
+          if (/^\d+$/.test(rawStoredConversationId)) return `conversation:${rawStoredConversationId}`;
           return null;
         })();
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
@@ -1308,7 +1330,7 @@ export default function MessagingWidget() {
     const latestByConversation = conversations
       .map((conversation) => {
         const latestBySelf = conversation.messages
-          .filter((msg) => normalizeId(msg.author_empid) === selfEmpid)
+          .filter((msg) => normalizeId(resolveMessageAuthorEmpid(msg)) === selfEmpid)
           .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
         if (!latestBySelf) return null;
         return { id: conversation.id, at: new Date(latestBySelf.created_at || 0).getTime() };
@@ -1436,7 +1458,7 @@ export default function MessagingWidget() {
       });
     });
     messages.forEach((msg) => {
-      const empid = normalizeId(msg.author_empid);
+      const empid = normalizeId(resolveMessageAuthorEmpid(msg));
       if (!empid || seen.has(empid)) return;
       const userProfile = userDirectory[empid] || {};
       seen.set(empid, {
@@ -1482,7 +1504,7 @@ export default function MessagingWidget() {
 
   const conversationSummaries = useMemo(() => conversationSummariesSource.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
-    const previewDecoded = decodeMessageContent(previewMessage?.body || '');
+    const previewDecoded = decodeMessageContent(resolveMessageBody(previewMessage));
     return {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
@@ -1560,7 +1582,7 @@ export default function MessagingWidget() {
   );
 
   const isReplyMode = Boolean(state.composer.replyToId);
-  const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
+  const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(resolveMessageAuthorEmpid(activeRootMessage)) === selfEmpid);
 
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
@@ -1597,7 +1619,7 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    return normalizeId(message.author_empid) === selfEmpid;
+    return normalizeId(resolveMessageAuthorEmpid(message)) === selfEmpid;
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -1764,13 +1786,13 @@ export default function MessagingWidget() {
           ?.id,
       )
       : null;
-    const fallbackRootReplyTargetId = parseThreadMessageId(
-      selectedConversation?.rootMessageId
+    const selectedConversationId = parseThreadMessageId(
+      selectedConversation?.id
       || selectedRootIdFromState
       || generalConversationRootId,
     );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
-    if ((shouldSendReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
+    if ((shouldSendReply || hasThreadContext) && !selectedConversationId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
@@ -1778,7 +1800,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !fallbackRootReplyTargetId) {
+    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !selectedConversationId) {
       setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
@@ -1794,21 +1816,21 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
-        ? { conversationId: fallbackRootReplyTargetId }
+      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && selectedConversationId ? { conversationId: selectedConversationId } : {}),
+      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && selectedConversationId
+        ? { conversationId: selectedConversationId }
         : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !fallbackRootReplyTargetId && !shouldSendReply);
+    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !selectedConversationId && !shouldSendReply);
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
+      ? `${API_BASE}/messaging/conversations/${selectedConversationId}/messages`
       : (shouldCreateConversationRoot
         ? `${API_BASE}/messaging/conversations`
-        : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
+        : `${API_BASE}/messaging/conversations/${selectedConversationId}/messages`);
 
-    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
+    const optimisticConversationId = selectedConversationId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
@@ -1852,9 +1874,6 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
-          ...(!isDraftConversation && !selectedIsGeneral && fallbackRootReplyTargetId
-            ? { conversation_id: fallbackRootReplyTargetId }
-            : {}),
           recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
             ? successPayload.message.recipient_empids
             : finalRecipients,
@@ -1865,7 +1884,7 @@ export default function MessagingWidget() {
         const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
         threadRootIdToRefresh = resolveThreadRefreshRootId({
           isReplyMode: shouldSendReply,
-          fallbackRootReplyTargetId,
+          fallbackRootReplyTargetId: selectedConversationId,
           createdMessage,
         });
         const shouldMergeIntoActiveCache = isDraftConversation
@@ -1878,11 +1897,11 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `conversation:${createdRootMessageId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
-        threadRootIdToRefresh = explicitReplyTargetId || fallbackRootReplyTargetId || activeConversation?.rootMessageId || null;
+        threadRootIdToRefresh = explicitReplyTargetId || selectedConversationId || activeConversation?.rootMessageId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       if (visibilityScope === 'private') {

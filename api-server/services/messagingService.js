@@ -996,8 +996,6 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
       if (depth >= MAX_REPLY_DEPTH) {
         throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
       }
-    } else {
-      parentMessageId = toId(rootMessage.id);
     }
 
     const privateParticipants = rootMessage.visibility_scope === 'private'
@@ -1066,20 +1064,83 @@ export async function postConversationMessage({ conversationId, payload, ...rest
   });
 }
 
-export async function listConversations(args) {
-  const result = await getMessages(args);
+export async function listConversations({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'conversation:list' });
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+
+  const filters = ['conversation_id IS NOT NULL', 'deleted_at IS NULL'];
+  const params = [];
+  if (linkedType && linkedId && canUseLinkedColumns(db)) {
+    filters.push('linked_type = ?');
+    filters.push('linked_id = ?');
+    params.push(String(linkedType), String(linkedId));
+  }
+  if (cursorId) {
+    filters.push('id < ?');
+    params.push(cursorId);
+  }
+
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    `SELECT t.*
+       FROM {{table}} t
+       JOIN (
+         SELECT conversation_id, MAX(id) AS last_message_id
+           FROM {{table}}
+          WHERE ${filters.join(' AND ')}
+          GROUP BY conversation_id
+       ) latest ON latest.last_message_id = t.id
+      ORDER BY t.created_at DESC, t.id DESC
+      LIMIT ?`,
+    [...params, parsedLimit + 1],
+  );
+
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
+
   return {
-    ...result,
-    items: result.items || [],
+    correlationId,
+    items: pageRows,
+    pageInfo: { nextCursor, hasMore },
   };
 }
 
-export async function getConversationMessages({ conversationId, ...rest }) {
+export async function getConversationMessages({ user, companyId, conversationId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'conversation:messages' });
   const normalizedConversationId = toId(conversationId);
-  if (!normalizedConversationId) {
-    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+
+  const filters = ['conversation_id = ?', 'deleted_at IS NULL'];
+  const params = [normalizedConversationId];
+  if (cursorId) {
+    filters.push('id < ?');
+    params.push(cursorId);
   }
-  return getThread({ ...rest, messageId: normalizedConversationId });
+
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    `SELECT * FROM {{table}} WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+    [...params, parsedLimit + 1],
+  );
+
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  const nextCursor = hasMore ? items[items.length - 1].id : null;
+  return { correlationId, items, pageInfo: { nextCursor, hasMore } };
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
