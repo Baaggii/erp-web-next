@@ -51,6 +51,9 @@ const postMessageSchema = {
     conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     conversation_id: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    topic: { type: 'string', minLength: 1, maxLength: 120 },
+    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    message_class: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
   },
 };
 
