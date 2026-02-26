@@ -133,8 +133,8 @@ export default function AccountingPeriodsPage() {
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
-      setPreviewDrilldownState({});
-      setPreviewDrilldownSelection({});
+      setPreviewDrilldownStateByReport({});
+      setPreviewDrilldownSelectionByReport({});
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
@@ -195,7 +195,7 @@ export default function AccountingPeriodsPage() {
   const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
         [reportName]: {
           ...(prev[reportName] || {}),
@@ -214,7 +214,7 @@ export default function AccountingPeriodsPage() {
     const reportState = previewDrilldownState[reportName] || {};
     const existing = reportState[rowId];
     const nextExpanded = !existing?.expanded;
-    setPreviewDrilldownState((prev) => ({
+    setPreviewDrilldownStateByReport((prev) => ({
       ...prev,
       [reportName]: {
         ...(prev[reportName] || {}),
@@ -228,7 +228,7 @@ export default function AccountingPeriodsPage() {
     if (!nextExpanded) return;
     if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
 
-    setPreviewDrilldownState((prev) => ({
+    setPreviewDrilldownStateByReport((prev) => ({
       ...prev,
       [reportName]: {
         ...(prev[reportName] || {}),
@@ -248,7 +248,7 @@ export default function AccountingPeriodsPage() {
       drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
     ).trim();
     if (!detailProcedure) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
         [reportName]: {
           ...(prev[reportName] || {}),
@@ -278,7 +278,7 @@ export default function AccountingPeriodsPage() {
       if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
       const detailRows = Array.isArray(json?.row) ? json.row : [];
       const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
         [reportName]: {
           ...(prev[reportName] || {}),
@@ -296,7 +296,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     } catch (err) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
         [reportName]: {
           ...(prev[reportName] || {}),
@@ -449,6 +449,8 @@ export default function AccountingPeriodsPage() {
           <strong>Report preview</strong>
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
+            const previewMeta = inferPreviewReportMeta(result);
+            const previewDrilldownEnabled = Boolean(previewMeta?.drilldown) && previewMeta?.rowGranularity === 'aggregated';
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
