@@ -14,7 +14,6 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
-const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -82,7 +81,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId }) {
   const payload = {
     body,
     linkedType,
@@ -92,24 +91,8 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
     conversationId,
-    topic,
-    messageClass,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-}
-
-
-function normalizeTopic(value) {
-  const topic = String(value || '').trim();
-  if (!topic) return null;
-  return topic.slice(0, 120);
-}
-
-function normalizeMessageClass(value, visibilityScope) {
-  const requested = String(value || '').trim().toLowerCase();
-  if (requested && MESSAGE_CLASS_ALLOWLIST.has(requested)) return requested;
-  if (String(visibilityScope || '').toLowerCase() === 'company') return 'general';
-  return null;
 }
 
 function eventPayloadBase(ctx) {
@@ -733,8 +716,6 @@ async function createMessageInternal({
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
-  const topic = normalizeTopic(payload?.topic);
-  const messageClass = normalizeMessageClass(payload?.messageClass ?? payload?.message_class, visibility.visibilityScope);
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -750,7 +731,7 @@ async function createMessageInternal({
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
@@ -948,22 +929,6 @@ async function createMessageInternal({
       );
     } catch (error) {
       if (!isUnknownColumnError(error, 'conversation_id')) throw error;
-    }
-  }
-
-  if (topic != null) {
-    try {
-      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, ctx.companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'topic')) throw error;
-    }
-  }
-
-  if (messageClass != null) {
-    try {
-      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, ctx.companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'message_class')) throw error;
     }
   }
 
