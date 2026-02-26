@@ -1810,7 +1810,7 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
       visibilityScope,
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
@@ -1843,6 +1843,8 @@ export default function MessagingWidget() {
       visibility_scope: visibilityScope,
       linked_type: linkedType,
       linked_id: linkedId,
+      topic: canEditTopic && safeTopic ? safeTopic : null,
+      message_class: isDraftConversation ? 'general' : null,
       conversation_id: optimisticConversationId,
       parent_message_id: optimisticParentMessageId,
       created_at: new Date().toISOString(),

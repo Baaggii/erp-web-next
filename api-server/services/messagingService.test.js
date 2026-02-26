@@ -151,6 +151,21 @@ class MockDb {
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
 
+
+    if (text.startsWith('UPDATE erp_messages SET topic = ?')) {
+      const [topic, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.topic = topic;
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_messages SET message_class = ?')) {
+      const [messageClass, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.message_class = messageClass;
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
     if (text.startsWith('UPDATE erp_messages SET visibility_empid = ?')) {
       const [visibilityEmpid, messageId] = params;
       const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
@@ -345,4 +360,27 @@ test('postConversationMessage rejects non-root conversationId values', async () 
     }),
     (error) => error?.code === 'CONVERSATION_ROOT_REQUIRED',
   );
+});
+
+
+test('postMessage persists topic and message_class when provided', async () => {
+  const db = new MockDb();
+  const result = await postMessage({
+    user: baseUser,
+    companyId: 1,
+    payload: {
+      idempotencyKey: 'topic-class-1',
+      body: 'General body',
+      visibilityScope: 'company',
+      topic: 'Announcements',
+      messageClass: 'general',
+    },
+    correlationId: 'corr-topic-class',
+    db,
+    getSession,
+  });
+
+  assert.equal(result.message.topic, 'Announcements');
+  assert.equal(result.message.message_class, 'general');
+  assert.ok(String(result.message.body || '').length > 0);
 });
