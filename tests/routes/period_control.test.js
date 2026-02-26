@@ -64,3 +64,31 @@ test('POST /close validates payload and closes period', async () => {
     assert.equal(invalid.status, 400);
   });
 });
+
+
+test('POST /preview validates payload and returns preview results', async () => {
+  const router = createPeriodControlRouter({
+    requireAuth: auth,
+    requirePeriodClosePermission: async () => ({ allowed: true }),
+    previewFiscalPeriodReports: async () => ([{ name: 'dynrep_1_sp_trial_balance_expandable', ok: true, rowCount: 2 }]),
+  });
+
+  await withServer(router, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/period-control/preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ company_id: 1, fiscal_year: 2025, report_procedures: ['dynrep_1_sp_trial_balance_expandable'] }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.results[0].ok, true);
+
+    const invalid = await fetch(`${baseUrl}/api/period-control/preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ company_id: 1, fiscal_year: 2025, report_procedures: [] }),
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
