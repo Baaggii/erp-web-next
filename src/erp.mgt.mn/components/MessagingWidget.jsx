@@ -233,7 +233,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const key = `conversation:${resolvedRootMessageId}`;
+    const key = `message:${resolvedRootMessageId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -320,8 +320,8 @@ function createIdempotencyKey() {
 function conversationRootIdFromSelection(conversationId) {
   const raw = normalizeId(conversationId);
   if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('conversation:')) {
-    const candidate = raw.slice('conversation:'.length);
+  if (raw.startsWith('message:')) {
+    const candidate = raw.slice('message:'.length);
     return /^\d+$/.test(candidate) ? candidate : null;
   }
   return /^\d+$/.test(raw) ? raw : null;
@@ -712,8 +712,8 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
-      if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
       return null;
     })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
@@ -916,8 +916,8 @@ export default function MessagingWidget() {
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const storedConversationId = (() => {
           if (!rawStoredConversationId) return null;
-          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('conversation:')) return rawStoredConversationId;
-          if (/^\d+$/.test(rawStoredConversationId)) return `conversation:${rawStoredConversationId}`;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
+          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
           return null;
         })();
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
@@ -1764,13 +1764,13 @@ export default function MessagingWidget() {
           ?.id,
       )
       : null;
-    const selectedConversationId = parseThreadMessageId(
-      selectedConversation?.id
+    const fallbackRootReplyTargetId = parseThreadMessageId(
+      selectedConversation?.rootMessageId
       || selectedRootIdFromState
       || generalConversationRootId,
     );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
-    if ((shouldSendReply || hasThreadContext) && !selectedConversationId && !explicitReplyTargetId) {
+    if ((shouldSendReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
@@ -1778,7 +1778,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !selectedConversationId) {
+    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !fallbackRootReplyTargetId) {
       setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
@@ -1794,21 +1794,21 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && selectedConversationId ? { conversationId: selectedConversationId } : {}),
-      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && selectedConversationId
-        ? { conversationId: selectedConversationId }
+      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
+      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
+        ? { conversationId: fallbackRootReplyTargetId }
         : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !selectedConversationId && !shouldSendReply);
+    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !fallbackRootReplyTargetId && !shouldSendReply);
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/conversations/${selectedConversationId}/messages`
+      ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
       : (shouldCreateConversationRoot
         ? `${API_BASE}/messaging/conversations`
-        : `${API_BASE}/messaging/conversations/${selectedConversationId}/messages`);
+        : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
 
-    const optimisticConversationId = selectedConversationId || null;
+    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
@@ -1852,6 +1852,9 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
+          ...(!isDraftConversation && !selectedIsGeneral && fallbackRootReplyTargetId
+            ? { conversation_id: fallbackRootReplyTargetId }
+            : {}),
           recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
             ? successPayload.message.recipient_empids
             : finalRecipients,
@@ -1862,7 +1865,7 @@ export default function MessagingWidget() {
         const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
         threadRootIdToRefresh = resolveThreadRefreshRootId({
           isReplyMode: shouldSendReply,
-          fallbackRootReplyTargetId: selectedConversationId,
+          fallbackRootReplyTargetId,
           createdMessage,
         });
         const shouldMergeIntoActiveCache = isDraftConversation
@@ -1875,11 +1878,11 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `conversation:${createdRootMessageId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
-        threadRootIdToRefresh = explicitReplyTargetId || selectedConversationId || activeConversation?.rootMessageId || null;
+        threadRootIdToRefresh = explicitReplyTargetId || fallbackRootReplyTargetId || activeConversation?.rootMessageId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       if (visibilityScope === 'private') {
