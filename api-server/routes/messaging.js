@@ -9,7 +9,6 @@ import {
   createConversationRoot,
   deleteMessage,
   getConversationMessages,
-  getMessages,
   listConversations,
   getPresence,
   patchMessage,
@@ -271,19 +270,6 @@ router.get('/uploads/:companyId/:storedName', async (req, res) => {
     return res.status(404).end();
   }
 });
-
-router.get('/messages', (req, res) =>
-  handle(res, req, () =>
-    getMessages({
-      user: req.user,
-      companyId: req.query.companyId,
-      linkedType: req.query.linkedType,
-      linkedId: req.query.linkedId,
-      cursor: req.query.cursor,
-      limit: req.query.limit,
-      correlationId: req.correlationId,
-    })));
-
 
 router.patch('/messages/:id', (req, res) =>
   handle(res, req, () =>
