@@ -189,60 +189,6 @@ function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, 
 }
 
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
-  const defaultReportCapabilities = {
-    showTotalRowCount: true,
-    supportsApproval: true,
-    supportsSnapshot: true,
-    supportsBulkUpdate: false,
-  };
-
-  const normalizeReportCapabilities = (value) => {
-    if (!value) return { ...defaultReportCapabilities };
-    let parsed = value;
-    if (typeof value === 'string') {
-      try {
-        parsed = JSON.parse(value);
-      } catch {
-        return { ...defaultReportCapabilities };
-      }
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ...defaultReportCapabilities };
-    }
-    const normalized = { ...defaultReportCapabilities };
-    if ('showTotalRowCount' in parsed) {
-      normalized.showTotalRowCount = parsed.showTotalRowCount === false ? false : true;
-    }
-    if ('supportsApproval' in parsed) {
-      normalized.supportsApproval = parsed.supportsApproval === false ? false : true;
-    }
-    if ('supportsSnapshot' in parsed) {
-      normalized.supportsSnapshot = parsed.supportsSnapshot === false ? false : true;
-    }
-    if ('supportsBulkUpdate' in parsed) {
-      normalized.supportsBulkUpdate = parsed.supportsBulkUpdate === true;
-    }
-    return normalized;
-  };
-
-  const loadCapabilities = async () => {
-    const [capRows] = await conn.query('SELECT @report_capabilities AS report_capabilities');
-    const rawCaps = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
-    const reportCapabilities = normalizeReportCapabilities(rawCaps);
-    let reportMeta = {};
-    if (rawCaps) {
-      try {
-        const parsed = typeof rawCaps === 'string' ? JSON.parse(rawCaps) : rawCaps;
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          reportMeta = parsed;
-        }
-      } catch {
-        // ignore invalid JSON
-      }
-    }
-    return { reportCapabilities, reportMeta };
-  };
-
   const buildProcedureResult = (rows) => {
     const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
     return {
@@ -258,8 +204,7 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     );
     const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
     const [rows] = await conn.query(dynamicSql, args);
-    const result = buildProcedureResult(rows);
-    return { ...result, ...(await loadCapabilities()) };
+    return buildProcedureResult(rows);
   }
 
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
@@ -270,20 +215,17 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
 
   try {
     const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    const result = buildProcedureResult(rows);
-    return { ...result, ...(await loadCapabilities()) };
+    return buildProcedureResult(rows);
   } catch (error) {
     const message = String(error?.message || '');
     if (/Incorrect number of arguments/i.test(message)) {
       const [rows] = await conn.query(twoArgSql, twoArgParams);
-      const result = buildProcedureResult(rows);
-      return { ...result, ...(await loadCapabilities()) };
+      return buildProcedureResult(rows);
     }
     if (!/Incorrect integer value|Incorrect date value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    const result = buildProcedureResult(rows);
-    return { ...result, ...(await loadCapabilities()) };
+    return buildProcedureResult(rows);
   }
 }
 
@@ -306,14 +248,7 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
       }
       try {
         const reportResult = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({
-          name: proc,
-          ok: true,
-          rowCount: reportResult.rowCount,
-          rows: reportResult.rows,
-          reportCapabilities: reportResult.reportCapabilities,
-          reportMeta: reportResult.reportMeta,
-        });
+        results.push({ name: proc, ok: true, rowCount: reportResult.rowCount, rows: reportResult.rows });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildSessionStorageKey,
+  canonicalConversationId,
   createInitialWidgetState,
   excludeGeneralConversationSummaries,
   messagingWidgetReducer,
@@ -70,6 +71,14 @@ test('resolvePresenceStatus marks stale online users as away or offline', () => 
   );
 });
 
+
+
+
+test('canonicalConversationId only uses explicit conversation fields', () => {
+  assert.equal(canonicalConversationId({ conversation_id: 44, id: 91 }), '44');
+  assert.equal(canonicalConversationId({ conversationId: '55', id: 91 }), '55');
+  assert.equal(canonicalConversationId({ id: 91, parent_message_id: 10 }), null);
+});
 
 test('resolveThreadRefreshRootId keeps replies inside the active thread root', () => {
   const createdNestedReply = { id: 22, parent_message_id: 15 };
