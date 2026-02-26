@@ -425,7 +425,7 @@ export default function AccountingPeriodsPage() {
                         rows={rows}
                         rowGranularity={result?.reportMeta?.rowGranularity || 'transaction'}
                         drilldownEnabled={Boolean(result?.reportMeta?.drilldown || result?.reportMeta?.drilldownReport)}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: result?.reportMeta, row, rowId })}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
                         drilldownState={previewDrilldownState}
                         drilldownRowSelection={previewDrilldownSelection}
                         onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
