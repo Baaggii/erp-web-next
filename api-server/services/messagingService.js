@@ -970,12 +970,17 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
     throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required when parentMessageId is provided');
   }
   if (requestedConversationId) {
-    const rootMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
-    if (!rootMessage || rootMessage.deleted_at) {
+    const targetConversationMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
+    if (!targetConversationMessage || targetConversationMessage.deleted_at) {
       throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
     }
-    assertCanViewMessage(rootMessage, session, user);
-    conversationId = toId(rootMessage.conversation_id || rootMessage.id);
+    assertCanViewMessage(targetConversationMessage, session, user);
+    conversationId = toId(targetConversationMessage.conversation_id || targetConversationMessage.id);
+    if (Number(targetConversationMessage.id) !== Number(conversationId)) {
+      throw createError(409, 'CONVERSATION_ROOT_REQUIRED', 'conversationId must reference the root message of the conversation');
+    }
+
+    const rootMessage = targetConversationMessage;
 
     if (parentMessageId) {
       const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);

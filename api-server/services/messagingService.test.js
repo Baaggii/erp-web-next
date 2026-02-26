@@ -306,3 +306,19 @@ test('conversation-centric service helpers preserve canonical thread identity', 
   assert.equal(Number(thread.root.id), conversationId);
   assert.ok(thread.replies.some((item) => Number(item.id) === Number(nested.message.id)));
 });
+
+test('postConversationMessage rejects non-root conversationId values', async () => {
+  const db = new MockDb();
+  await assert.rejects(
+    () => postConversationMessage({
+      user: baseUser,
+      companyId: 1,
+      conversationId: 12,
+      payload: { idempotencyKey: 'non-root-conv-id', body: 'Should fail' },
+      correlationId: 'corr-non-root-conv-id',
+      db,
+      getSession,
+    }),
+    (error) => error?.code === 'CONVERSATION_ROOT_REQUIRED',
+  );
+});
