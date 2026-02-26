@@ -59,6 +59,7 @@ export default function AccountingPeriodsPage() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
+  const [deletingSnapshotId, setDeletingSnapshotId] = useState(null);
   const [previewDrilldownState, setPreviewDrilldownState] = useState({});
   const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
@@ -108,6 +109,22 @@ export default function AccountingPeriodsPage() {
     loadStatus();
     loadSnapshots();
   }, [loadStatus, loadSnapshots]);
+
+  useEffect(() => {
+    setPreviewResults([]);
+    setPreviewDrilldownState({});
+    setPreviewDrilldownSelection({});
+    setSelectedSnapshot(null);
+    setLoadingSnapshotId(null);
+  }, [companyId, fiscalYear]);
+
+  useEffect(() => {
+    if (!selectedSnapshot?.snapshot_id) return;
+    const stillExists = snapshots.some((snapshot) => snapshot.snapshot_id === selectedSnapshot.snapshot_id);
+    if (!stillExists) {
+      setSelectedSnapshot(null);
+    }
+  }, [selectedSnapshot, snapshots]);
 
   const parsedProcedures = useMemo(
     () => reportProcedures.split(',').map((value) => value.trim()).filter(Boolean),
@@ -371,6 +388,31 @@ export default function AccountingPeriodsPage() {
     }
   };
 
+  const handleDeleteSnapshot = async (snapshotId) => {
+    if (!snapshotId || !companyId) return;
+    const ok = window.confirm('Delete this saved snapshot? This cannot be undone.');
+    if (!ok) return;
+    setDeletingSnapshotId(snapshotId);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/period-control/snapshots/${snapshotId}?company_id=${companyId}`, {
+        credentials: 'include',
+        method: 'DELETE',
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to delete snapshot');
+      setMessage('Snapshot deleted.');
+      if (selectedSnapshot?.snapshot_id === snapshotId) {
+        setSelectedSnapshot(null);
+      }
+      await loadSnapshots();
+    } catch (err) {
+      setMessage(String(err?.message || err));
+    } finally {
+      setDeletingSnapshotId(null);
+    }
+  };
+
   const handleClosePeriod = async () => {
     const hasSuccessfulPreview = previewResults.some((result) => result.ok);
     if (!hasSuccessfulPreview) {
@@ -506,6 +548,14 @@ export default function AccountingPeriodsPage() {
                   style={{ marginLeft: 8 }}
                 >
                   {loadingSnapshotId === snapshot.snapshot_id ? 'Opening…' : 'View'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSnapshot(snapshot.snapshot_id)}
+                  disabled={deletingSnapshotId === snapshot.snapshot_id}
+                  style={{ marginLeft: 8 }}
+                >
+                  {deletingSnapshotId === snapshot.snapshot_id ? 'Deleting…' : 'Delete'}
                 </button>
               </li>
             ))}

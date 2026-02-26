@@ -1,6 +1,10 @@
 import { pool, getEmploymentSession } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
-import { loadSnapshotArtifactPage, storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
+import {
+  deleteSnapshotArtifact,
+  loadSnapshotArtifactPage,
+  storeSnapshotArtifact,
+} from './reportSnapshotArtifacts.js';
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -534,6 +538,34 @@ export async function getFiscalPeriodReportSnapshot({ snapshotId, companyId, pag
     if (!meta) return null;
     const artifact = loadSnapshotArtifactPage(meta.artifact_id, page, perPage);
     return { ...meta, artifact };
+  } finally {
+    conn.release();
+  }
+}
+
+export async function deleteFiscalPeriodReportSnapshot({ snapshotId, companyId, dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const [rows] = await conn.query(
+      `SELECT snapshot_id, artifact_id
+         FROM fin_period_report_snapshot
+        WHERE snapshot_id = ? AND company_id = ?
+        LIMIT 1`,
+      [snapshotId, companyId],
+    );
+    const snapshot = Array.isArray(rows) ? rows[0] : null;
+    if (!snapshot) return { deleted: false };
+
+    await conn.query(
+      `DELETE FROM fin_period_report_snapshot
+        WHERE snapshot_id = ? AND company_id = ?`,
+      [snapshotId, companyId],
+    );
+    if (snapshot.artifact_id) {
+      deleteSnapshotArtifact(snapshot.artifact_id);
+    }
+    return { deleted: true };
   } finally {
     conn.release();
   }
