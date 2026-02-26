@@ -187,7 +187,7 @@ export function groupConversations(messages, viewerEmpid = null) {
   const resolveRootMessageId = (message) => {
     if (!message) return null;
     const conversationId = canonicalConversationId(message);
-    const seedId = conversationId || message.id;
+    const seedId = conversationId || message.parent_message_id || message.parentMessageId || message.id;
     if (!seedId) return null;
 
     let current = byId.get(String(seedId)) || message;
@@ -1801,9 +1801,10 @@ export default function MessagingWidget() {
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
+    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !fallbackRootReplyTargetId && !shouldSendReply);
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
-      : (isDraftConversation
+      : (shouldCreateConversationRoot
         ? `${API_BASE}/messaging/conversations`
         : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
 
