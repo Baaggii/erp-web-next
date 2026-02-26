@@ -15,6 +15,29 @@ const INTERNAL_COLS = new Set([
   '__detail_report',
 ]);
 
+function normalizeParamName(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeNumericId(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeDateValue(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 10);
+}
+
 
 async function parseJsonResponse(response) {
   const text = await response.text();
@@ -61,6 +84,7 @@ export default function AccountingPeriodsPage() {
   const [deletingSnapshotId, setDeletingSnapshotId] = useState(null);
   const [previewDrilldownState, setPreviewDrilldownState] = useState({});
   const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
+  const [previewStep, setPreviewStep] = useState('');
   const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
   const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
@@ -134,6 +158,65 @@ export default function AccountingPeriodsPage() {
     [reportProcedures],
   );
 
+  const reportParamContext = useMemo(() => {
+    const periodFrom = normalizeDateValue(period?.period_from) || `${fiscalYear}-01-01`;
+    const periodTo = normalizeDateValue(period?.period_to) || `${fiscalYear}-12-31`;
+    const [toYearRaw, toMonthRaw] = String(periodTo).split('-');
+    const resolvedYear = Number.parseInt(toYearRaw, 10);
+    const resolvedMonth = Number.parseInt(toMonthRaw, 10);
+    return {
+      startDate: periodFrom,
+      endDate: periodTo,
+      companyId: normalizeNumericId(companyId),
+      branchId: normalizeNumericId(session?.branch_id),
+      departmentId: normalizeNumericId(session?.department_id),
+      positionId: normalizeNumericId(session?.position_id),
+      workplaceId: normalizeNumericId(session?.workplace_id ?? session?.workplaceId),
+      userEmpId: user?.empid ?? session?.empid ?? session?.employee_id ?? null,
+      userId: user?.id ?? session?.user_id ?? null,
+      seniorEmpId: session?.senior_empid ?? null,
+      seniorPlanEmpId: session?.senior_plan_empid ?? null,
+      userLevel: session?.user_level ?? null,
+      fiscalYear: Number.isFinite(resolvedYear) ? resolvedYear : fiscalYear,
+      fiscalMonth: Number.isFinite(resolvedMonth) ? resolvedMonth : 12,
+    };
+  }, [companyId, fiscalYear, period?.period_from, period?.period_to, session, user]);
+
+  const buildAutoReportParam = useCallback((paramName) => {
+    const normalized = normalizeParamName(paramName);
+    if (!normalized) return null;
+
+    if (normalized.includes('start') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.startDate;
+    }
+    if (normalized.includes('from') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.startDate;
+    }
+    if (normalized.includes('end') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.endDate;
+    }
+    if (normalized.includes('to') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.endDate;
+    }
+    if (normalized.includes('date') || normalized.endsWith('dt')) {
+      return reportParamContext.endDate;
+    }
+
+    if (normalized.includes('fiscalyear') || normalized === 'year') return reportParamContext.fiscalYear;
+    if (normalized.includes('fiscalmonth') || normalized === 'month') return reportParamContext.fiscalMonth;
+    if (normalized.includes('company')) return reportParamContext.companyId;
+    if (normalized.includes('branch')) return reportParamContext.branchId;
+    if (normalized.includes('department') || normalized.includes('dept')) return reportParamContext.departmentId;
+    if (normalized.includes('position')) return reportParamContext.positionId;
+    if (normalized.includes('workplace') || normalized.includes('workloc')) return reportParamContext.workplaceId;
+    if (normalized.includes('seniorplan') || normalized.includes('plansenior')) return reportParamContext.seniorPlanEmpId;
+    if (normalized.includes('senior')) return reportParamContext.seniorEmpId;
+    if (normalized.includes('userlevel')) return reportParamContext.userLevel;
+    if (normalized.includes('userid')) return reportParamContext.userId ?? reportParamContext.userEmpId;
+    if (normalized.includes('user') || normalized.includes('emp')) return reportParamContext.userEmpId;
+    return null;
+  }, [reportParamContext]);
+
   const selectedSnapshotRows = useMemo(() => {
     const rows = selectedSnapshot?.artifact?.rows;
     if (!Array.isArray(rows)) return [];
@@ -149,20 +232,75 @@ export default function AccountingPeriodsPage() {
     if (!companyId || parsedProcedures.length === 0) return;
     setPreviewing(true);
     setMessage('');
+    setPreviewStep('Preparing report preview…');
     try {
-      const res = await fetch('/api/period-control/preview', {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          company_id: companyId,
-          fiscal_year: fiscalYear,
-          report_procedures: parsedProcedures,
-        }),
-      });
-      const json = await parseJsonResponse(res);
-      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
-      const results = Array.isArray(json.results) ? json.results : [];
+      const results = [];
+      for (const procedureName of parsedProcedures) {
+        setPreviewStep(`Auto-providing parameters for ${procedureName}…`);
+        let paramNames = [];
+        try {
+          const paramsRes = await fetch(`/api/procedures/${encodeURIComponent(procedureName)}/params`, {
+            credentials: 'include',
+          });
+          const paramsJson = paramsRes.ok ? await parseJsonResponse(paramsRes) : {};
+          paramNames = Array.isArray(paramsJson?.parameters) ? paramsJson.parameters : [];
+        } catch {
+          paramNames = [];
+        }
+
+        const orderedParams = paramNames.map((paramName) => buildAutoReportParam(paramName));
+        const missingParams = paramNames.filter((_, index) => {
+          const value = orderedParams[index];
+          return value === null || value === undefined || value === '';
+        });
+        if (missingParams.length > 0) {
+          results.push({
+            name: procedureName,
+            ok: false,
+            error: `Missing auto parameters: ${missingParams.join(', ')}`,
+            rowCount: 0,
+            rows: [],
+            params: Object.fromEntries(paramNames.map((paramName, index) => [paramName, orderedParams[index]])),
+          });
+          continue;
+        }
+
+        setPreviewStep(`Running ${procedureName} with built parameters…`);
+        const reportRes = await fetch('/api/procedures', {
+          credentials: 'include',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: procedureName,
+            params: orderedParams,
+          }),
+        });
+        const reportJson = await parseJsonResponse(reportRes);
+        if (!reportRes.ok) {
+          results.push({
+            name: procedureName,
+            ok: false,
+            error: reportJson?.message || reportJson?.error || 'Failed to preview report',
+            rowCount: 0,
+            rows: [],
+            params: Object.fromEntries(paramNames.map((paramName, index) => [paramName, orderedParams[index]])),
+          });
+          continue;
+        }
+
+        const rows = Array.isArray(reportJson?.row) ? reportJson.row : [];
+        results.push({
+          name: procedureName,
+          ok: true,
+          rowCount: rows.length,
+          rows,
+          reportMeta: reportJson?.reportMeta || {},
+          fieldTypeMap: reportJson?.fieldTypeMap || {},
+          fieldLineage: reportJson?.fieldLineage || {},
+          params: Object.fromEntries(paramNames.map((paramName, index) => [paramName, orderedParams[index]])),
+        });
+      }
+
       setPreviewResults(results);
       setPreviewDrilldownState({});
       setPreviewDrilldownSelection({});
@@ -175,6 +313,7 @@ export default function AccountingPeriodsPage() {
       setMessage(String(err?.message || err));
       setPreviewResults([]);
     } finally {
+      setPreviewStep('');
       setPreviewing(false);
     }
   };
@@ -274,9 +413,10 @@ export default function AccountingPeriodsPage() {
     }));
 
     const normalizedMeta = normalizeReportMeta(reportMeta);
-    const drilldownConfig = normalizedMeta?.drilldown;
+    const fallbackProcedure = normalizedMeta?.drilldown?.fallbackProcedure || normalizedMeta?.drilldownReport || '';
+    // Prefer row-level drilldown target, but allow report fallback when legacy rows do not emit __drilldown_report.
     const detailProcedure = String(
-      drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
+      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
     ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
@@ -286,7 +426,7 @@ export default function AccountingPeriodsPage() {
           [rowId]: {
             ...((prev[reportName] || {})[rowId] || {}),
             status: 'error',
-            error: 'Missing drilldown procedure.',
+            error: 'Missing drilldown procedure (row-level or report fallback).',
             rows: [],
           },
         },
@@ -356,7 +496,7 @@ export default function AccountingPeriodsPage() {
   }, []);
 
   const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
-    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
+    const reportName = String(selectedSnapshot?.procedure_name || selectedSnapshot?.procedureName || '').trim();
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setSnapshotDrilldownState((prev) => ({
@@ -396,8 +536,14 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
+    const snapshotMeta = normalizeReportMeta(
+      selectedSnapshot?.artifact?.reportMeta || selectedSnapshot?.reportMeta || null,
+    );
+    const fallbackProcedure = String(
+      snapshotMeta?.drilldown?.fallbackProcedure || snapshotMeta?.drilldownReport || reportName || '',
+    ).trim();
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || reportName || '',
+      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
     ).trim();
     if (!detailProcedure) {
       setSnapshotDrilldownState((prev) => ({
@@ -405,7 +551,7 @@ export default function AccountingPeriodsPage() {
         [rowId]: {
           ...(prev[rowId] || {}),
           status: 'error',
-          error: 'Missing drilldown procedure.',
+          error: 'Missing drilldown procedure (row-level or report fallback).',
           rows: [],
         },
       }));
@@ -454,7 +600,15 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
+  }, [
+    buildDrilldownParams,
+    normalizeReportMeta,
+    selectedSnapshot?.artifact?.reportMeta,
+    selectedSnapshot?.procedure_name,
+    selectedSnapshot?.procedureName,
+    selectedSnapshot?.reportMeta,
+    snapshotDrilldownState,
+  ]);
 
   const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
     setSnapshotDrilldownSelection((prev) => (
@@ -609,6 +763,8 @@ export default function AccountingPeriodsPage() {
         </button>
       </div>
 
+      {previewStep ? <p style={{ marginTop: 0, marginBottom: 10, color: '#1d4ed8' }}>{previewStep}</p> : null}
+
       {previewResults.length > 0 ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 10 }}>
           <strong>Report preview</strong>
@@ -622,6 +778,11 @@ export default function AccountingPeriodsPage() {
                 </div>
                 {result.ok ? (
                   <div style={{ marginTop: 8 }}>
+                    {result.params && Object.keys(result.params).length > 0 ? (
+                      <pre style={{ marginTop: 0, marginBottom: 8, fontSize: 12, background: '#f8fafc', padding: 8, borderRadius: 6, overflowX: 'auto' }}>
+                        {JSON.stringify(result.params, null, 2)}
+                      </pre>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => handleSaveSnapshot(result)}
