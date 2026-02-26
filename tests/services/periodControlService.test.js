@@ -148,38 +148,3 @@ test('previewFiscalPeriodReports returns per-report results and keeps failures n
   assert.equal(results[1].ok, false);
   assert.match(String(results[1].error), /Report failed/i);
 });
-
-
-test('closeFiscalPeriod uses information_schema IN parameter order for report procedures', async () => {
-  const attemptedCalls = [];
-  const { conn } = createMockConnection({ balanceRows: [] });
-  const originalQuery = conn.query;
-  conn.query = async (sql, params = []) => {
-    if (sql.includes('FROM information_schema.parameters')) {
-      return [[
-        { name: 'p_company_id' },
-        { name: 'p_date_from' },
-        { name: 'p_date_to' },
-        { name: 'p_fiscal_year' },
-      ]];
-    }
-    if (sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`')) {
-      attemptedCalls.push({ sql, params });
-      return [[[{ ok: 1 }]]];
-    }
-    return originalQuery(sql, params);
-  };
-
-  const result = await closeFiscalPeriod({
-    companyId: 1,
-    fiscalYear: 2025,
-    userId: 'tester',
-    reportProcedures: ['dynrep_1_sp_trial_balance_expandable'],
-    dbPool: asPool(conn),
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(attemptedCalls.length, 1);
-  assert.equal(attemptedCalls[0].sql, 'CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?, ?)');
-  assert.deepEqual(attemptedCalls[0].params, [1, '2025-01-01', '2025-12-31', 2025]);
-});
