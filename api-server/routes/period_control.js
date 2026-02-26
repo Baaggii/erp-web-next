@@ -48,11 +48,15 @@ function validateSnapshotSavePayload(req) {
   const fiscalYear = Number(req.body.fiscal_year);
   const procedureName = String(req.body.procedure_name || '').trim();
   const rows = req.body.rows;
+  const reportMeta = req.body.report_meta;
+  const reportParams = req.body.report_params;
 
   if (!Number.isInteger(companyId) || companyId <= 0) return 'company_id is required';
   if (!Number.isInteger(fiscalYear) || fiscalYear < 1900 || fiscalYear > 3000) return 'fiscal_year is invalid';
   if (!procedureName) return 'procedure_name is required';
   if (!Array.isArray(rows)) return 'rows must be an array';
+  if (reportMeta !== undefined && (typeof reportMeta !== 'object' || Array.isArray(reportMeta))) return 'report_meta must be an object';
+  if (reportParams !== undefined && (typeof reportParams !== 'object' || Array.isArray(reportParams))) return 'report_params must be an object';
   return null;
 }
 
@@ -164,6 +168,8 @@ export function createPeriodControlRouter(deps = {}) {
         fiscalYear: Number(req.body.fiscal_year),
         procedureName: String(req.body.procedure_name).trim(),
         rows: Array.isArray(req.body.rows) ? req.body.rows : [],
+        reportMeta: req.body.report_meta && typeof req.body.report_meta === 'object' && !Array.isArray(req.body.report_meta) ? req.body.report_meta : {},
+        reportParams: req.body.report_params && typeof req.body.report_params === 'object' && !Array.isArray(req.body.report_params) ? req.body.report_params : {},
         createdBy: req.user.empid || req.user.id || req.user.email,
       });
       return res.json({ ok: true, ...result });
