@@ -398,14 +398,9 @@ export default function AccountingPeriodsPage() {
           ...(prev[reportName] || {}),
           [rowId]: {
             ...((prev[reportName] || {})[rowId] || {}),
-            expanded: true,
-            status: 'loaded',
-            error: '',
-            rowIds,
+            status: 'error',
+            error: 'Missing drilldown procedure.',
             rows: [],
-            columns: [],
-            fieldLineage: {},
-            fieldTypeMap: {},
           },
         },
       }));
