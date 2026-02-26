@@ -110,64 +110,18 @@ function computeLineAmount(row) {
 }
 
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
-  const dateFrom = formatDateOnly(fromDate);
-  const dateTo = formatDateOnly(toDate);
-  const attempts = [
-    { sql: `CALL \`${procedureName}\`(?, ?, ?, ?)`, params: [companyId, dateFrom, dateTo, fiscalYear] },
-    { sql: `CALL \`${procedureName}\`(?, ?, ?, ?)`, params: [companyId, fiscalYear, dateFrom, dateTo] },
-  ];
+  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
+  const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
+  const fourArgParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const twoArgParams = [companyId, fiscalYear];
 
-  let argCountError = null;
-  let lastError = null;
-  for (const attempt of attempts) {
-    try {
-      await conn.query(attempt.sql, attempt.params);
-      return;
-    } catch (error) {
-      lastError = error;
-      const message = String(error?.message || '');
-      if (/Incorrect number of arguments/i.test(message)) {
-        argCountError = error;
-        break;
-      }
-      if (/p_fiscal_year|Incorrect integer value/i.test(message)) continue;
-      throw error;
-    }
+  try {
+    await conn.query(fourArgSql, fourArgParams);
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (!/Incorrect number of arguments/i.test(message)) throw error;
+    await conn.query(twoArgSql, twoArgParams);
   }
-
-  if (!argCountError) {
-    throw lastError || new Error(`Failed to execute report procedure ${procedureName}`);
-  }
-
-  const message = String(argCountError?.message || '');
-  const expectedMatch = message.match(/expected\s+(\d+)\s*,?\s*got\s+\d+/i);
-  const expectedCount = expectedMatch ? Number(expectedMatch[1]) : null;
-  const fallbackCandidates = [];
-  if (expectedCount === 3) {
-    fallbackCandidates.push(
-      { sql: `CALL \`${procedureName}\`(?, ?, ?)`, params: [companyId, dateFrom, dateTo] },
-      { sql: `CALL \`${procedureName}\`(?, ?, ?)`, params: [companyId, fiscalYear, dateFrom] },
-    );
-  } else {
-    fallbackCandidates.push(
-      { sql: `CALL \`${procedureName}\`(?, ?)`, params: [companyId, fiscalYear] },
-      { sql: `CALL \`${procedureName}\`(?, ?)`, params: [companyId, dateFrom] },
-    );
-  }
-
-  for (const candidate of fallbackCandidates) {
-    try {
-      await conn.query(candidate.sql, candidate.params);
-      return;
-    } catch (error) {
-      const candidateMessage = String(error?.message || '');
-      if (/Incorrect number of arguments/i.test(candidateMessage)) continue;
-      if (/p_date_from|Incorrect date value/i.test(candidateMessage)) continue;
-      throw error;
-    }
-  }
-
-  throw argCountError;
 }
 
 export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportProcedures = [], dbPool = pool }) {

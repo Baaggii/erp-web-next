@@ -95,26 +95,3 @@ test('closeFiscalPeriod falls back to 2-arg procedure signature when 4-arg signa
   assert.equal(result.ok, true);
   assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?)')));
 });
-
-
-test('closeFiscalPeriod falls back to 3-arg date-range procedure when 4-arg signature is unsupported', async () => {
-  const { conn, calls } = createMockConnection({ balanceRows: [] });
-  const originalQuery = conn.query;
-  conn.query = async (sql, params = []) => {
-    if (sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?, ?)')) {
-      throw new Error('Incorrect number of arguments for PROCEDURE mgtmn_erp_db.dynrep_1_sp_trial_balance_expandable; expected 3, got 4');
-    }
-    return originalQuery(sql, params);
-  };
-
-  const result = await closeFiscalPeriod({
-    companyId: 1,
-    fiscalYear: 2025,
-    userId: 'tester',
-    reportProcedures: ['dynrep_1_sp_trial_balance_expandable'],
-    dbPool: asPool(conn),
-  });
-
-  assert.equal(result.ok, true);
-  assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?)') && JSON.stringify(c.params) === JSON.stringify([1, '2025-01-01', '2025-12-31'])));
-});
