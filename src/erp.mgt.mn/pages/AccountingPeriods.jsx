@@ -48,18 +48,6 @@ function normalizeParamName(name) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function normalizeProcedureNames(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => normalizeProcedureNames(entry));
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? [trimmed] : [];
-  }
-  return [];
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -241,25 +229,15 @@ export default function AccountingPeriodsPage() {
     });
   }, [companyId, fetchDrilldownParams]);
 
-  const resolveDrilldownProcedure = useCallback(({ reportName, reportMeta, row }) => {
+  const resolveDrilldownProcedure = useCallback(({ reportMeta, row }) => {
     const normalizedMeta = normalizeReportMeta(reportMeta);
     const drilldownConfig = normalizedMeta?.drilldown;
-    const candidates = [
-      row?.__drilldown_report,
-      row?.__detail_report,
-      drilldownConfig,
-      drilldownConfig?.fallbackProcedure,
-      drilldownConfig?.procedure,
-      drilldownConfig?.detailProcedure,
-      drilldownConfig?.report,
-      normalizedMeta?.drilldownReport,
-      reportName,
-    ];
-    for (const candidate of candidates) {
-      const name = normalizeProcedureNames(candidate)[0];
-      if (name) return name;
-    }
-    return '';
+    return String(
+      row?.__drilldown_report
+      || row?.__detail_report
+      || drilldownConfig?.fallbackProcedure
+      || '',
+    ).trim();
   }, [normalizeReportMeta]);
 
   const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
@@ -312,7 +290,7 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const detailProcedure = resolveDrilldownProcedure({ reportName, reportMeta, row });
+    const detailProcedure = resolveDrilldownProcedure({ reportMeta, row });
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
         ...prev,
@@ -431,7 +409,6 @@ export default function AccountingPeriodsPage() {
     }));
 
     const detailProcedure = resolveDrilldownProcedure({
-      reportName: selectedSnapshot?.procedure_name,
       reportMeta: selectedSnapshot?.artifact?.reportMeta,
       row,
     });
