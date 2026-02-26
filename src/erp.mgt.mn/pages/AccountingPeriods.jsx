@@ -365,16 +365,16 @@ export default function AccountingPeriodsPage() {
     });
   }, [companyId, fetchDrilldownParams]);
 
-  const hasPreviewRowDrilldownTarget = useCallback((row, fallbackProcedure) => {
+  const hasPreviewRowDrilldownTarget = useCallback((row) => {
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) return false;
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
+      row?.__drilldown_report || row?.__detail_report || '',
     ).trim();
     return Boolean(detailProcedure);
   }, []);
 
-  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId, fallbackProcedure }) => {
+  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setPreviewDrilldownState((prev) => ({
@@ -808,11 +808,8 @@ export default function AccountingPeriodsPage() {
                         rowGranularity={previewMeta?.rowGranularity || 'transaction'}
                         drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
                         onDrilldown={({ row, rowId }) => {
-                          const fallbackProcedure = String(
-                            previewMeta?.drilldown?.fallbackProcedure || previewMeta?.drilldownReport || '',
-                          ).trim();
-                          if (!hasPreviewRowDrilldownTarget(row, fallbackProcedure)) return;
-                          handlePreviewDrilldown({ reportName: result.name, row, rowId, fallbackProcedure });
+                          if (!hasPreviewRowDrilldownTarget(row)) return;
+                          handlePreviewDrilldown({ reportName: result.name, row, rowId });
                         }}
                         drilldownState={previewDrilldownState[result.name] || {}}
                         drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
