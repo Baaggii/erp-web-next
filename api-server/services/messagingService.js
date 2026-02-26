@@ -456,6 +456,12 @@ function assertCanViewMessage(message, session, user) {
   }
 }
 
+function assertCanAccessConversation(conversation, session, user) {
+  if (!canViewMessage(conversation, session, user)) {
+    throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+  }
+}
+
 function isProfanity(body) {
   return /\b(fuck|shit|bitch|asshole)\b/i.test(body);
 }
@@ -977,6 +983,7 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   );
   const conversation = conversationRows[0];
   if (!conversation) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+  assertCanAccessConversation(conversation, session, user);
 
   if (parentMessageId) {
     const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
@@ -1065,9 +1072,22 @@ export async function listConversations(args) {
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:list' });
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
-  const params = [parsedLimit + 1];
-  const cursorClause = cursorId ? 'AND id < ?' : '';
-  if (cursorId) params.push(cursorId);
+  let cursorClause = '';
+  let queryParams = [parsedLimit + 1];
+  if (cursorId) {
+    const [cursorRows] = await queryWithTenantScope(
+      db,
+      'erp_conversations',
+      scopedCompanyId,
+      'SELECT id, last_message_at FROM {{table}} WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [cursorId],
+    );
+    const cursorRow = cursorRows[0];
+    if (cursorRow) {
+      cursorClause = 'AND (last_message_at < ? OR (last_message_at = ? AND id < ?))';
+      queryParams = [cursorRow.last_message_at, cursorRow.last_message_at, cursorRow.id, parsedLimit + 1];
+    }
+  }
   const [rows] = await queryWithTenantScope(
     db,
     'erp_conversations',
@@ -1076,10 +1096,11 @@ export async function listConversations(args) {
       WHERE deleted_at IS NULL ${cursorClause}
       ORDER BY last_message_at DESC, id DESC
       LIMIT ?`,
-    cursorId ? [cursorId, parsedLimit + 1] : [parsedLimit + 1],
+    queryParams,
   );
-  const hasMore = rows.length > parsedLimit;
-  const items = hasMore ? rows.slice(0, parsedLimit) : rows;
+  const visibleRows = rows.filter((row) => canViewMessage(row, session, user));
+  const hasMore = visibleRows.length > parsedLimit;
+  const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   return {
     correlationId,
     items,
@@ -1103,7 +1124,9 @@ export async function getConversationMessages({ conversationId, ...rest }) {
     'SELECT * FROM {{table}} WHERE id = ? AND deleted_at IS NULL LIMIT 1',
     [normalizedConversationId],
   );
-  if (!conversationRows[0]) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+  const conversation = conversationRows[0];
+  if (!conversation) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
+  assertCanAccessConversation(conversation, session, user);
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
   const [rows] = await queryWithTenantScope(
