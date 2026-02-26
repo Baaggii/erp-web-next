@@ -1,5 +1,6 @@
 import { pool, getEmploymentSession } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
+import { loadSnapshotArtifactPage, storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
 
 function normalizeDate(value) {
   if (!value) return null;
@@ -51,6 +52,24 @@ export async function ensurePeriodControlTable(conn) {
       }
     }
   }
+}
+
+
+export async function ensurePeriodReportSnapshotTable(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS fin_period_report_snapshot (
+      snapshot_id BIGINT NOT NULL AUTO_INCREMENT,
+      company_id INT NOT NULL,
+      fiscal_year INT NOT NULL,
+      procedure_name VARCHAR(191) NOT NULL,
+      artifact_id VARCHAR(191) NOT NULL,
+      row_count INT NOT NULL DEFAULT 0,
+      created_by VARCHAR(100),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (snapshot_id),
+      INDEX idx_fin_period_report_snapshot_lookup (company_id, fiscal_year, created_at)
+    )
+  `);
 }
 
 export async function requirePeriodClosePermission(req) {
@@ -109,18 +128,135 @@ function computeLineAmount(row) {
   return -amount;
 }
 
+async function getProcedureInParameterNames(conn, procedureName) {
+  const [rows] = await conn.query(
+    `SELECT PARAMETER_NAME AS name
+       FROM information_schema.parameters
+      WHERE SPECIFIC_SCHEMA = DATABASE()
+        AND SPECIFIC_NAME = ?
+        AND ROUTINE_TYPE = 'PROCEDURE'
+        AND PARAMETER_MODE IN ('IN', 'INOUT')
+      ORDER BY ORDINAL_POSITION`,
+    [procedureName],
+  );
+  return Array.isArray(rows)
+    ? rows.map((row) => String(row?.name || '').trim()).filter(Boolean)
+    : [];
+}
+
+function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, fromDate, toDate }) {
+  const key = String(parameterName || '').toLowerCase().replace(/^@+/, '');
+  const from = formatDateOnly(fromDate);
+  const to = formatDateOnly(toDate);
+
+  if ([
+    'company_id',
+    'p_company_id',
+    'comp_id',
+    'p_comp_id',
+    'companyid',
+    'pcompanyid',
+  ].includes(key)) return companyId;
+
+  if ([
+    'fiscal_year',
+    'p_fiscal_year',
+    'year',
+    'p_year',
+    'fyear',
+    'p_fyear',
+  ].includes(key)) return fiscalYear;
+
+  if ([
+    'date_from',
+    'p_date_from',
+    'period_from',
+    'p_period_from',
+    'from_date',
+    'p_from_date',
+  ].includes(key)) return from;
+
+  if ([
+    'date_to',
+    'p_date_to',
+    'period_to',
+    'p_period_to',
+    'to_date',
+    'p_to_date',
+  ].includes(key)) return to;
+
+  return null;
+}
+
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const parameterNames = await getProcedureInParameterNames(conn, procedureName);
+  if (parameterNames.length > 0) {
+    const args = parameterNames.map((name) =>
+      resolveProcedureParameterValue(name, { companyId, fiscalYear, fromDate, toDate }),
+    );
+    const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
+    const [rows] = await conn.query(dynamicSql, args);
+    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+    return { rowCount: resultRows.length, rows: resultRows };
+  }
+
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
   const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
-  const fourArgParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const fiscalYearFirstParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const dateRangeFirstParams = [companyId, formatDateOnly(fromDate), formatDateOnly(toDate), fiscalYear];
   const twoArgParams = [companyId, fiscalYear];
 
   try {
-    await conn.query(fourArgSql, fourArgParams);
+    const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
+    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+    return { rowCount: resultRows.length, rows: resultRows };
   } catch (error) {
     const message = String(error?.message || '');
-    if (!/Incorrect number of arguments/i.test(message)) throw error;
-    await conn.query(twoArgSql, twoArgParams);
+    if (/Incorrect number of arguments/i.test(message)) {
+      const [rows] = await conn.query(twoArgSql, twoArgParams);
+      const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+      return { rowCount: resultRows.length, rows: resultRows };
+    }
+
+    const likelyParameterOrderMismatch =
+      /Incorrect integer value/i.test(message) ||
+      /Incorrect date value/i.test(message);
+
+    if (!likelyParameterOrderMismatch) throw error;
+
+    const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
+    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+    return { rowCount: resultRows.length, rows: resultRows };
+  }
+}
+
+export async function previewFiscalPeriodReports({ companyId, fiscalYear, reportProcedures = [], dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    const period = await getOrCreateFiscalPeriod(conn, companyId, fiscalYear);
+    const fromDate = normalizeDate(period.period_from);
+    const toDate = normalizeDate(period.period_to);
+    if (!fromDate || !toDate || fromDate > toDate) {
+      throw new Error('Invalid period range in fin_period_control.');
+    }
+
+    const results = [];
+    for (const procedureName of reportProcedures) {
+      const proc = String(procedureName || '').trim();
+      if (!/^[A-Za-z0-9_]+$/.test(proc)) {
+        results.push({ name: proc || String(procedureName || ''), ok: false, error: `Invalid report procedure: ${procedureName}` });
+        continue;
+      }
+      try {
+        const report = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({ name: proc, ok: true, rowCount: report.rowCount, rows: report.rows });
+      } catch (error) {
+        results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
+      }
+    }
+    return results;
+  } finally {
+    conn.release();
   }
 }
 
@@ -228,6 +364,81 @@ export async function closeFiscalPeriod({ companyId, fiscalYear, userId, reportP
   } catch (error) {
     await conn.rollback();
     throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+
+export async function saveFiscalPeriodReportSnapshot({
+  companyId,
+  fiscalYear,
+  procedureName,
+  rows = [],
+  createdBy,
+  dbPool = pool,
+}) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const normalizedRows = Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') : [];
+    const columns = normalizedRows.length ? Object.keys(normalizedRows[0]) : [];
+    const artifact = storeSnapshotArtifact({
+      rows: normalizedRows,
+      columns,
+      procedure: procedureName,
+      params: { companyId, fiscalYear },
+    });
+
+    const [result] = await conn.query(
+      `INSERT INTO fin_period_report_snapshot
+       (company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [companyId, fiscalYear, procedureName, artifact.id, normalizedRows.length, String(createdBy || 'system')],
+    );
+    return {
+      snapshotId: result.insertId,
+      artifactId: artifact.id,
+      rowCount: normalizedRows.length,
+      createdAt: artifact.createdAt,
+    };
+  } finally {
+    conn.release();
+  }
+}
+
+export async function listFiscalPeriodReportSnapshots({ companyId, fiscalYear, dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const [rows] = await conn.query(
+      `SELECT snapshot_id, company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by, created_at
+         FROM fin_period_report_snapshot
+        WHERE company_id = ? AND fiscal_year = ?
+        ORDER BY created_at DESC, snapshot_id DESC`,
+      [companyId, fiscalYear],
+    );
+    return Array.isArray(rows) ? rows : [];
+  } finally {
+    conn.release();
+  }
+}
+
+export async function getFiscalPeriodReportSnapshot({ snapshotId, companyId, page = 1, perPage = 200, dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    await ensurePeriodReportSnapshotTable(conn);
+    const [rows] = await conn.query(
+      `SELECT snapshot_id, company_id, fiscal_year, procedure_name, artifact_id, row_count, created_by, created_at
+         FROM fin_period_report_snapshot
+        WHERE snapshot_id = ? AND company_id = ?
+        LIMIT 1`,
+      [snapshotId, companyId],
+    );
+    const meta = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!meta) return null;
+    const artifact = loadSnapshotArtifactPage(meta.artifact_id, page, perPage);
+    return { ...meta, artifact };
   } finally {
     conn.release();
   }
