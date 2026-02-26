@@ -52,6 +52,8 @@ export default function AccountingPeriodsPage() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
+  const [previewDrilldownState, setPreviewDrilldownState] = useState({});
+  const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -122,6 +124,8 @@ export default function AccountingPeriodsPage() {
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
+      setPreviewDrilldownState({});
+      setPreviewDrilldownSelection({});
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
@@ -134,6 +138,90 @@ export default function AccountingPeriodsPage() {
       setPreviewing(false);
     }
   };
+
+
+  const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
+
+  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
+    const rowIds = String(row?.__row_ids || '').trim();
+    const key = buildPreviewDrilldownKey(reportName, rowId);
+    if (!rowIds) {
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: { ...(prev[key] || {}), expanded: true, status: 'error', error: 'Missing __row_ids for drilldown.', rows: [] },
+      }));
+      return;
+    }
+
+    const existing = previewDrilldownState[key];
+    const nextExpanded = !existing?.expanded;
+    setPreviewDrilldownState((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), expanded: nextExpanded, rowIds },
+    }));
+    if (!nextExpanded) return;
+    if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
+
+    setPreviewDrilldownState((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || {}), expanded: true, status: 'loading', error: '', rowIds },
+    }));
+
+    const detailProcedure = String(row?.__drilldown_report || row?.__detail_report || reportName || '').trim();
+    if (!detailProcedure) {
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: { ...(prev[key] || {}), status: 'error', error: 'Missing drilldown procedure.', rows: [] },
+      }));
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/procedures', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: detailProcedure,
+          params: [rowIds],
+        }),
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
+      const detailRows = Array.isArray(json?.row) ? json.row : [];
+      const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          expanded: true,
+          status: 'loaded',
+          error: '',
+          rowIds,
+          rows: detailRows,
+          columns: detailColumns,
+          fieldLineage: json?.fieldLineage || {},
+          fieldTypeMap: json?.fieldTypeMap || {},
+        },
+      }));
+    } catch (err) {
+      setPreviewDrilldownState((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          expanded: true,
+          status: 'error',
+          error: String(err?.message || err || 'Failed to load drilldown rows'),
+          rowIds,
+          rows: [],
+        },
+      }));
+    }
+  }, [buildPreviewDrilldownKey, previewDrilldownState]);
+
+  const handlePreviewDrilldownSelectionChange = useCallback((updater) => {
+    setPreviewDrilldownSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
+  }, []);
 
   const handleSaveSnapshot = async (result) => {
     const name = result?.name;
