@@ -96,30 +96,8 @@ function isImageAttachment(file) {
   return /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(\?.*)?$/.test(url);
 }
 
-
-function resolveMessageBody(message) {
-  return message?.body
-    ?? message?.body_text
-    ?? message?.bodyText
-    ?? message?.content
-    ?? message?.message
-    ?? '';
-}
-
-function resolveMessageAuthorEmpid(message) {
-  return message?.author_empid
-    ?? message?.authorEmpid
-    ?? message?.created_by_empid
-    ?? message?.createdByEmpid
-    ?? null;
-}
-
-function resolveMessageCreatedAt(message) {
-  return message?.created_at ?? message?.createdAt ?? null;
-}
-
 function extractMessageAttachments(message) {
-  const decoded = decodeMessageContent(resolveMessageBody(message));
+  const decoded = decodeMessageContent(message?.body);
   if (decoded.attachments.length > 0) return decoded;
   const fallbackAttachments = Array.isArray(message?.attachments)
     ? message.attachments.filter((entry) => entry && typeof entry.url === 'string')
@@ -582,7 +560,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isHighlighted = highlightedIds.has(message.id);
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
-  const authorLabel = resolveEmployeeLabel(resolveMessageAuthorEmpid(message));
+  const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
 
   return (
@@ -603,7 +581,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{formatLastActivity(resolveMessageCreatedAt(message))}</span>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
         {isMentionedViewer && (
           <span style={{ fontSize: 11, color: '#7c2d12', borderRadius: 999, background: '#ffedd5', padding: '1px 7px', fontWeight: 700 }}>
             Mentioned you
@@ -1330,7 +1308,7 @@ export default function MessagingWidget() {
     const latestByConversation = conversations
       .map((conversation) => {
         const latestBySelf = conversation.messages
-          .filter((msg) => normalizeId(resolveMessageAuthorEmpid(msg)) === selfEmpid)
+          .filter((msg) => normalizeId(msg.author_empid) === selfEmpid)
           .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
         if (!latestBySelf) return null;
         return { id: conversation.id, at: new Date(latestBySelf.created_at || 0).getTime() };
@@ -1458,7 +1436,7 @@ export default function MessagingWidget() {
       });
     });
     messages.forEach((msg) => {
-      const empid = normalizeId(resolveMessageAuthorEmpid(msg));
+      const empid = normalizeId(msg.author_empid);
       if (!empid || seen.has(empid)) return;
       const userProfile = userDirectory[empid] || {};
       seen.set(empid, {
@@ -1504,7 +1482,7 @@ export default function MessagingWidget() {
 
   const conversationSummaries = useMemo(() => conversationSummariesSource.map((conversation) => {
     const previewMessage = conversation.messages.at(-1);
-    const previewDecoded = decodeMessageContent(resolveMessageBody(previewMessage));
+    const previewDecoded = decodeMessageContent(previewMessage?.body || '');
     return {
       ...conversation,
       unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
@@ -1582,7 +1560,7 @@ export default function MessagingWidget() {
   );
 
   const isReplyMode = Boolean(state.composer.replyToId);
-  const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(resolveMessageAuthorEmpid(activeRootMessage)) === selfEmpid);
+  const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
 
 
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
@@ -1619,7 +1597,7 @@ export default function MessagingWidget() {
 
   const canDeleteMessage = (message) => {
     if (!message) return false;
-    return normalizeId(resolveMessageAuthorEmpid(message)) === selfEmpid;
+    return normalizeId(message.author_empid) === selfEmpid;
   };
 
   const handleDeleteMessage = async (messageId) => {
