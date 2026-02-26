@@ -109,7 +109,77 @@ function computeLineAmount(row) {
   return -amount;
 }
 
+async function getProcedureInParameterNames(conn, procedureName) {
+  const [rows] = await conn.query(
+    `SELECT PARAMETER_NAME AS name
+       FROM information_schema.parameters
+      WHERE SPECIFIC_SCHEMA = DATABASE()
+        AND SPECIFIC_NAME = ?
+        AND ROUTINE_TYPE = 'PROCEDURE'
+        AND PARAMETER_MODE IN ('IN', 'INOUT')
+      ORDER BY ORDINAL_POSITION`,
+    [procedureName],
+  );
+  return Array.isArray(rows)
+    ? rows.map((row) => String(row?.name || '').trim()).filter(Boolean)
+    : [];
+}
+
+function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, fromDate, toDate }) {
+  const key = String(parameterName || '').toLowerCase().replace(/^@+/, '');
+  const from = formatDateOnly(fromDate);
+  const to = formatDateOnly(toDate);
+
+  if ([
+    'company_id',
+    'p_company_id',
+    'comp_id',
+    'p_comp_id',
+    'companyid',
+    'pcompanyid',
+  ].includes(key)) return companyId;
+
+  if ([
+    'fiscal_year',
+    'p_fiscal_year',
+    'year',
+    'p_year',
+    'fyear',
+    'p_fyear',
+  ].includes(key)) return fiscalYear;
+
+  if ([
+    'date_from',
+    'p_date_from',
+    'period_from',
+    'p_period_from',
+    'from_date',
+    'p_from_date',
+  ].includes(key)) return from;
+
+  if ([
+    'date_to',
+    'p_date_to',
+    'period_to',
+    'p_period_to',
+    'to_date',
+    'p_to_date',
+  ].includes(key)) return to;
+
+  return null;
+}
+
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const parameterNames = await getProcedureInParameterNames(conn, procedureName);
+  if (parameterNames.length > 0) {
+    const args = parameterNames.map((name) =>
+      resolveProcedureParameterValue(name, { companyId, fiscalYear, fromDate, toDate }),
+    );
+    const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
+    const [rows] = await conn.query(dynamicSql, args);
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+  }
+
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
   const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
   const fiscalYearFirstParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
