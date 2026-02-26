@@ -23,7 +23,19 @@ if (!haveReact) {
   global.window = dom.window;
   global.document = dom.window.document;
   global.sessionStorage = dom.window.sessionStorage;
-  global.fetch = async () => ({ ok: true, async json() { return { messages: [], onlineUsers: [] }; } });
+  global.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/messaging/conversations/') && requestUrl.includes('/messages')) {
+      return { ok: true, async json() { return { conversationId: 1, items: [], pageInfo: { page: 1 } }; } };
+    }
+    if (requestUrl.includes('/messaging/conversations')) {
+      return { ok: true, async json() { return { items: [], pageInfo: { page: 1 } }; } };
+    }
+    if (requestUrl.includes('/messaging/presence')) {
+      return { ok: true, async json() { return { users: [] }; } };
+    }
+    return { ok: true, async json() { return { items: [] }; } };
+  };
 
   test('MessagingWidget toggles from collapsed to expanded', async (t) => {
     const contextMod = await import('../../src/erp.mgt.mn/context/AuthContext.jsx');

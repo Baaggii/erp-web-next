@@ -16,6 +16,7 @@ import {
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
+import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -379,55 +380,6 @@ function mergePresenceEntries(entries = []) {
     const empid = normalizeId(entry?.empid || entry?.id);
     return [empid, { ...entry, empid }];
   })).values()).filter((entry) => entry.empid);
-}
-
-function isLikelyMessageRecord(entry) {
-  if (!entry || typeof entry !== 'object') return false;
-  if (!normalizeId(entry.id)) return false;
-  return [
-    entry.body,
-    entry.author_empid,
-    entry.authorEmpid,
-    entry.parent_message_id,
-    entry.parentMessageId,
-    entry.conversation_id,
-    entry.conversationId,
-    entry.created_at,
-  ].some((value) => value != null && String(value).trim() !== '');
-}
-
-function extractMessagesFromConversationPayload(data) {
-  const candidates = [
-    ...(Array.isArray(data) ? data : []),
-    ...(Array.isArray(data?.items) ? data.items : []),
-    ...(Array.isArray(data?.messages) ? data.messages : []),
-    ...(Array.isArray(data?.conversations) ? data.conversations : []),
-  ];
-
-  return candidates.flatMap((entry) => {
-    if (isLikelyMessageRecord(entry)) return [entry];
-    const nestedMessages = Array.isArray(entry?.messages)
-      ? entry.messages
-      : Array.isArray(entry?.items)
-        ? entry.items
-        : [];
-    if (!nestedMessages.length) return [];
-
-    const conversationId = normalizeId(
-      entry?.conversation_id
-      || entry?.conversationId
-      || entry?.root_message_id
-      || entry?.rootMessageId
-      || entry?.id,
-    );
-
-    return nestedMessages
-      .filter((message) => message && typeof message === 'object')
-      .map((message) => ({
-        ...message,
-        conversation_id: message?.conversation_id || message?.conversationId || conversationId || null,
-      }));
-  });
 }
 
 function getRowValueCaseInsensitive(row, fieldName) {
@@ -823,9 +775,8 @@ export default function MessagingWidget() {
       const threadRes = await fetch(`${API_BASE}/messaging/conversations/${rootMessageId}/messages?${params.toString()}`, { credentials: 'include' });
       if (!threadRes.ok) return;
       const threadData = await threadRes.json();
-      const threadItems = Array.isArray(threadData?.items)
-        ? threadData.items
-        : [threadData?.root, ...(Array.isArray(threadData?.replies) ? threadData.replies : [])].filter(Boolean);
+      const adaptedThread = adaptThreadResponse(threadData);
+      const threadItems = adaptedThread.items;
       if (threadItems.length === 0) return;
       const rememberedThreadParticipants = Array.from(new Set(threadItems.flatMap((entry) => collectMessageParticipantEmpids(entry))));
       rememberConversationParticipants(rootMessageId, rememberedThreadParticipants);
@@ -932,7 +883,18 @@ export default function MessagingWidget() {
         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         const data = await res.json();
         if (disposed) return;
-        const incomingMessages = extractMessagesFromConversationPayload(data);
+        const adaptedConversations = adaptConversationListResponse(data);
+        const incomingMessages = adaptedConversations.items.map((conversation) => ({
+          id: conversation.lastMessageId || `conversation:${conversation.conversationId}`,
+          conversation_id: conversation.conversationId,
+          parent_message_id: null,
+          body: '',
+          created_at: conversation.lastMessageAt,
+          visibility_scope: conversation.visibilityScope || 'company',
+          linked_type: conversation.linkedType,
+          linked_id: conversation.linkedId,
+          topic: conversation.title,
+        }));
         const participantCache = readParticipantCache(participantCacheKey);
         const hydratedMessages = incomingMessages.map((message) => {
           const rootMessageId = normalizeId(
@@ -1438,6 +1400,13 @@ export default function MessagingWidget() {
       dispatch({ type: 'widget/setConversation', payload: null });
     }
   }, [conversations, selfEmpid, state.activeConversationId]);
+
+  useEffect(() => {
+    const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!selectedRootId || !activeCompany) return;
+    fetchThreadMessages(selectedRootId, activeCompany);
+  }, [state.activeCompanyId, state.activeConversationId, companyId]);
 
 
   useEffect(() => {
