@@ -9,6 +9,13 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
+const INTERNAL_COLS = new Set([
+  '__row_ids',
+  '__drilldown_report',
+  '__drilldown_level',
+  '__detail_report',
+]);
+
 
 async function parseJsonResponse(response) {
   const text = await response.text();
@@ -367,6 +374,14 @@ export default function AccountingPeriodsPage() {
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
+                        rowGranularity={result?.reportMeta?.rowGranularity || 'transaction'}
+                        drilldownEnabled={Boolean(result?.reportMeta?.drilldown || result?.reportMeta?.drilldownReport)}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
+                        drilldownState={previewDrilldownState}
+                        drilldownRowSelection={previewDrilldownSelection}
+                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
+                        getDrilldownRowKey={(rowId) => buildPreviewDrilldownKey(result.name, rowId)}
+                        excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
                         showTotalRowCount={false}
                       />
