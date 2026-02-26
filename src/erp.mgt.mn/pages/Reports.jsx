@@ -343,22 +343,6 @@ export default function Reports() {
     () => normalizeReportCapabilities(result?.reportCapabilities),
     [result?.reportCapabilities],
   );
-  const clearReportRunState = useCallback(() => {
-    setResult(null);
-    setApprovalReason('');
-    setSnapshot(null);
-    setPopulateLockCandidates(false);
-    setLockCandidates([]);
-    setLockSelections({});
-    setLockExclusions({});
-    setPendingExclusion(null);
-    setLockFetchError('');
-    setLockFetchPending(false);
-    setLockAcknowledged(false);
-    setLockRequestSubmitted(false);
-    setDrilldownDetails({});
-    setDrilldownRowSelection({});
-  }, []);
   const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
   const handleRowSelectionChange = useCallback((updater) => {
     setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
@@ -665,44 +649,6 @@ export default function Reports() {
     manualParams,
     yearParamNames,
     monthParamNames,
-  ]);
-
-  const selectedYearFingerprint = useMemo(() => {
-    if (!yearParamNames.length) return '';
-    return yearParamNames
-      .map((name) => {
-        const value = manualParams[name];
-        return value == null ? '' : String(value).trim();
-      })
-      .join('|');
-  }, [manualParams, yearParamNames]);
-  const selectedYearFingerprintRef = useRef('');
-
-  useEffect(() => {
-    const previous = selectedYearFingerprintRef.current;
-    if (!selectedProc) {
-      selectedYearFingerprintRef.current = '';
-      return;
-    }
-    if (!yearParamNames.length) {
-      selectedYearFingerprintRef.current = '';
-      return;
-    }
-    if (!previous) {
-      selectedYearFingerprintRef.current = selectedYearFingerprint;
-      return;
-    }
-    if (previous !== selectedYearFingerprint) {
-      clearReportRunState();
-      setRowSelection({});
-    }
-    selectedYearFingerprintRef.current = selectedYearFingerprint;
-  }, [
-    clearReportRunState,
-    selectedProc,
-    selectedYearFingerprint,
-    setRowSelection,
-    yearParamNames,
   ]);
 
   const showWorkplaceSelector = hasWorkplaceParam;
@@ -1390,11 +1336,22 @@ export default function Reports() {
   }, [selectedProc, branch, department]);
 
   useEffect(() => {
-    clearReportRunState();
+    setResult(null);
     setManualParams({});
-    setRowSelection({});
-    selectedYearFingerprintRef.current = '';
-  }, [clearReportRunState, selectedProc]);
+    setApprovalReason('');
+    setSnapshot(null);
+    setPopulateLockCandidates(false);
+    setLockCandidates([]);
+    setLockSelections({});
+    setLockExclusions({});
+    setPendingExclusion(null);
+    setLockFetchError('');
+    setLockFetchPending(false);
+    setLockAcknowledged(false);
+    setLockRequestSubmitted(false);
+    setDrilldownDetails({});
+    setDrilldownRowSelection({});
+  }, [selectedProc]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4135,52 +4092,6 @@ export default function Reports() {
     }
   }
 
-  async function handleDeleteSavedSnapshot(req) {
-    const requestId = req?.request_id;
-    if (!requestId) {
-      addToast('Unable to delete snapshot for this request', 'error');
-      return;
-    }
-    const confirmed = window.confirm(
-      'Delete the saved snapshot from this report approval request?',
-    );
-    if (!confirmed) return;
-    try {
-      const res = await fetch(
-        `/api/pending_request/${encodeURIComponent(requestId)}/snapshot`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        },
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Failed to delete saved snapshot');
-      }
-      setApprovalData((prev) => ({
-        ...prev,
-        outgoing: (prev.outgoing || []).map((row) => {
-          if (row?.request_id !== requestId) return row;
-          const nextMeta = row.report_metadata && typeof row.report_metadata === 'object'
-            ? { ...row.report_metadata, snapshot: null }
-            : row.report_metadata;
-          const nextProposedData =
-            row.proposed_data && typeof row.proposed_data === 'object'
-              ? { ...row.proposed_data, snapshot: null }
-              : row.proposed_data;
-          return {
-            ...row,
-            report_metadata: nextMeta,
-            proposed_data: nextProposedData,
-          };
-        }),
-      }));
-      addToast('Saved snapshot deleted', 'success');
-    } catch (err) {
-      addToast(err.message || 'Failed to delete saved snapshot', 'error');
-    }
-  }
-
   useEffect(() => {
     if (!approvalModalOpen) return undefined;
     let cancelled = false;
@@ -5170,16 +5081,6 @@ export default function Reports() {
                           {req.response_notes && (
                             <div>
                               <strong>Response notes:</strong> {req.response_notes}
-                            </div>
-                          )}
-                          {meta?.snapshot && (
-                            <div style={{ marginTop: '0.5rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteSavedSnapshot(req)}
-                              >
-                                Delete saved snapshot
-                              </button>
                             </div>
                           )}
                           <div style={{ marginTop: '0.5rem' }}>
