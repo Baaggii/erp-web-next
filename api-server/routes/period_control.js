@@ -3,6 +3,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   closeFiscalPeriod,
   getPeriodStatus,
+  previewFiscalPeriodReports,
   requirePeriodClosePermission,
 } from '../services/periodControlService.js';
 
@@ -34,11 +35,16 @@ function validateClosePayload(req) {
   return null;
 }
 
+function validatePreviewPayload(req) {
+  return validateClosePayload(req);
+}
+
 export function createPeriodControlRouter(deps = {}) {
   const router = express.Router();
   const authMiddleware = deps.requireAuth || requireAuth;
   const getStatus = deps.getPeriodStatus || getPeriodStatus;
   const closePeriod = deps.closeFiscalPeriod || closeFiscalPeriod;
+  const previewReports = deps.previewFiscalPeriodReports || previewFiscalPeriodReports;
   const permissionCheck = deps.requirePeriodClosePermission || requirePeriodClosePermission;
 
   router.get('/status', authMiddleware, async (req, res) => {
@@ -78,6 +84,25 @@ export function createPeriodControlRouter(deps = {}) {
     } catch (error) {
       const statusCode = /already closed/i.test(String(error?.message || '')) ? 409 : 500;
       return res.status(statusCode).json({ ok: false, message: error?.message || 'Failed to close period' });
+    }
+  });
+
+  router.post('/preview', authMiddleware, async (req, res) => {
+    const validationMessage = validatePreviewPayload(req);
+    if (validationMessage) return res.status(400).json({ ok: false, message: validationMessage });
+
+    try {
+      const { allowed } = await permissionCheck(req);
+      if (!allowed) return res.sendStatus(403);
+
+      const results = await previewReports({
+        companyId: Number(req.body.company_id),
+        fiscalYear: Number(req.body.fiscal_year),
+        reportProcedures: req.body.report_procedures,
+      });
+      return res.json({ ok: true, results });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error?.message || 'Failed to preview reports' });
     }
   });
 

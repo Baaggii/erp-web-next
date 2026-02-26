@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 process.env.DB_ADMIN_USER = process.env.DB_ADMIN_USER || 'test_admin';
 process.env.DB_ADMIN_PASS = process.env.DB_ADMIN_PASS || 'test_admin_pass';
 
-const { closeFiscalPeriod } = await import('../../api-server/services/periodControlService.js');
+const { closeFiscalPeriod, previewFiscalPeriodReports } = await import('../../api-server/services/periodControlService.js');
 
 function createMockConnection({ periodClosed = 0, balanceRows = [] } = {}) {
   const calls = [];
@@ -43,7 +43,7 @@ test('closeFiscalPeriod rejects already closed periods', async () => {
 });
 
 
-test('closeFiscalPeriod retries 4-arg procedure with fiscalYear-first order when date-range-first fails', async () => {
+test('closeFiscalPeriod retries 4-arg procedure with date-range order when fiscalYear-first fails', async () => {
   let procedureAttempt = 0;
   const attemptedParams = [];
   const { conn, calls } = createMockConnection({ balanceRows: [] });
@@ -69,8 +69,8 @@ test('closeFiscalPeriod retries 4-arg procedure with fiscalYear-first order when
 
   assert.equal(result.ok, true);
   assert.equal(procedureAttempt, 2);
-  assert.deepEqual(attemptedParams[0], [1, '2025-01-01', '2025-12-31', 2025]);
-  assert.deepEqual(attemptedParams[1], [1, 2025, '2025-01-01', '2025-12-31']);
+  assert.deepEqual(attemptedParams[0], [1, 2025, '2025-01-01', '2025-12-31']);
+  assert.deepEqual(attemptedParams[1], [1, '2025-01-01', '2025-12-31', 2025]);
   assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?, ?, ?)')));
 });
 
@@ -94,4 +94,26 @@ test('closeFiscalPeriod falls back to 2-arg procedure signature when 4-arg signa
 
   assert.equal(result.ok, true);
   assert.ok(calls.some((c) => c.type === 'query' && c.sql.includes('CALL `dynrep_1_sp_trial_balance_expandable`(?, ?)')));
+});
+
+
+test('previewFiscalPeriodReports returns per-report results and keeps failures non-fatal', async () => {
+  const { conn } = createMockConnection({ balanceRows: [] });
+  const originalQuery = conn.query;
+  conn.query = async (sql, params = []) => {
+    if (sql.includes('CALL `bad_proc`')) throw new Error('Report failed (500)');
+    return originalQuery(sql, params);
+  };
+
+  const results = await previewFiscalPeriodReports({
+    companyId: 1,
+    fiscalYear: 2025,
+    reportProcedures: ['dynrep_1_sp_trial_balance_expandable', 'bad_proc'],
+    dbPool: asPool(conn),
+  });
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].ok, true);
+  assert.equal(results[1].ok, false);
+  assert.match(String(results[1].error), /Report failed/i);
 });
