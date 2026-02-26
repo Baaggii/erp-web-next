@@ -7,6 +7,19 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const status = `${response.status} ${response.statusText}`.trim();
+    const snippet = text.slice(0, 160).replace(/\s+/g, ' ').trim();
+    throw new Error(`Expected JSON response (${status}). Received: ${snippet || '<empty>'}`);
+  }
+}
+
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -18,6 +31,11 @@ export default function AccountingPeriodsPage() {
   const [previewResults, setPreviewResults] = useState([]);
   const [message, setMessage] = useState('');
   const [reportProcedures, setReportProcedures] = useState(DEFAULT_REPORT_PROCS.join(', '));
+  const [savingSnapshots, setSavingSnapshots] = useState({});
+  const [snapshots, setSnapshots] = useState([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [selectedSnapshot, setSelectedSnapshot] = useState(null);
+  const [loadingSnapshotId, setLoadingSnapshotId] = useState(null);
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -34,7 +52,7 @@ export default function AccountingPeriodsPage() {
     setMessage('');
     try {
       const res = await fetch(`/api/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load period');
       setPeriod(json.period);
     } catch (err) {
@@ -44,9 +62,25 @@ export default function AccountingPeriodsPage() {
     }
   }, [companyId, fiscalYear]);
 
+  const loadSnapshots = useCallback(async () => {
+    if (!companyId) return;
+    setLoadingSnapshots(true);
+    try {
+      const res = await fetch(`/api/period-control/snapshots?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
+      const json = await parseJsonResponse(res);
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshots');
+      setSnapshots(Array.isArray(json.snapshots) ? json.snapshots : []);
+    } catch (err) {
+      setMessage(String(err?.message || err));
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  }, [companyId, fiscalYear]);
+
   useEffect(() => {
     loadStatus();
-  }, [loadStatus]);
+    loadSnapshots();
+  }, [loadStatus, loadSnapshots]);
 
   const parsedProcedures = useMemo(
     () => reportProcedures.split(',').map((value) => value.trim()).filter(Boolean),
@@ -68,20 +102,67 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
-        setMessage('Reports generated successfully. Review results below before closing period.');
+        setMessage('Reports generated successfully. Review full results below and save snapshots if needed.');
       }
     } catch (err) {
       setMessage(String(err?.message || err));
       setPreviewResults([]);
     } finally {
       setPreviewing(false);
+    }
+  };
+
+  const handleSaveSnapshot = async (result) => {
+    const name = result?.name;
+    const rows = Array.isArray(result?.rows) ? result.rows : [];
+    if (!name || !rows.length || !companyId) return;
+    setSavingSnapshots((prev) => ({ ...prev, [name]: true }));
+    setMessage('');
+    try {
+      const res = await fetch('/api/period-control/snapshot', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          fiscal_year: fiscalYear,
+          procedure_name: name,
+          rows,
+        }),
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to save snapshot');
+      setMessage(`Snapshot saved for ${name}.`);
+      await loadSnapshots();
+    } catch (err) {
+      setMessage(String(err?.message || err));
+    } finally {
+      setSavingSnapshots((prev) => ({ ...prev, [name]: false }));
+    }
+  };
+
+  const handleOpenSnapshot = async (snapshotId) => {
+    if (!snapshotId || !companyId) return;
+    setLoadingSnapshotId(snapshotId);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/period-control/snapshots/${snapshotId}?company_id=${companyId}&page=1&per_page=500`, {
+        credentials: 'include',
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshot');
+      setSelectedSnapshot(json.snapshot || null);
+    } catch (err) {
+      setMessage(String(err?.message || err));
+    } finally {
+      setLoadingSnapshotId(null);
     }
   };
 
@@ -110,7 +191,7 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to close period');
       setMessage(`Period closed. Opening journal #${json.openingJournalId || 'N/A'} created for ${json.nextFiscalYear}.`);
       await loadStatus();
@@ -122,7 +203,7 @@ export default function AccountingPeriodsPage() {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 860 }}>
+    <div style={{ padding: 16, maxWidth: 1100 }}>
       <h2>Accounting Periods</h2>
       {!canClosePeriod ? <p style={{ color: '#b45309' }}>You do not have permission to close accounting periods.</p> : null}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -161,13 +242,106 @@ export default function AccountingPeriodsPage() {
       {previewResults.length > 0 ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 10 }}>
           <strong>Report preview</strong>
-          <ul style={{ marginTop: 8, marginBottom: 0 }}>
-            {previewResults.map((result) => (
-              <li key={result.name} style={{ color: result.ok ? '#166534' : '#b91c1c' }}>
-                {result.name}: {result.ok ? `OK (${result.rowCount} rows)` : `Failed (${result.error})`}
+          {previewResults.map((result) => {
+            const rows = Array.isArray(result.rows) ? result.rows : [];
+            const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+            return (
+              <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
+                <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
+                  {result.name}: {result.ok ? `OK (${result.rowCount} rows)` : `Failed (${result.error})`}
+                </div>
+                {result.ok ? (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSnapshot(result)}
+                      disabled={savingSnapshots[result.name] || rows.length === 0}
+                      style={{ marginBottom: 8 }}
+                    >
+                      {savingSnapshots[result.name] ? 'Saving snapshot…' : 'Save Snapshot'}
+                    </button>
+                    {rows.length > 0 ? (
+                      <div style={{ overflowX: 'auto', maxHeight: 260, border: '1px solid #eee' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              {columns.map((col) => (
+                                <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.slice(0, 100).map((row, idx) => (
+                              <tr key={`${result.name}-${idx}`}>
+                                {columns.map((col) => (
+                                  <td key={`${result.name}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
+                                    {renderCell(row[col])}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : <p style={{ margin: 0 }}>No rows returned.</p>}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
+        <strong>Saved report snapshots</strong>
+        <div style={{ marginTop: 8, marginBottom: 8 }}>
+          <button type="button" onClick={loadSnapshots} disabled={loadingSnapshots}>{loadingSnapshots ? 'Refreshing…' : 'Refresh Snapshots'}</button>
+        </div>
+        {snapshots.length === 0 ? <p style={{ margin: 0 }}>No snapshots saved for this fiscal year yet.</p> : (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {snapshots.map((snapshot) => (
+              <li key={snapshot.snapshot_id} style={{ marginBottom: 6 }}>
+                <strong>{snapshot.procedure_name}</strong> — {snapshot.row_count} rows — {snapshot.created_at || ''}
+                <button
+                  type="button"
+                  onClick={() => handleOpenSnapshot(snapshot.snapshot_id)}
+                  disabled={loadingSnapshotId === snapshot.snapshot_id}
+                  style={{ marginLeft: 8 }}
+                >
+                  {loadingSnapshotId === snapshot.snapshot_id ? 'Opening…' : 'View'}
+                </button>
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      {selectedSnapshot?.artifact ? (
+        <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
+          <strong>Snapshot view: {selectedSnapshot.procedure_name}</strong>
+          <div style={{ marginTop: 6, marginBottom: 6 }}>Rows: {selectedSnapshot.artifact.rowCount}</div>
+          <div style={{ overflowX: 'auto', maxHeight: 340, border: '1px solid #eee' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {(selectedSnapshot.artifact.columns || []).map((col) => (
+                    <th key={col} style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 6 }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedSnapshot.artifact.rows || []).map((row, idx) => (
+                  <tr key={`snap-${selectedSnapshot.snapshot_id}-${idx}`}>
+                    {(selectedSnapshot.artifact.columns || []).map((col) => (
+                      <td key={`snap-${selectedSnapshot.snapshot_id}-${idx}-${col}`} style={{ borderBottom: '1px solid #f0f0f0', padding: 6 }}>
+                        {renderCell(row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 

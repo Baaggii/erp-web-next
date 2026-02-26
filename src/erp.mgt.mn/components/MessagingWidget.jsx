@@ -1801,15 +1801,11 @@ export default function MessagingWidget() {
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const targetUrl = (() => {
-      if (isDraftConversation) return `${API_BASE}/messaging/conversations`;
-      if (shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId) {
-        return `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`;
-      }
-      if (selectedIsGeneral) return `${API_BASE}/messaging/conversations`;
-      if (!fallbackRootReplyTargetId) return `${API_BASE}/messaging/conversations`;
-      return `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`;
-    })();
+    const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
+      ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
+      : (isDraftConversation
+        ? `${API_BASE}/messaging/conversations`
+        : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
 
     const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)

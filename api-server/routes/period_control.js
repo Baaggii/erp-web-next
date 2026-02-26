@@ -5,6 +5,9 @@ import {
   getPeriodStatus,
   previewFiscalPeriodReports,
   requirePeriodClosePermission,
+  saveFiscalPeriodReportSnapshot,
+  listFiscalPeriodReportSnapshots,
+  getFiscalPeriodReportSnapshot,
 } from '../services/periodControlService.js';
 
 function validateStatusQuery(req) {
@@ -39,6 +42,36 @@ function validatePreviewPayload(req) {
   return validateClosePayload(req);
 }
 
+function validateSnapshotSavePayload(req) {
+  const companyId = Number(req.body.company_id);
+  const fiscalYear = Number(req.body.fiscal_year);
+  const procedureName = String(req.body.procedure_name || '').trim();
+  const rows = req.body.rows;
+
+  if (!Number.isInteger(companyId) || companyId <= 0) return 'company_id is required';
+  if (!Number.isInteger(fiscalYear) || fiscalYear < 1900 || fiscalYear > 3000) return 'fiscal_year is invalid';
+  if (!procedureName) return 'procedure_name is required';
+  if (!Array.isArray(rows)) return 'rows must be an array';
+  return null;
+}
+
+function validateSnapshotListQuery(req) {
+  if (req.query.company_id === undefined) return 'company_id is required';
+  if (req.query.fiscal_year === undefined) return 'fiscal_year is required';
+  return validateStatusQuery(req);
+}
+
+function validateSnapshotGetQuery(req) {
+  if (req.query.company_id === undefined) return 'company_id is required';
+  const companyId = Number(req.query.company_id);
+  const page = Number(req.query.page || 1);
+  const perPage = Number(req.query.per_page || 200);
+  if (!Number.isInteger(companyId) || companyId <= 0) return 'company_id must be a positive integer';
+  if (!Number.isInteger(page) || page <= 0) return 'page must be a positive integer';
+  if (!Number.isInteger(perPage) || perPage <= 0 || perPage > 2000) return 'per_page must be between 1 and 2000';
+  return null;
+}
+
 export function createPeriodControlRouter(deps = {}) {
   const router = express.Router();
   const authMiddleware = deps.requireAuth || requireAuth;
@@ -46,6 +79,9 @@ export function createPeriodControlRouter(deps = {}) {
   const closePeriod = deps.closeFiscalPeriod || closeFiscalPeriod;
   const previewReports = deps.previewFiscalPeriodReports || previewFiscalPeriodReports;
   const permissionCheck = deps.requirePeriodClosePermission || requirePeriodClosePermission;
+  const saveSnapshot = deps.saveFiscalPeriodReportSnapshot || saveFiscalPeriodReportSnapshot;
+  const listSnapshots = deps.listFiscalPeriodReportSnapshots || listFiscalPeriodReportSnapshots;
+  const getSnapshot = deps.getFiscalPeriodReportSnapshot || getFiscalPeriodReportSnapshot;
 
   router.get('/status', authMiddleware, async (req, res) => {
     const validationMessage = validateStatusQuery(req);
@@ -103,6 +139,65 @@ export function createPeriodControlRouter(deps = {}) {
       return res.json({ ok: true, results });
     } catch (error) {
       return res.status(500).json({ ok: false, message: error?.message || 'Failed to preview reports' });
+    }
+  });
+
+  router.post('/snapshot', authMiddleware, async (req, res) => {
+    const validationMessage = validateSnapshotSavePayload(req);
+    if (validationMessage) return res.status(400).json({ ok: false, message: validationMessage });
+
+    try {
+      const { allowed } = await permissionCheck(req);
+      if (!allowed) return res.sendStatus(403);
+
+      const result = await saveSnapshot({
+        companyId: Number(req.body.company_id),
+        fiscalYear: Number(req.body.fiscal_year),
+        procedureName: String(req.body.procedure_name).trim(),
+        rows: Array.isArray(req.body.rows) ? req.body.rows : [],
+        createdBy: req.user.empid || req.user.id || req.user.email,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error?.message || 'Failed to save snapshot' });
+    }
+  });
+
+  router.get('/snapshots', authMiddleware, async (req, res) => {
+    const validationMessage = validateSnapshotListQuery(req);
+    if (validationMessage) return res.status(400).json({ ok: false, message: validationMessage });
+
+    try {
+      const snapshots = await listSnapshots({
+        companyId: Number(req.query.company_id),
+        fiscalYear: Number(req.query.fiscal_year),
+      });
+      return res.json({ ok: true, snapshots });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error?.message || 'Failed to load snapshots' });
+    }
+  });
+
+  router.get('/snapshots/:snapshotId', authMiddleware, async (req, res) => {
+    const validationMessage = validateSnapshotGetQuery(req);
+    if (validationMessage) return res.status(400).json({ ok: false, message: validationMessage });
+
+    const snapshotId = Number(req.params.snapshotId);
+    if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+      return res.status(400).json({ ok: false, message: 'snapshotId is invalid' });
+    }
+
+    try {
+      const snapshot = await getSnapshot({
+        snapshotId,
+        companyId: Number(req.query.company_id),
+        page: Number(req.query.page || 1),
+        perPage: Number(req.query.per_page || 200),
+      });
+      if (!snapshot) return res.status(404).json({ ok: false, message: 'Snapshot not found' });
+      return res.json({ ok: true, snapshot });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error?.message || 'Failed to load snapshot' });
     }
   });
 
