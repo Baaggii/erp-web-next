@@ -474,6 +474,8 @@ export async function saveFiscalPeriodReportSnapshot({
   fiscalYear,
   procedureName,
   rows = [],
+  reportMeta = {},
+  reportParams = {},
   createdBy,
   dbPool = pool,
 }) {
@@ -486,7 +488,14 @@ export async function saveFiscalPeriodReportSnapshot({
       rows: normalizedRows,
       columns,
       procedure: procedureName,
-      params: { companyId, fiscalYear },
+      params:
+        reportParams && typeof reportParams === 'object' && !Array.isArray(reportParams)
+          ? reportParams
+          : { companyId, fiscalYear },
+      reportMeta:
+        reportMeta && typeof reportMeta === 'object' && !Array.isArray(reportMeta)
+          ? reportMeta
+          : {},
     });
 
     const [result] = await conn.query(
