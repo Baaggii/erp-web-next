@@ -1079,7 +1079,7 @@ export async function listConversations({ user, companyId, linkedType, linkedId,
     params.push(String(linkedType), String(linkedId));
   }
   if (cursorId) {
-    filters.push('id < ?');
+    filters.push('conversation_id < ?');
     params.push(cursorId);
   }
 
@@ -1087,20 +1087,16 @@ export async function listConversations({ user, companyId, linkedType, linkedId,
     db,
     'erp_messages',
     scopedCompanyId,
-    `SELECT t.*
-       FROM {{table}} t
-       JOIN (
-         SELECT conversation_id, MAX(id) AS last_message_id
-           FROM {{table}}
-          WHERE ${filters.join(' AND ')}
-          GROUP BY conversation_id
-       ) latest ON latest.last_message_id = t.id
-      ORDER BY t.created_at DESC, t.id DESC
+    `SELECT conversation_id AS id, MAX(created_at) AS last_message_at, MAX(id) AS last_message_id
+       FROM {{table}}
+      WHERE ${filters.join(' AND ')}
+      GROUP BY conversation_id
+      ORDER BY last_message_at DESC, id DESC
       LIMIT ?`,
     [...params, parsedLimit + 1],
   );
 
-  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const visibleRows = rows.map((row) => ({ ...row, conversation_id: row.id })).filter((row) => row.id != null);
   const hasMore = visibleRows.length > parsedLimit;
   const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;

@@ -362,7 +362,7 @@ export default function AccountingPeriodsPage() {
     });
   }, [companyId, fetchDrilldownParams]);
 
-  const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
+  const handlePreviewDrilldown = useCallback(async ({ reportName, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setPreviewDrilldownState((prev) => ({
@@ -412,11 +412,10 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
-    const normalizedMeta = normalizeReportMeta(reportMeta);
-    const drilldownConfig = normalizedMeta?.drilldown;
-    // Prefer row-level drilldown procedure first so nested levels do not collapse to fallback detail output.
+    // Preview drilldown must follow the row-provided next procedure to keep multi-level expansion accurate.
+    // Do not fall back to report-level drilldown procedures here: those often point to final-detail selectors.
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || drilldownConfig?.fallbackProcedure || reportName || '',
+      row?.__drilldown_report || row?.__detail_report || '',
     ).trim();
     if (!detailProcedure) {
       setPreviewDrilldownState((prev) => ({
@@ -426,7 +425,7 @@ export default function AccountingPeriodsPage() {
           [rowId]: {
             ...((prev[reportName] || {})[rowId] || {}),
             status: 'error',
-            error: 'Missing drilldown procedure.',
+            error: 'Missing row-level drilldown procedure (__drilldown_report or __detail_report).',
             rows: [],
           },
         },
@@ -482,7 +481,7 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, normalizeReportMeta, previewDrilldownState]);
+  }, [buildDrilldownParams, previewDrilldownState]);
 
   const handlePreviewDrilldownSelectionChange = useCallback((reportName, updater) => {
     setPreviewDrilldownSelection((prev) => {
@@ -496,7 +495,7 @@ export default function AccountingPeriodsPage() {
   }, []);
 
   const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
-    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
+    const reportName = String(selectedSnapshot?.procedure_name || selectedSnapshot?.procedureName || '').trim();
     const rowIds = String(row?.__row_ids || '').trim();
     if (!rowIds) {
       setSnapshotDrilldownState((prev) => ({
@@ -536,8 +535,14 @@ export default function AccountingPeriodsPage() {
       },
     }));
 
+    const snapshotMeta = normalizeReportMeta(
+      selectedSnapshot?.artifact?.reportMeta || selectedSnapshot?.reportMeta || null,
+    );
+    const fallbackProcedure = String(
+      snapshotMeta?.drilldown?.fallbackProcedure || snapshotMeta?.drilldownReport || reportName || '',
+    ).trim();
     const detailProcedure = String(
-      row?.__drilldown_report || row?.__detail_report || reportName || '',
+      row?.__drilldown_report || row?.__detail_report || fallbackProcedure || '',
     ).trim();
     if (!detailProcedure) {
       setSnapshotDrilldownState((prev) => ({
@@ -545,7 +550,7 @@ export default function AccountingPeriodsPage() {
         [rowId]: {
           ...(prev[rowId] || {}),
           status: 'error',
-          error: 'Missing drilldown procedure.',
+          error: 'Missing row-level drilldown procedure (__drilldown_report or __detail_report).',
           rows: [],
         },
       }));
@@ -594,7 +599,15 @@ export default function AccountingPeriodsPage() {
         },
       }));
     }
-  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
+  }, [
+    buildDrilldownParams,
+    normalizeReportMeta,
+    selectedSnapshot?.artifact?.reportMeta,
+    selectedSnapshot?.procedure_name,
+    selectedSnapshot?.procedureName,
+    selectedSnapshot?.reportMeta,
+    snapshotDrilldownState,
+  ]);
 
   const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
     setSnapshotDrilldownSelection((prev) => (
@@ -783,7 +796,7 @@ export default function AccountingPeriodsPage() {
                         rows={rows}
                         rowGranularity={previewMeta?.rowGranularity || 'transaction'}
                         drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: previewMeta, row, rowId })}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
                         drilldownState={previewDrilldownState[result.name] || {}}
                         drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
                         onDrilldownRowSelectionChange={(updater) =>
