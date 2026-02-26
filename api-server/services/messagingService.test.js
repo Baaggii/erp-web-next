@@ -11,7 +11,6 @@ const {
   createConversationRoot,
   deleteMessage,
   getConversationMessages,
-  getThread,
   listConversations,
   postConversationMessage,
   postMessage,
@@ -23,6 +22,7 @@ class MockDb {
   constructor() {
     this.nextId = 100;
     this.idempotency = new Map();
+    this.conversations = [{ id: 11, company_id: 1, created_by_empid: 'E100', deleted_at: null, last_message_id: 12, last_message_at: new Date().toISOString() }];
     this.messages = [
       {
         id: 11,
@@ -75,6 +75,19 @@ class MockDb {
       return [{ affectedRows: 1 }, undefined];
     }
 
+
+    if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('WHERE id = ? LIMIT 1')) {
+      const id = Number(params[0]);
+      const row = this.conversations.find((entry) => Number(entry.id) === id) || null;
+      return [[row].filter(Boolean), undefined];
+    }
+
+    if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('ORDER BY last_message_at DESC, id DESC LIMIT ?')) {
+      const limit = Number(params[0]) || 100;
+      const rows = [...this.conversations].sort((a,b)=>Number(b.id)-Number(a.id)).slice(0, limit);
+      return [rows, undefined];
+    }
+
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('WHERE id = ? LIMIT 1')) {
       const id = Number(params[0]);
       const row = this.messages.find((entry) => Number(entry.id) === id) || null;
@@ -90,12 +103,37 @@ class MockDb {
       return [rows, undefined];
     }
 
+
+    if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('conversation_id = ?') && text.includes('ORDER BY id DESC LIMIT ?')) {
+      const conversationId = Number(params[0]);
+      const limit = Number(params[1]) || 100;
+      const rows = this.messages
+        .filter((entry) => Number(entry.conversation_id) === conversationId)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, limit);
+      return [rows, undefined];
+    }
+
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
       return [[...this.messages].sort((a, b) => a.id - b.id), undefined];
     }
 
     if (text.includes('SELECT id, parent_message_id FROM') && text.includes('erp_messages')) {
       return [[this.messages.map(({ id, parent_message_id }) => ({ id, parent_message_id }))], undefined];
+    }
+
+    if (text.includes('INSERT INTO erp_conversations')) {
+      const [companyId, empid] = params;
+      const id = this.nextId++;
+      this.conversations.push({ id, company_id: Number(companyId), created_by_empid: empid, deleted_at: null, last_message_id: null, last_message_at: null });
+      return [{ insertId: id }, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_conversations')) {
+      const [messageId, conversationId] = params;
+      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId));
+      if (row) { row.last_message_id = Number(messageId); row.last_message_at = new Date().toISOString(); }
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
 
     if (text.includes('INSERT INTO erp_messages')) {
@@ -120,12 +158,6 @@ class MockDb {
       return [{ insertId: id }, undefined];
     }
 
-    if (text.startsWith('UPDATE erp_messages SET conversation_id = ?')) {
-      const [conversationId, messageId] = params;
-      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
-      if (row) row.conversation_id = Number(conversationId);
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
 
     if (text.startsWith('UPDATE erp_messages SET visibility_empid = ?')) {
       const [visibilityEmpid, messageId] = params;
@@ -170,7 +202,7 @@ const baseUser = { empid: 'E100', companyId: 1 };
 
 test('root message creation sets canonical conversation_id', async () => {
   const db = new MockDb();
-  const result = await postMessage({
+  const result = await createConversationRoot({
     user: baseUser,
     companyId: 1,
     payload: { idempotencyKey: 'root-1', body: 'Root body', recipientEmpids: ['E200'] },
@@ -179,7 +211,7 @@ test('root message creation sets canonical conversation_id', async () => {
     getSession,
   });
 
-  assert.equal(Number(result.message.id), Number(result.message.conversation_id));
+  assert.equal(Number(result.message.conversation_id), Number(result.conversation.id));
   assert.equal(result.message.parent_message_id, null);
 });
 
@@ -213,7 +245,15 @@ test('reply creation enforces conversation_id consistency', async () => {
 
 test('duplicate send idempotency replays existing message without creating another conversation', async () => {
   const db = new MockDb();
-  const payload = { idempotencyKey: 'idem-dup', body: 'same body', recipientEmpids: ['E200'] };
+  const root = await createConversationRoot({
+    user: baseUser,
+    companyId: 1,
+    payload: { idempotencyKey: 'idem-conv-root', body: 'Root', recipientEmpids: ['E200'] },
+    correlationId: 'corr-idem-root',
+    db,
+    getSession,
+  });
+  const payload = { idempotencyKey: 'idem-dup', body: 'same body', recipientEmpids: ['E200'], conversationId: root.conversation.id };
   const first = await postMessage({ user: baseUser, companyId: 1, payload, correlationId: 'corr-idem-1', db, getSession });
   const second = await postMessage({ user: baseUser, companyId: 1, payload, correlationId: 'corr-idem-2', db, getSession });
 
@@ -244,13 +284,6 @@ test('deleting root message deletes only that conversation scope', async () => {
   assert.ok(db.messages.find((m) => m.id === 11)?.deleted_at);
   assert.ok(db.messages.find((m) => m.id === 12)?.deleted_at);
   assert.equal(db.messages.find((m) => m.id === 50)?.deleted_at, null);
-});
-
-test('thread loading resolves root by conversation_id and includes descendants', async () => {
-  const db = new MockDb();
-  const thread = await getThread({ user: baseUser, companyId: 1, messageId: 12, correlationId: 'corr-thread', db, getSession });
-  assert.equal(Number(thread.root.id), 11);
-  assert.ok(thread.replies.some((reply) => Number(reply.id) === 12));
 });
 
 
@@ -303,22 +336,8 @@ test('conversation-centric service helpers preserve canonical thread identity', 
     db,
     getSession,
   });
-  assert.equal(Number(thread.root.id), conversationId);
-  assert.ok(thread.replies.some((item) => Number(item.id) === Number(nested.message.id)));
+  assert.ok(Array.isArray(thread.items));
+  assert.ok(thread.items.some((item) => Number(item.id) === Number(nested.message.id)));
+  assert.ok(thread.pageInfo && Object.hasOwn(thread.pageInfo, 'hasMore'));
 });
 
-test('postConversationMessage rejects non-root conversationId values', async () => {
-  const db = new MockDb();
-  await assert.rejects(
-    () => postConversationMessage({
-      user: baseUser,
-      companyId: 1,
-      conversationId: 12,
-      payload: { idempotencyKey: 'non-root-conv-id', body: 'Should fail' },
-      correlationId: 'corr-non-root-conv-id',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'CONVERSATION_ROOT_REQUIRED',
-  );
-});

@@ -233,7 +233,7 @@ export function groupConversations(messages, viewerEmpid = null) {
     }
     const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
     const rootLink = extractContextLink(rootMessage || msg);
-    const key = `message:${resolvedRootMessageId}`;
+    const key = `conversation:${resolvedRootMessageId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
@@ -320,8 +320,8 @@ function createIdempotencyKey() {
 function conversationRootIdFromSelection(conversationId) {
   const raw = normalizeId(conversationId);
   if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('message:')) {
-    const candidate = raw.slice('message:'.length);
+  if (raw.startsWith('conversation:')) {
+    const candidate = raw.slice('conversation:'.length);
     return /^\d+$/.test(candidate) ? candidate : null;
   }
   return /^\d+$/.test(raw) ? raw : null;
@@ -345,18 +345,8 @@ function mergeMessageList(current, incoming) {
     next[existingIdx] = {
       ...existing,
       ...incoming,
-      ...(incomingConversationId ? {} : {
-        conversation_id: canonicalConversationId(existing) || null,
-      }),
-      ...(incomingParentId ? {} : {
-        parent_message_id: existing.parent_message_id || existing.parentMessageId || null,
-      }),
-      ...(incomingConversationId || existingConversationId ? {} : {
-        conversation_id: null,
-      }),
-      ...(incomingParentId || existingParentId ? {} : {
-        parent_message_id: null,
-      }),
+      ...(incomingConversationId ? {} : { conversation_id: existingConversationId || null }),
+      ...(incomingParentId ? {} : { parent_message_id: existingParentId || null }),
     };
   }
   else next.push(incoming);
@@ -712,8 +702,8 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
-      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
       return null;
     })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
@@ -916,8 +906,8 @@ export default function MessagingWidget() {
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const storedConversationId = (() => {
           if (!rawStoredConversationId) return null;
-          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
-          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
+          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('conversation:')) return rawStoredConversationId;
+          if (/^\d+$/.test(rawStoredConversationId)) return `conversation:${rawStoredConversationId}`;
           return null;
         })();
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
@@ -1878,7 +1868,7 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `conversation:${createdRootMessageId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
