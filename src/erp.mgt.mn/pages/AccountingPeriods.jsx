@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReportTable from '../components/ReportTable.jsx';
-import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
@@ -62,6 +61,8 @@ export default function AccountingPeriodsPage() {
   const [deletingSnapshotId, setDeletingSnapshotId] = useState(null);
   const [previewDrilldownState, setPreviewDrilldownState] = useState({});
   const [previewDrilldownSelection, setPreviewDrilldownSelection] = useState({});
+  const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
+  const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
   const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
 
@@ -115,6 +116,8 @@ export default function AccountingPeriodsPage() {
     setPreviewDrilldownState({});
     setPreviewDrilldownSelection({});
     setSelectedSnapshot(null);
+    setSnapshotDrilldownState({});
+    setSnapshotDrilldownSelection({});
     setLoadingSnapshotId(null);
   }, [companyId, fiscalYear]);
 
@@ -129,6 +132,17 @@ export default function AccountingPeriodsPage() {
   const parsedProcedures = useMemo(
     () => reportProcedures.split(',').map((value) => value.trim()).filter(Boolean),
     [reportProcedures],
+  );
+
+  const selectedSnapshotRows = useMemo(() => {
+    const rows = selectedSnapshot?.artifact?.rows;
+    if (!Array.isArray(rows)) return [];
+    return rows.filter((row) => row && typeof row === 'object');
+  }, [selectedSnapshot]);
+
+  const selectedSnapshotHasDrilldown = useMemo(
+    () => selectedSnapshotRows.some((row) => String(row?.__row_ids || '').trim()),
+    [selectedSnapshotRows],
   );
 
   const handlePreviewReports = async () => {
@@ -341,6 +355,113 @@ export default function AccountingPeriodsPage() {
     });
   }, []);
 
+  const handleSnapshotDrilldown = useCallback(async ({ row, rowId }) => {
+    const reportName = String(selectedSnapshot?.procedure_name || '').trim();
+    const rowIds = String(row?.__row_ids || '').trim();
+    if (!rowIds) {
+      setSnapshotDrilldownState((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          expanded: true,
+          status: 'error',
+          error: 'Missing __row_ids for drilldown.',
+          rows: [],
+        },
+      }));
+      return;
+    }
+
+    const existing = snapshotDrilldownState[rowId];
+    const nextExpanded = !existing?.expanded;
+    setSnapshotDrilldownState((prev) => ({
+      ...prev,
+      [rowId]: {
+        ...(prev[rowId] || {}),
+        expanded: nextExpanded,
+        rowIds,
+      },
+    }));
+    if (!nextExpanded) return;
+    if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
+
+    setSnapshotDrilldownState((prev) => ({
+      ...prev,
+      [rowId]: {
+        ...(prev[rowId] || {}),
+        expanded: true,
+        status: 'loading',
+        error: '',
+        rowIds,
+      },
+    }));
+
+    const detailProcedure = String(
+      row?.__drilldown_report || row?.__detail_report || reportName || '',
+    ).trim();
+    if (!detailProcedure) {
+      setSnapshotDrilldownState((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          status: 'error',
+          error: 'Missing drilldown procedure.',
+          rows: [],
+        },
+      }));
+      return;
+    }
+
+    try {
+      const detailParams = await buildDrilldownParams(detailProcedure, rowIds);
+      const res = await fetch('/api/procedures', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: detailProcedure,
+          params: detailParams,
+        }),
+      });
+      const json = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
+      const detailRows = Array.isArray(json?.row) ? json.row : [];
+      const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
+      setSnapshotDrilldownState((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          expanded: true,
+          status: 'loaded',
+          error: '',
+          rowIds,
+          rows: detailRows,
+          columns: detailColumns,
+          fieldLineage: json?.fieldLineage || {},
+          fieldTypeMap: json?.fieldTypeMap || {},
+        },
+      }));
+    } catch (err) {
+      setSnapshotDrilldownState((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...(prev[rowId] || {}),
+          expanded: true,
+          status: 'error',
+          error: String(err?.message || err || 'Failed to load drilldown rows'),
+          rowIds,
+          rows: [],
+        },
+      }));
+    }
+  }, [buildDrilldownParams, selectedSnapshot?.procedure_name, snapshotDrilldownState]);
+
+  const handleSnapshotDrilldownSelectionChange = useCallback((updater) => {
+    setSnapshotDrilldownSelection((prev) => (
+      typeof updater === 'function' ? updater(prev) : updater || {}
+    ));
+  }, []);
+
   const handleSaveSnapshot = async (result) => {
     const name = result?.name;
     const rows = Array.isArray(result?.rows) ? result.rows : [];
@@ -381,6 +502,8 @@ export default function AccountingPeriodsPage() {
       const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshot');
       setSelectedSnapshot(json.snapshot || null);
+      setSnapshotDrilldownState({});
+      setSnapshotDrilldownSelection({});
     } catch (err) {
       setMessage(String(err?.message || err));
     } finally {
@@ -492,6 +615,9 @@ export default function AccountingPeriodsPage() {
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
             const previewMeta = normalizeReportMeta(result?.reportMeta);
+            const previewHasDrilldown = rows.some((row) => String(row?.__row_ids || '').trim());
+            const previewRowGranularity =
+              previewMeta?.rowGranularity || (previewHasDrilldown ? 'aggregated' : 'transaction');
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
@@ -511,12 +637,14 @@ export default function AccountingPeriodsPage() {
                       <ReportTable
                         procedure={result.name}
                         rows={rows}
-                        rowGranularity={previewMeta?.rowGranularity || 'transaction'}
-                        drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
-                        drilldownState={previewDrilldownState}
-                        drilldownRowSelection={previewDrilldownSelection}
-                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
+                        rowGranularity={previewRowGranularity}
+                        drilldownEnabled={Boolean(previewHasDrilldown || previewMeta?.drilldown || previewMeta?.drilldownReport)}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: previewMeta, row, rowId })}
+                        drilldownState={previewDrilldownState[result.name] || {}}
+                        drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
+                        onDrilldownRowSelectionChange={(updater) =>
+                          handlePreviewDrilldownSelectionChange(result.name, updater)
+                        }
                         getDrilldownRowKey={(rowId) => buildPreviewDrilldownKey(result.name, rowId)}
                         excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
@@ -566,11 +694,23 @@ export default function AccountingPeriodsPage() {
       {selectedSnapshot?.artifact ? (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 14 }}>
           <strong>Snapshot view: {selectedSnapshot.procedure_name}</strong>
-          <ReportSnapshotViewer
-            snapshot={selectedSnapshot.artifact}
-            emptyMessage="No snapshot rows found."
-            style={{ marginTop: 8 }}
-          />
+          {selectedSnapshotRows.length > 0 ? (
+            <ReportTable
+              procedure={selectedSnapshot.procedure_name || ''}
+              rows={selectedSnapshotRows}
+              rowGranularity={selectedSnapshotHasDrilldown ? 'aggregated' : 'transaction'}
+              drilldownEnabled={selectedSnapshotHasDrilldown}
+              onDrilldown={handleSnapshotDrilldown}
+              drilldownState={snapshotDrilldownState}
+              drilldownRowSelection={snapshotDrilldownSelection}
+              onDrilldownRowSelectionChange={handleSnapshotDrilldownSelectionChange}
+              excludeColumns={INTERNAL_COLS}
+              maxHeight={320}
+              showTotalRowCount={false}
+            />
+          ) : (
+            <p style={{ marginTop: 8 }}>No snapshot rows found.</p>
+          )}
         </div>
       ) : null}
 
