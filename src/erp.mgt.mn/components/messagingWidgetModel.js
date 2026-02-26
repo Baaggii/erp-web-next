@@ -64,7 +64,7 @@ export function getCompanyCacheKey(companyId) {
 
 
 export function canonicalConversationId(message) {
-  return normalizeId(message?.conversation_id || message?.conversationId || message?.id) || null;
+  return normalizeId(message?.conversation_id || message?.conversationId) || null;
 }
 
 
@@ -94,6 +94,11 @@ export function createInitialWidgetState({ isOpen = false, activeConversationId 
     isOpen,
     activeConversationId,
     activeCompanyId: companyId,
+    conversationsByCompany: {},
+    conversationOrderByCompany: {},
+    threadStateByCompany: {},
+    threadsByCompany: {},
+    unreadByConversation: {},
     composer: {
       body: '',
       topic: '',
@@ -118,6 +123,69 @@ export function resolveThreadRefreshRootId({
 
 export function messagingWidgetReducer(state, action) {
   switch (action.type) {
+    case 'conversations/loadStart': {
+      const companyKey = action.payload?.companyKey;
+      if (!companyKey) return state;
+      return {
+        ...state,
+        threadStateByCompany: {
+          ...state.threadStateByCompany,
+          [companyKey]: {
+            ...(state.threadStateByCompany[companyKey] || {}),
+            conversationsStatus: 'loading',
+            conversationsError: null,
+          },
+        },
+      };
+    }
+    case 'conversations/loadSuccess': {
+      const companyKey = action.payload?.companyKey;
+      if (!companyKey) return state;
+      const items = Array.isArray(action.payload?.items) ? action.payload.items : [];
+      const order = items.map((entry) => normalizeId(entry?.conversationId)).filter(Boolean);
+      return {
+        ...state,
+        conversationsByCompany: {
+          ...state.conversationsByCompany,
+          [companyKey]: items,
+        },
+        conversationOrderByCompany: {
+          ...state.conversationOrderByCompany,
+          [companyKey]: order,
+        },
+        threadStateByCompany: {
+          ...state.threadStateByCompany,
+          [companyKey]: {
+            ...(state.threadStateByCompany[companyKey] || {}),
+            conversationsStatus: 'ready',
+            conversationsError: null,
+          },
+        },
+      };
+    }
+    case 'conversations/loadError': {
+      const companyKey = action.payload?.companyKey;
+      if (!companyKey) return state;
+      return {
+        ...state,
+        threadStateByCompany: {
+          ...state.threadStateByCompany,
+          [companyKey]: {
+            ...(state.threadStateByCompany[companyKey] || {}),
+            conversationsStatus: 'error',
+            conversationsError: action.payload?.error || 'Failed to load conversations',
+          },
+        },
+      };
+    }
+    case 'thread/loadStart':
+    case 'thread/loadSuccess':
+    case 'thread/loadError':
+    case 'thread/mergeMessage':
+    case 'thread/deleteMessage':
+    case 'thread/deleteConversation':
+    case 'unread/recompute':
+      return state;
     case 'widget/toggle':
       return { ...state, isOpen: !state.isOpen };
     case 'widget/open':

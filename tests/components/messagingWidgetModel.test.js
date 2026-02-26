@@ -40,6 +40,28 @@ test('messagingWidgetReducer resets state on company switch', () => {
   assert.equal(switched.composer.body, '');
 });
 
+test('messagingWidgetReducer conversation load lifecycle stores conversation order by company', () => {
+  const initial = createInitialWidgetState({ companyId: 'A' });
+  const loading = messagingWidgetReducer(initial, {
+    type: 'conversations/loadStart',
+    payload: { companyKey: 'company:A' },
+  });
+  assert.equal(loading.threadStateByCompany['company:A'].conversationsStatus, 'loading');
+
+  const success = messagingWidgetReducer(loading, {
+    type: 'conversations/loadSuccess',
+    payload: {
+      companyKey: 'company:A',
+      items: [
+        { conversationId: 8, id: 'conversation:8' },
+        { conversationId: 12, id: 'conversation:12' },
+      ],
+    },
+  });
+  assert.deepEqual(success.conversationOrderByCompany['company:A'], ['8', '12']);
+  assert.equal(success.threadStateByCompany['company:A'].conversationsStatus, 'ready');
+});
+
 test('composer start and reset clear reply target state', () => {
   const initial = createInitialWidgetState({ activeConversationId: 'message:101', companyId: 'A' });
   const withReplyTo = messagingWidgetReducer(initial, { type: 'composer/setReplyTo', payload: '88' });
