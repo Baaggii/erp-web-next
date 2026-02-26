@@ -112,15 +112,58 @@ function computeLineAmount(row) {
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
   const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
-  const fourArgParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const fiscalYearFirstParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
+  const dateRangeFirstParams = [companyId, formatDateOnly(fromDate), formatDateOnly(toDate), fiscalYear];
   const twoArgParams = [companyId, fiscalYear];
 
   try {
-    await conn.query(fourArgSql, fourArgParams);
+    const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   } catch (error) {
     const message = String(error?.message || '');
-    if (!/Incorrect number of arguments/i.test(message)) throw error;
-    await conn.query(twoArgSql, twoArgParams);
+    if (/Incorrect number of arguments/i.test(message)) {
+      const [rows] = await conn.query(twoArgSql, twoArgParams);
+      return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    }
+
+    const likelyParameterOrderMismatch =
+      /Incorrect integer value/i.test(message) ||
+      /Incorrect date value/i.test(message);
+
+    if (!likelyParameterOrderMismatch) throw error;
+
+    const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+  }
+}
+
+export async function previewFiscalPeriodReports({ companyId, fiscalYear, reportProcedures = [], dbPool = pool }) {
+  const conn = await dbPool.getConnection();
+  try {
+    const period = await getOrCreateFiscalPeriod(conn, companyId, fiscalYear);
+    const fromDate = normalizeDate(period.period_from);
+    const toDate = normalizeDate(period.period_to);
+    if (!fromDate || !toDate || fromDate > toDate) {
+      throw new Error('Invalid period range in fin_period_control.');
+    }
+
+    const results = [];
+    for (const procedureName of reportProcedures) {
+      const proc = String(procedureName || '').trim();
+      if (!/^[A-Za-z0-9_]+$/.test(proc)) {
+        results.push({ name: proc || String(procedureName || ''), ok: false, error: `Invalid report procedure: ${procedureName}` });
+        continue;
+      }
+      try {
+        const rowCount = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({ name: proc, ok: true, rowCount });
+      } catch (error) {
+        results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
+      }
+    }
+    return results;
+  } finally {
+    conn.release();
   }
 }
 

@@ -7,15 +7,6 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
-function mapPreviewParam(name, { companyId, fiscalYear, period }) {
-  const key = String(name || '').toLowerCase();
-  if (['company_id', 'p_company_id', 'comp_id', 'p_comp_id'].includes(key)) return companyId;
-  if (['fiscal_year', 'p_fiscal_year', 'year', 'p_year'].includes(key)) return fiscalYear;
-  if (['date_from', 'p_date_from', 'period_from', 'p_period_from'].includes(key)) return period?.period_from || `${fiscalYear}-01-01`;
-  if (['date_to', 'p_date_to', 'period_to', 'p_period_to'].includes(key)) return period?.period_to || `${fiscalYear}-12-31`;
-  return null;
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -66,45 +57,29 @@ export default function AccountingPeriodsPage() {
     if (!companyId || parsedProcedures.length === 0) return;
     setPreviewing(true);
     setMessage('');
-    const ctx = { companyId, fiscalYear, period };
     try {
-      const results = [];
-      for (const procName of parsedProcedures) {
-        try {
-          const paramsRes = await fetch(`/api/procedures/${encodeURIComponent(procName)}/params?companyId=${companyId}`, {
-            credentials: 'include',
-          });
-          if (!paramsRes.ok) {
-            const errJson = await paramsRes.json().catch(() => ({}));
-            throw new Error(errJson?.message || `Failed to load params (${paramsRes.status})`);
-          }
-          const paramsJson = await paramsRes.json();
-          const aliases = Array.isArray(paramsJson?.parameters) ? paramsJson.parameters : [];
-          const params = aliases.map((paramName) => mapPreviewParam(paramName, ctx));
-
-          const runRes = await fetch(`/api/procedures?companyId=${companyId}`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: procName, params, aliases }),
-          });
-          if (!runRes.ok) {
-            const errJson = await runRes.json().catch(() => ({}));
-            throw new Error(errJson?.message || `Report failed (${runRes.status})`);
-          }
-          const runJson = await runRes.json();
-          const rowCount = Array.isArray(runJson?.row) ? runJson.row.length : 0;
-          results.push({ name: procName, ok: true, rowCount });
-        } catch (err) {
-          results.push({ name: procName, ok: false, error: String(err?.message || err) });
-        }
-      }
+      const res = await fetch('/api/period-control/preview', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          fiscal_year: fiscalYear,
+          report_procedures: parsedProcedures,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
+      const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
         setMessage('Reports generated successfully. Review results below before closing period.');
       }
+    } catch (err) {
+      setMessage(String(err?.message || err));
+      setPreviewResults([]);
     } finally {
       setPreviewing(false);
     }
