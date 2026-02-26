@@ -132,8 +132,8 @@ export default function AccountingPeriodsPage() {
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
       setPreviewResults(results);
-      setPreviewDrilldownState({});
-      setPreviewDrilldownSelection({});
+      setPreviewDrilldownStateByReport({});
+      setPreviewDrilldownSelectionByReport({});
       if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
@@ -148,7 +148,35 @@ export default function AccountingPeriodsPage() {
   };
 
 
-  const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
+  const normalizeReportMeta = useCallback((meta) => {
+    if (!meta || typeof meta !== 'object') return {};
+    if (!meta.drilldown && meta.drilldownReport) {
+      return {
+        ...meta,
+        drilldown: {
+          fallbackProcedure: meta.drilldownReport,
+        },
+      };
+    }
+    return meta;
+  }, []);
+
+  const fetchDrilldownParams = useCallback(async (reportName) => {
+    if (!reportName) return [];
+    const cached = drilldownParamCacheRef.current.get(reportName);
+    if (cached) return cached;
+    try {
+      const res = await fetch(`/api/procedures/${encodeURIComponent(reportName)}/params`, {
+        credentials: 'include',
+      });
+      const data = res.ok ? await res.json().catch(() => ({})) : {};
+      const list = Array.isArray(data.parameters) ? data.parameters : [];
+      drilldownParamCacheRef.current.set(reportName, list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
 
   const normalizeReportMeta = useCallback((meta) => {
     if (!meta || typeof meta !== 'object') return {};
@@ -195,27 +223,52 @@ export default function AccountingPeriodsPage() {
 
   const handlePreviewDrilldown = useCallback(async ({ reportName, reportMeta, row, rowId }) => {
     const rowIds = String(row?.__row_ids || '').trim();
-    const key = buildPreviewDrilldownKey(reportName, rowId);
     if (!rowIds) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
-        [key]: { ...(prev[key] || {}), expanded: true, status: 'error', error: 'Missing __row_ids for drilldown.', rows: [] },
+        [reportName]: {
+          ...(prev[reportName] || {}),
+          [rowId]: {
+            ...((prev[reportName] || {})[rowId] || {}),
+            expanded: true,
+            status: 'error',
+            error: 'Missing __row_ids for drilldown.',
+            rows: [],
+          },
+        },
       }));
       return;
     }
 
-    const existing = previewDrilldownState[key];
+    const reportState = previewDrilldownStateByReport[reportName] || {};
+    const existing = reportState[rowId];
     const nextExpanded = !existing?.expanded;
-    setPreviewDrilldownState((prev) => ({
+    setPreviewDrilldownStateByReport((prev) => ({
       ...prev,
-      [key]: { ...(prev[key] || {}), expanded: nextExpanded, rowIds },
+      [reportName]: {
+        ...(prev[reportName] || {}),
+        [rowId]: {
+          ...((prev[reportName] || {})[rowId] || {}),
+          expanded: nextExpanded,
+          rowIds,
+        },
+      },
     }));
     if (!nextExpanded) return;
     if (existing?.status === 'loaded' && existing?.rowIds === rowIds) return;
 
-    setPreviewDrilldownState((prev) => ({
+    setPreviewDrilldownStateByReport((prev) => ({
       ...prev,
-      [key]: { ...(prev[key] || {}), expanded: true, status: 'loading', error: '', rowIds },
+      [reportName]: {
+        ...(prev[reportName] || {}),
+        [rowId]: {
+          ...((prev[reportName] || {})[rowId] || {}),
+          expanded: true,
+          status: 'loading',
+          error: '',
+          rowIds,
+        },
+      },
     }));
 
     const normalizedMeta = normalizeReportMeta(reportMeta);
@@ -224,9 +277,17 @@ export default function AccountingPeriodsPage() {
       drilldownConfig?.fallbackProcedure || row?.__drilldown_report || row?.__detail_report || reportName || '',
     ).trim();
     if (!detailProcedure) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
-        [key]: { ...(prev[key] || {}), status: 'error', error: 'Missing drilldown procedure.', rows: [] },
+        [reportName]: {
+          ...(prev[reportName] || {}),
+          [rowId]: {
+            ...((prev[reportName] || {})[rowId] || {}),
+            status: 'error',
+            error: 'Missing drilldown procedure.',
+            rows: [],
+          },
+        },
       }));
       return;
     }
@@ -246,37 +307,50 @@ export default function AccountingPeriodsPage() {
       if (!res.ok) throw new Error(json?.message || json?.error || 'Failed to load drilldown rows');
       const detailRows = Array.isArray(json?.row) ? json.row : [];
       const detailColumns = detailRows.length > 0 ? Object.keys(detailRows[0]).filter((col) => !col.startsWith('__')) : [];
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
-        [key]: {
-          ...(prev[key] || {}),
-          expanded: true,
-          status: 'loaded',
-          error: '',
-          rowIds,
-          rows: detailRows,
-          columns: detailColumns,
-          fieldLineage: json?.fieldLineage || {},
-          fieldTypeMap: json?.fieldTypeMap || {},
+        [reportName]: {
+          ...(prev[reportName] || {}),
+          [rowId]: {
+            ...((prev[reportName] || {})[rowId] || {}),
+            expanded: true,
+            status: 'loaded',
+            error: '',
+            rowIds,
+            rows: detailRows,
+            columns: detailColumns,
+            fieldLineage: json?.fieldLineage || {},
+            fieldTypeMap: json?.fieldTypeMap || {},
+          },
         },
       }));
     } catch (err) {
-      setPreviewDrilldownState((prev) => ({
+      setPreviewDrilldownStateByReport((prev) => ({
         ...prev,
-        [key]: {
-          ...(prev[key] || {}),
-          expanded: true,
-          status: 'error',
-          error: String(err?.message || err || 'Failed to load drilldown rows'),
-          rowIds,
-          rows: [],
+        [reportName]: {
+          ...(prev[reportName] || {}),
+          [rowId]: {
+            ...((prev[reportName] || {})[rowId] || {}),
+            expanded: true,
+            status: 'error',
+            error: String(err?.message || err || 'Failed to load drilldown rows'),
+            rowIds,
+            rows: [],
+          },
         },
       }));
     }
   }, [buildDrilldownParams, buildPreviewDrilldownKey, normalizeReportMeta, previewDrilldownState]);
 
-  const handlePreviewDrilldownSelectionChange = useCallback((updater) => {
-    setPreviewDrilldownSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
+  const handlePreviewDrilldownSelectionChange = useCallback((reportName, updater) => {
+    setPreviewDrilldownSelectionByReport((prev) => {
+      const current = prev[reportName] || {};
+      const next = typeof updater === 'function' ? updater(current) : updater || {};
+      return {
+        ...prev,
+        [reportName]: next,
+      };
+    });
   }, []);
 
   const handleSaveSnapshot = async (result) => {
