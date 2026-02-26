@@ -189,6 +189,14 @@ function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, 
 }
 
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const buildProcedureResult = (rows) => {
+    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+    return {
+      rows: resultRows,
+      rowCount: resultRows.length,
+    };
+  };
+
   const parameterNames = await getProcedureInParameterNames(conn, procedureName);
   if (parameterNames.length > 0) {
     const args = parameterNames.map((name) =>
@@ -196,7 +204,7 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     );
     const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
     const [rows] = await conn.query(dynamicSql, args);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    return buildProcedureResult(rows);
   }
 
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
@@ -207,17 +215,17 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
 
   try {
     const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    return buildProcedureResult(rows);
   } catch (error) {
     const message = String(error?.message || '');
     if (/Incorrect number of arguments/i.test(message)) {
       const [rows] = await conn.query(twoArgSql, twoArgParams);
-      return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+      return buildProcedureResult(rows);
     }
-    if (!/Incorrect integer value/i.test(message)) throw error;
+    if (!/Incorrect integer value|Incorrect date value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
+    return buildProcedureResult(rows);
   }
 }
 
@@ -239,8 +247,8 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
         continue;
       }
       try {
-        const rowCount = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({ name: proc, ok: true, rowCount });
+        const reportResult = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({ name: proc, ok: true, rowCount: reportResult.rowCount, rows: reportResult.rows });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }
