@@ -196,8 +196,7 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     );
     const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
     const [rows] = await conn.query(dynamicSql, args);
-    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   }
 
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
@@ -208,25 +207,17 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
 
   try {
     const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   } catch (error) {
     const message = String(error?.message || '');
     if (/Incorrect number of arguments/i.test(message)) {
       const [rows] = await conn.query(twoArgSql, twoArgParams);
-      const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
-      return { rowCount: resultRows.length, rows: resultRows };
+      return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
     }
-
-    const likelyParameterOrderMismatch =
-      /Incorrect integer value/i.test(message) ||
-      /Incorrect date value/i.test(message);
-
-    if (!likelyParameterOrderMismatch) throw error;
+    if (!/Incorrect integer value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   }
 }
 
@@ -248,8 +239,8 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
         continue;
       }
       try {
-        const report = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({ name: proc, ok: true, rowCount: report.rowCount, rows: report.rows });
+        const rowCount = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({ name: proc, ok: true, rowCount });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }

@@ -7,12 +7,6 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
-function renderCell(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
