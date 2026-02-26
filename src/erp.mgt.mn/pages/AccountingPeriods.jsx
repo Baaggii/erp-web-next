@@ -358,56 +358,30 @@ export default function AccountingPeriodsPage() {
     let loadedFromMaterializedRows = false;
 
     if (drilldownConfig?.mode === 'materialized' && detailTempTable) {
-      const materializedKey = `${reportName}::${drilldownLevel}`;
-      const materializedAvailability = materializedDrilldownAvailabilityRef.current.get(materializedKey);
-      const canUseMaterialized = materializedAvailability !== false;
-      let tempResult = { ok: false };
-
-      if (canUseMaterialized) {
-        tempResult = await fetchTempDetailRows({
-          drilldownCapabilities: drilldownConfig,
-          rowIds: rowIdsValue,
-          drilldownLevel,
+      let tempResult = await fetchTempDetailRows({
+        drilldownCapabilities: drilldownConfig,
+        rowIds: rowIdsValue,
+        drilldownLevel,
+      });
+      if (!tempResult.ok && tempResult.error === 'REPORT_SESSION_EXPIRED' && previewResult?.name && previewResult?.params) {
+        const rebuildRes = await fetch('/api/report/rebuild', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            reportName: previewResult.name,
+            reportParams: previewResult.params,
+          }),
         });
-      }
-
-      if (!tempResult.ok && tempResult.error === 'REPORT_SESSION_EXPIRED' && previewResult?.name) {
-        const rebuildParams =
-          previewResult?.params ||
-          previewResult?.reportParams ||
-          previewResult?.request?.params ||
-          null;
-        if (rebuildParams) {
-          const rebuildRes = await fetch('/api/report/rebuild', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              reportName: previewResult.name,
-              reportParams: rebuildParams,
-            }),
+        if (rebuildRes.ok) {
+          tempResult = await fetchTempDetailRows({
+            drilldownCapabilities: drilldownConfig,
+            rowIds: rowIdsValue,
+            drilldownLevel,
           });
-          if (rebuildRes.ok) {
-            materializedDrilldownAvailabilityRef.current.set(materializedKey, true);
-            tempResult = await fetchTempDetailRows({
-              drilldownCapabilities: drilldownConfig,
-              rowIds: rowIdsValue,
-              drilldownLevel,
-            });
-          } else {
-            materializedDrilldownAvailabilityRef.current.set(materializedKey, false);
-          }
-        } else {
-          materializedDrilldownAvailabilityRef.current.set(materializedKey, false);
         }
       }
-
-      if (!tempResult.ok && tempResult.error === 'REPORT_SESSION_EXPIRED') {
-        materializedDrilldownAvailabilityRef.current.set(materializedKey, false);
-      }
-
       if (tempResult.ok) {
-        materializedDrilldownAvailabilityRef.current.set(materializedKey, true);
         detailRows = tempResult.rows || [];
         detailFieldLineage = tempResult.fieldLineage || {};
         detailFieldTypeMap = tempResult.fieldTypeMap || {};
