@@ -81,6 +81,16 @@ class MockDb {
       return [[row].filter(Boolean), undefined];
     }
 
+
+    if (text.includes('SELECT * FROM') && text.includes('conversation_id = ?') && text.includes('ORDER BY id DESC LIMIT ?')) {
+      const conversationId = Number(params[0]);
+      const limit = Number(params[params.length - 1]) || 100;
+      const rows = this.messages
+        .filter((entry) => Number(entry.conversation_id) === conversationId && entry.deleted_at == null)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, limit);
+      return [rows, undefined];
+    }
     if (text.includes('SELECT * FROM') && text.includes('parent_message_id IS NULL') && text.includes('ORDER BY id DESC LIMIT ?')) {
       const limit = Number(params[0]) || 100;
       const rows = this.messages
@@ -90,6 +100,20 @@ class MockDb {
       return [rows, undefined];
     }
 
+
+    if (text.includes('JOIN (') && text.includes('MAX(id) AS last_message_id') && text.includes('GROUP BY conversation_id')) {
+      const limit = Number(params[params.length - 1]) || 100;
+      const grouped = new Map();
+      this.messages.filter((entry) => entry.deleted_at == null).forEach((entry) => {
+        const key = Number(entry.conversation_id);
+        const existing = grouped.get(key);
+        if (!existing || Number(entry.id) > Number(existing.id)) grouped.set(key, entry);
+      });
+      const rows = Array.from(grouped.values())
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime() || b.id - a.id)
+        .slice(0, limit);
+      return [rows, undefined];
+    }
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
       return [[...this.messages].sort((a, b) => a.id - b.id), undefined];
     }
@@ -124,6 +148,21 @@ class MockDb {
       const [conversationId, messageId] = params;
       const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
       if (row) row.conversation_id = Number(conversationId);
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+
+    if (text.startsWith('UPDATE erp_messages SET topic = ?')) {
+      const [topic, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.topic = topic;
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_messages SET message_class = ?')) {
+      const [messageClass, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.message_class = messageClass;
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
 
@@ -293,7 +332,11 @@ test('conversation-centric service helpers preserve canonical thread identity', 
 
   assert.equal(Number(nested.message.conversation_id), conversationId);
   const list = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-list', db, getSession });
-  assert.ok(list.items.some((item) => Number(item.id) === conversationId));
+  const listedConversation = list.items.find((item) => Number(item.conversation_id) === conversationId);
+  assert.ok(listedConversation);
+  assert.equal(typeof listedConversation.author_empid, 'string');
+  assert.ok(String(listedConversation.body || '').length > 0);
+  assert.ok(listedConversation.created_at);
 
   const thread = await getConversationMessages({
     user: baseUser,
@@ -303,8 +346,8 @@ test('conversation-centric service helpers preserve canonical thread identity', 
     db,
     getSession,
   });
-  assert.equal(Number(thread.root.id), conversationId);
-  assert.ok(thread.replies.some((item) => Number(item.id) === Number(nested.message.id)));
+  assert.ok(Array.isArray(thread.items));
+  assert.ok(thread.items.some((item) => Number(item.id) === Number(nested.message.id)));
 });
 
 test('postConversationMessage rejects non-root conversationId values', async () => {
@@ -321,4 +364,27 @@ test('postConversationMessage rejects non-root conversationId values', async () 
     }),
     (error) => error?.code === 'CONVERSATION_ROOT_REQUIRED',
   );
+});
+
+
+test('postMessage persists topic and message_class when provided', async () => {
+  const db = new MockDb();
+  const result = await postMessage({
+    user: baseUser,
+    companyId: 1,
+    payload: {
+      idempotencyKey: 'topic-class-1',
+      body: 'General body',
+      visibilityScope: 'company',
+      topic: 'Announcements',
+      messageClass: 'general',
+    },
+    correlationId: 'corr-topic-class',
+    db,
+    getSession,
+  });
+
+  assert.equal(result.message.topic, 'Announcements');
+  assert.equal(result.message.message_class, 'general');
+  assert.ok(String(result.message.body || '').length > 0);
 });

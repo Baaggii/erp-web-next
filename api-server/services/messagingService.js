@@ -14,6 +14,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
+const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -81,7 +82,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass }) {
   const payload = {
     body,
     linkedType,
@@ -91,8 +92,24 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
     conversationId,
+    topic,
+    messageClass,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+
+function normalizeTopic(value) {
+  const topic = String(value || '').trim();
+  if (!topic) return null;
+  return topic.slice(0, 120);
+}
+
+function normalizeMessageClass(value, visibilityScope) {
+  const requested = String(value || '').trim().toLowerCase();
+  if (requested && MESSAGE_CLASS_ALLOWLIST.has(requested)) return requested;
+  if (String(visibilityScope || '').toLowerCase() === 'company') return 'general';
+  return null;
 }
 
 function eventPayloadBase(ctx) {
@@ -716,6 +733,8 @@ async function createMessageInternal({
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
+  const topic = normalizeTopic(payload?.topic);
+  const messageClass = normalizeMessageClass(payload?.messageClass ?? payload?.message_class, visibility.visibilityScope);
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -731,7 +750,7 @@ async function createMessageInternal({
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
@@ -932,6 +951,22 @@ async function createMessageInternal({
     }
   }
 
+  if (topic != null) {
+    try {
+      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, ctx.companyId]);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'topic')) throw error;
+    }
+  }
+
+  if (messageClass != null) {
+    try {
+      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, ctx.companyId]);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'message_class')) throw error;
+    }
+  }
+
   const persistedMessage = await findMessageById(db, ctx.companyId, messageId);
   const message = withVisibilityFallback(persistedMessage, visibility);
 
@@ -996,8 +1031,6 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
       if (depth >= MAX_REPLY_DEPTH) {
         throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
       }
-    } else {
-      parentMessageId = toId(rootMessage.id);
     }
 
     const privateParticipants = rootMessage.visibility_scope === 'private'
@@ -1066,20 +1099,83 @@ export async function postConversationMessage({ conversationId, payload, ...rest
   });
 }
 
-export async function listConversations(args) {
-  const result = await getMessages(args);
+export async function listConversations({ user, companyId, linkedType, linkedId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'conversation:list' });
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+
+  const filters = ['conversation_id IS NOT NULL', 'deleted_at IS NULL'];
+  const params = [];
+  if (linkedType && linkedId && canUseLinkedColumns(db)) {
+    filters.push('linked_type = ?');
+    filters.push('linked_id = ?');
+    params.push(String(linkedType), String(linkedId));
+  }
+  if (cursorId) {
+    filters.push('id < ?');
+    params.push(cursorId);
+  }
+
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    `SELECT t.*
+       FROM {{table}} t
+       JOIN (
+         SELECT conversation_id, MAX(id) AS last_message_id
+           FROM {{table}}
+          WHERE ${filters.join(' AND ')}
+          GROUP BY conversation_id
+       ) latest ON latest.last_message_id = t.id
+      ORDER BY t.created_at DESC, t.id DESC
+      LIMIT ?`,
+    [...params, parsedLimit + 1],
+  );
+
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const pageRows = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
+
   return {
-    ...result,
-    items: result.items || [],
+    correlationId,
+    items: pageRows,
+    pageInfo: { nextCursor, hasMore },
   };
 }
 
-export async function getConversationMessages({ conversationId, ...rest }) {
+export async function getConversationMessages({ user, companyId, conversationId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'conversation:messages' });
   const normalizedConversationId = toId(conversationId);
-  if (!normalizedConversationId) {
-    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+
+  const filters = ['conversation_id = ?', 'deleted_at IS NULL'];
+  const params = [normalizedConversationId];
+  if (cursorId) {
+    filters.push('id < ?');
+    params.push(cursorId);
   }
-  return getThread({ ...rest, messageId: normalizedConversationId });
+
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_messages',
+    scopedCompanyId,
+    `SELECT * FROM {{table}} WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`,
+    [...params, parsedLimit + 1],
+  );
+
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  const nextCursor = hasMore ? items[items.length - 1].id : null;
+  return { correlationId, items, pageInfo: { nextCursor, hasMore } };
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
