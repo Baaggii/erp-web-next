@@ -21,6 +21,7 @@ const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 const messageConversationColumnSupport = new WeakMap();
+const conversationTableSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -536,7 +537,43 @@ async function assertMessagingSchema(db = pool) {
       'Messaging tables are missing. Run messaging migrations before using this service.',
     );
   }
+  await ensureConversationTable(db);
   validatedMessagingSchemas.add(db);
+}
+
+async function ensureConversationTable(db = pool) {
+  if (conversationTableSupport.get(db) === true) return;
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS count
+       FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'erp_conversations'`,
+  );
+  if (Number(rows?.[0]?.count) > 0) {
+    conversationTableSupport.set(db, true);
+    return;
+  }
+
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS erp_conversations (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      company_id BIGINT UNSIGNED NOT NULL,
+      linked_type VARCHAR(64) NULL,
+      linked_id VARCHAR(128) NULL,
+      visibility_scope VARCHAR(32) NULL,
+      visibility_department_id BIGINT UNSIGNED NULL,
+      visibility_empid VARCHAR(255) NULL,
+      created_by_empid VARCHAR(64) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_message_id BIGINT UNSIGNED NULL,
+      last_message_at DATETIME NULL,
+      deleted_at DATETIME NULL,
+      deleted_by_empid VARCHAR(64) NULL,
+      PRIMARY KEY (id),
+      KEY idx_erp_conversations_company_last_activity (company_id, last_message_at DESC, id DESC)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  );
+  conversationTableSupport.set(db, true);
 }
 
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
@@ -757,6 +794,9 @@ async function createMessageInternal({
   await enforceRateLimit(ctx.companyId, ctx.user.empid, idempotencyKey, db);
 
   const canonicalConversationId = toId(conversationId);
+  if (!canonicalConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  }
   const messageInsertValues = [
     ctx.companyId,
     ctx.user.empid,
@@ -883,34 +923,7 @@ async function createMessageInternal({
   }
 
   if (!result) {
-    try {
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, body)
-          VALUES (?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          body,
-        ],
-      );
-    } catch (error) {
-      if (!isMissingDefaultForFieldError(error, 'conversation_id')) throw error;
-      [result] = await db.query(
-        `INSERT INTO erp_messages
-          (company_id, author_empid, parent_message_id, conversation_id, body)
-          VALUES (?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          canonicalConversationId || parentMessageId || 0,
-          body,
-        ],
-      );
-      messageConversationColumnSupport.set(db, true);
-    }
+    throw createError(500, 'MESSAGING_SCHEMA_INCOMPATIBLE', 'Messaging schema is missing required conversation columns');
   }
   const messageId = result.insertId;
   await upsertIdempotencyRow(db, {
@@ -921,16 +934,12 @@ async function createMessageInternal({
     requestHash,
     expiresAt,
   });
-  if (canonicalConversationId || !parentMessageId) {
-    try {
-      await db.query(
-        'UPDATE erp_messages SET conversation_id = ? WHERE id = ? AND company_id = ?',
-        [String(canonicalConversationId || messageId), messageId, ctx.companyId],
-      );
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'conversation_id')) throw error;
-    }
-  }
+  await db.query(
+    `UPDATE erp_conversations
+        SET last_message_id = ?, last_message_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND company_id = ?`,
+    [messageId, canonicalConversationId, ctx.companyId],
+  );
 
   const persistedMessage = await findMessageById(db, ctx.companyId, messageId);
   const message = withVisibilityFallback(persistedMessage, visibility);
@@ -962,93 +971,71 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
 
-  let parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
-  let conversationId = null;
-  let normalizedPayload = payload;
+  const parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
   const requestedConversationId = readConversationId(payload);
-  if (parentMessageId && !requestedConversationId) {
-    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required when parentMessageId is provided');
+  if (!requestedConversationId) {
+    throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
   }
-  if (requestedConversationId) {
-    const targetConversationMessage = await findMessageById(db, scopedCompanyId, requestedConversationId);
-    if (!targetConversationMessage || targetConversationMessage.deleted_at) {
-      throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
-    }
-    assertCanViewMessage(targetConversationMessage, session, user);
-    conversationId = toId(targetConversationMessage.conversation_id || targetConversationMessage.id);
-    if (Number(targetConversationMessage.id) !== Number(conversationId)) {
-      throw createError(409, 'CONVERSATION_ROOT_REQUIRED', 'conversationId must reference the root message of the conversation');
-    }
 
-    const rootMessage = targetConversationMessage;
+  const [conversationRows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    'SELECT * FROM {{table}} WHERE id = ? LIMIT 1',
+    [requestedConversationId],
+  );
+  const conversation = conversationRows[0] || null;
+  if (!conversation || conversation.deleted_at) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
 
-    if (parentMessageId) {
-      const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
-      if (!parentMessage || parentMessage.deleted_at) {
-        throw createError(404, 'PARENT_MESSAGE_NOT_FOUND', 'Reply parent message not found');
-      }
-      const parentConversationId = toId(parentMessage.conversation_id || parentMessage.id);
-      if (parentConversationId !== conversationId) {
-        throw createError(409, 'CONVERSATION_MISMATCH', 'parentMessageId must belong to the selected conversation');
-      }
-      assertCanViewMessage(parentMessage, session, user);
-      const depth = await resolveThreadDepth(db, scopedCompanyId, parentMessage);
-      if (depth >= MAX_REPLY_DEPTH) {
-        throw createError(400, 'THREAD_DEPTH_EXCEEDED', `Reply depth exceeds maximum of ${MAX_REPLY_DEPTH}`);
-      }
-    } else {
-      parentMessageId = toId(rootMessage.id);
+  if (parentMessageId) {
+    const parentMessage = await findMessageById(db, scopedCompanyId, parentMessageId);
+    if (!parentMessage || parentMessage.deleted_at) throw createError(404, 'PARENT_MESSAGE_NOT_FOUND', 'Reply parent message not found');
+    if (toId(parentMessage.conversation_id) !== requestedConversationId) {
+      throw createError(409, 'CONVERSATION_MISMATCH', 'parentMessageId must belong to the selected conversation');
     }
-
-    const privateParticipants = rootMessage.visibility_scope === 'private'
-      ? new Set(parsePrivateParticipants(rootMessage.visibility_empid))
-      : null;
-    if (privateParticipants) {
-      const requestedParticipants = Array.isArray(payload?.recipientEmpids)
-        ? payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)
-        : [];
-      requestedParticipants.forEach((empid) => privateParticipants.add(empid));
-      privateParticipants.add(String(user?.empid || '').trim());
-      normalizedPayload = {
-        ...payload,
-        linkedType: rootMessage.linked_type,
-        linkedId: rootMessage.linked_id,
-        visibilityScope: rootMessage.visibility_scope,
-        visibilityDepartmentId: rootMessage.visibility_department_id,
-        visibilityEmpid: Array.from(privateParticipants).join(','),
-        recipientEmpids: Array.from(privateParticipants),
-      };
-    } else {
-      normalizedPayload = {
-        ...payload,
-        linkedType: rootMessage.linked_type,
-        linkedId: rootMessage.linked_id,
-        visibilityScope: rootMessage.visibility_scope,
-        visibilityDepartmentId: rootMessage.visibility_department_id,
-        visibilityEmpid: rootMessage.visibility_empid,
-      };
-    }
+    assertCanViewMessage(parentMessage, session, user);
   }
 
   return createMessageInternal({
     db,
     ctx,
-    payload: normalizedPayload,
+    payload,
     parentMessageId,
-    conversationId,
+    conversationId: requestedConversationId,
     eventName: 'message.created',
   });
 }
 
 export async function createConversationRoot(args) {
-  const nextPayload = {
-    ...(args?.payload || {}),
-    parentMessageId: null,
-    parent_message_id: null,
-    conversationId: null,
-    conversation_id: null,
+  const { user, companyId, correlationId, db = pool, getSession = getEmploymentSession } = args;
+  await assertMessagingSchema(db);
+  const { scopedCompanyId } = await resolveSession(user, companyId, getSession);
+  const [result] = await db.query(
+    `INSERT INTO erp_conversations
+      (company_id, created_by_empid)
+      VALUES (?, ?)`,
+    [scopedCompanyId, user.empid],
+  );
+  const conversationId = result.insertId;
+  const hasBody = String(args?.payload?.body || '').trim().length > 0;
+  const message = hasBody
+    ? await postMessage({
+      ...args,
+      db,
+      payload: {
+        ...(args?.payload || {}),
+        parentMessageId: null,
+        parent_message_id: null,
+        conversationId,
+        conversation_id: conversationId,
+      },
+      correlationId,
+    })
+    : null;
+  return {
+    conversation: { id: conversationId },
+    ...(message || {}),
   };
-  return postMessage({ ...args, payload: nextPayload });
 }
 
 export async function postConversationMessage({ conversationId, payload, ...rest }) {
@@ -1067,10 +1054,31 @@ export async function postConversationMessage({ conversationId, payload, ...rest
 }
 
 export async function listConversations(args) {
-  const result = await getMessages(args);
+  const { user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession } = args;
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:list' });
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+  const filters = ['deleted_at IS NULL'];
+  const params = [];
+  if (cursorId) {
+    filters.push('id < ?');
+    params.push(cursorId);
+  }
+  const [rows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    `SELECT * FROM {{table}} WHERE ${filters.join(' AND ')} ORDER BY last_message_at DESC, id DESC LIMIT ?`,
+    [...params, parsedLimit + 1],
+  );
+  const hasMore = rows.length > parsedLimit;
+  const items = hasMore ? rows.slice(0, parsedLimit) : rows;
   return {
-    ...result,
-    items: result.items || [],
+    correlationId,
+    items,
+    pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
 }
 
@@ -1079,7 +1087,23 @@ export async function getConversationMessages({ conversationId, ...rest }) {
   if (!normalizedConversationId) {
     throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
   }
-  return getThread({ ...rest, messageId: normalizedConversationId });
+  const { user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession } = rest;
+  await assertMessagingSchema(db);
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:thread' });
+  const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
+  const cursorId = toId(cursor);
+  const params = [normalizedConversationId];
+  let where = 'conversation_id = ? AND deleted_at IS NULL';
+  if (cursorId) {
+    where += ' AND id < ?';
+    params.push(cursorId);
+  }
+  const [rows] = await queryWithTenantScope(db, 'erp_messages', scopedCompanyId, `SELECT * FROM {{table}} WHERE ${where} ORDER BY id DESC LIMIT ?`, [...params, parsedLimit + 1]);
+  const visibleRows = rows.map((row) => sanitizeForViewer(row, session, user)).filter(Boolean);
+  const hasMore = visibleRows.length > parsedLimit;
+  const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
+  return { correlationId, items, pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore } };
 }
 
 export async function postReply({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {

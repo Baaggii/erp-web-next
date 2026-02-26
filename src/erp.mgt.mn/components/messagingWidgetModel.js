@@ -111,11 +111,7 @@ export function resolveThreadRefreshRootId({
   fallbackRootReplyTargetId = null,
   createdMessage = null,
 } = {}) {
-  const createdRootMessageId = canonicalConversationId(createdMessage)
-    || createdMessage?.parent_message_id
-    || createdMessage?.parentMessageId
-    || createdMessage?.id
-    || null;
+  const createdRootMessageId = canonicalConversationId(createdMessage) || createdMessage?.id || null;
   if (isReplyMode) return normalizeId(fallbackRootReplyTargetId || createdRootMessageId) || null;
   return normalizeId(createdRootMessageId) || null;
 }
