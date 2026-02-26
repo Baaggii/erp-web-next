@@ -6,12 +6,16 @@ import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
+  createConversationRoot,
   deleteMessage,
+  getConversationMessages,
   getMessages,
+  listConversations,
   getPresence,
   getThread,
   patchMessage,
   postMessage,
+  postConversationMessage,
   postReply,
   presenceHeartbeat,
   switchCompanyContext,
@@ -159,6 +163,56 @@ router.post('/messages', normalizeConversationPayload, validatePostMessageBody, 
       postMessage({
         user: req.user,
         companyId: req.body?.companyId ?? req.query.companyId,
+        payload: req.body,
+        correlationId: req.correlationId,
+      }),
+    201,
+  ));
+
+router.get('/conversations', (req, res) =>
+  handle(res, req, () =>
+    listConversations({
+      user: req.user,
+      companyId: req.query.companyId,
+      linkedType: req.query.linkedType,
+      linkedId: req.query.linkedId,
+      cursor: req.query.cursor,
+      limit: req.query.limit,
+      correlationId: req.correlationId,
+    })));
+
+router.post('/conversations', normalizeConversationPayload, validatePostMessageBody, (req, res) =>
+  handle(
+    res,
+    req,
+    () =>
+      createConversationRoot({
+        user: req.user,
+        companyId: req.body?.companyId ?? req.query.companyId,
+        payload: req.body,
+        correlationId: req.correlationId,
+      }),
+    201,
+  ));
+
+router.get('/conversations/:conversationId/messages', (req, res) =>
+  handle(res, req, () =>
+    getConversationMessages({
+      user: req.user,
+      companyId: req.query.companyId,
+      conversationId: Number(req.params.conversationId),
+      correlationId: req.correlationId,
+    })));
+
+router.post('/conversations/:conversationId/messages', normalizeConversationPayload, validatePostMessageBody, (req, res) =>
+  handle(
+    res,
+    req,
+    () =>
+      postConversationMessage({
+        user: req.user,
+        companyId: req.body?.companyId ?? req.query.companyId,
+        conversationId: Number(req.params.conversationId),
         payload: req.body,
         correlationId: req.correlationId,
       }),
