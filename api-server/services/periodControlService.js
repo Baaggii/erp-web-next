@@ -189,6 +189,22 @@ function resolveProcedureParameterValue(parameterName, { companyId, fiscalYear, 
 }
 
 async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate }) {
+  const resolveArgumentSets = async () => {
+    const parameterNames = await getProcedureInParameterNames(conn, procedureName);
+    if (parameterNames.length > 0) {
+      return [
+        parameterNames.map((name) =>
+          resolveProcedureParameterValue(name, { companyId, fiscalYear, fromDate, toDate }),
+        ),
+      ];
+    }
+    return [
+      [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)],
+      [companyId, formatDateOnly(fromDate), formatDateOnly(toDate), fiscalYear],
+      [companyId, fiscalYear],
+    ];
+  };
+
   const buildProcedureResult = (rows) => {
     const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
     return {
@@ -197,36 +213,104 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     };
   };
 
-  const parameterNames = await getProcedureInParameterNames(conn, procedureName);
-  if (parameterNames.length > 0) {
-    const args = parameterNames.map((name) =>
-      resolveProcedureParameterValue(name, { companyId, fiscalYear, fromDate, toDate }),
-    );
-    const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
-    const [rows] = await conn.query(dynamicSql, args);
-    return buildProcedureResult(rows);
-  }
-
-  const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
-  const twoArgSql = `CALL \`${procedureName}\`(?, ?)`;
-  const fiscalYearFirstParams = [companyId, fiscalYear, formatDateOnly(fromDate), formatDateOnly(toDate)];
-  const dateRangeFirstParams = [companyId, formatDateOnly(fromDate), formatDateOnly(toDate), fiscalYear];
-  const twoArgParams = [companyId, fiscalYear];
-
-  try {
-    const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    return buildProcedureResult(rows);
-  } catch (error) {
-    const message = String(error?.message || '');
-    if (/Incorrect number of arguments/i.test(message)) {
-      const [rows] = await conn.query(twoArgSql, twoArgParams);
+  const argumentSets = await resolveArgumentSets();
+  let lastError = null;
+  for (const args of argumentSets) {
+    try {
+      const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
+      const [rows] = await conn.query(dynamicSql, args);
       return buildProcedureResult(rows);
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '');
+      if (/Incorrect number of arguments|Incorrect integer value|Incorrect date value/i.test(message)) {
+        continue;
+      }
+      throw error;
     }
-    if (!/Incorrect integer value|Incorrect date value/i.test(message)) throw error;
-
-    const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    return buildProcedureResult(rows);
   }
+
+  throw lastError || new Error(`Unable to execute procedure: ${procedureName}`);
+}
+
+async function runReportProcedureWithWorkflow(conn, procedureName, context) {
+  const parameterNames = await getProcedureInParameterNames(conn, procedureName);
+  const argumentSets = parameterNames.length > 0
+    ? [parameterNames.map((name) => resolveProcedureParameterValue(name, context))]
+    : [
+      [context.companyId, context.fiscalYear, formatDateOnly(context.fromDate), formatDateOnly(context.toDate)],
+      [context.companyId, formatDateOnly(context.fromDate), formatDateOnly(context.toDate), context.fiscalYear],
+      [context.companyId, context.fiscalYear],
+    ];
+
+  const defaultReportCapabilities = {
+    showTotalRowCount: true,
+    supportsApproval: true,
+    supportsSnapshot: true,
+    supportsBulkUpdate: false,
+  };
+
+  const normalizeReportCapabilities = (value) => {
+    if (!value) return { ...defaultReportCapabilities };
+    let parsed = value;
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return { ...defaultReportCapabilities };
+      }
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ...defaultReportCapabilities };
+    }
+    return {
+      ...defaultReportCapabilities,
+      ...parsed,
+      showTotalRowCount: parsed.showTotalRowCount === false ? false : true,
+      supportsApproval: parsed.supportsApproval === false ? false : true,
+      supportsSnapshot: parsed.supportsSnapshot === false ? false : true,
+      supportsBulkUpdate: parsed.supportsBulkUpdate === true,
+    };
+  };
+
+  let lastError = null;
+  for (const args of argumentSets) {
+    try {
+      await conn.query('SET @report_capabilities = NULL');
+      const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
+      const [rows] = await conn.query(dynamicSql, args);
+      const resultRows = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : [];
+      const [capRows] = await conn.query('SELECT @report_capabilities AS report_capabilities');
+      const rawCapabilities = Array.isArray(capRows) ? capRows[0]?.report_capabilities : null;
+      const reportCapabilities = normalizeReportCapabilities(rawCapabilities);
+      let reportMeta = {};
+      if (rawCapabilities) {
+        try {
+          const parsed = typeof rawCapabilities === 'string' ? JSON.parse(rawCapabilities) : rawCapabilities;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            reportMeta = { ...parsed };
+          }
+        } catch {
+          reportMeta = {};
+        }
+      }
+
+      return {
+        rows: resultRows,
+        rowCount: resultRows.length,
+        reportMeta,
+        reportCapabilities,
+      };
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '');
+      if (/Incorrect number of arguments|Incorrect integer value|Incorrect date value/i.test(message)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error(`Unable to execute procedure: ${procedureName}`);
 }
 
 export async function previewFiscalPeriodReports({ companyId, fiscalYear, reportProcedures = [], dbPool = pool }) {
@@ -247,8 +331,20 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
         continue;
       }
       try {
-        const reportResult = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({ name: proc, ok: true, rowCount: reportResult.rowCount, rows: reportResult.rows });
+        const reportResult = await runReportProcedureWithWorkflow(conn, proc, {
+          companyId,
+          fiscalYear,
+          fromDate,
+          toDate,
+        });
+        results.push({
+          name: proc,
+          ok: true,
+          rowCount: reportResult.rowCount,
+          rows: reportResult.rows,
+          reportMeta: reportResult.reportMeta,
+          reportCapabilities: reportResult.reportCapabilities,
+        });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }
