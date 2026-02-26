@@ -615,9 +615,6 @@ export default function AccountingPeriodsPage() {
           {previewResults.map((result) => {
             const rows = Array.isArray(result.rows) ? result.rows : [];
             const previewMeta = normalizeReportMeta(result?.reportMeta);
-            const previewHasDrilldown = rows.some((row) => String(row?.__row_ids || '').trim());
-            const previewRowGranularity =
-              previewMeta?.rowGranularity || (previewHasDrilldown ? 'aggregated' : 'transaction');
             return (
               <div key={result.name} style={{ marginTop: 10, borderTop: '1px solid #eee', paddingTop: 10 }}>
                 <div style={{ color: result.ok ? '#166534' : '#b91c1c', fontWeight: 600 }}>
