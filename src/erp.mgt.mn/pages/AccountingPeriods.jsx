@@ -7,21 +7,6 @@ const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_balance_sheet_expandable',
 ];
 
-function renderCell(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-
-async function parseJsonResponse(res) {
-  const text = await res.text();
-  try {
-    return text ? JSON.parse(text) : {};
-  } catch {
-    throw new Error(text && text.startsWith('<') ? 'Server returned HTML instead of JSON. Check API route/auth config.' : 'Invalid JSON response from server');
-  }
-}
-
 export default function AccountingPeriodsPage() {
   const { user, session, company, permissions } = useAuth();
   const companyId = Number(user?.companyId || user?.company_id || session?.company_id || company?.id || company || 0);
@@ -69,7 +54,7 @@ export default function AccountingPeriodsPage() {
     setLoadingSnapshots(true);
     try {
       const res = await fetch(`/api/period-control/snapshots?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
-      const json = await parseJsonResponse(res);
+      const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshots');
       setSnapshots(Array.isArray(json.snapshots) ? json.snapshots : []);
     } catch (err) {
@@ -104,28 +89,11 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await parseJsonResponse(res);
+      const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to preview reports');
       const results = Array.isArray(json.results) ? json.results : [];
-
-      const hydrated = await Promise.all(results.map(async (result) => {
-        if (!result?.ok || (Array.isArray(result.rows) && result.rows.length > 0) || Number(result.rowCount || 0) === 0) {
-          return result;
-        }
-        try {
-          const detailRes = await fetch(`/api/period-control/preview-result?company_id=${companyId}&fiscal_year=${fiscalYear}&procedure_name=${encodeURIComponent(result.name)}`, {
-            credentials: 'include',
-          });
-          const detailJson = await parseJsonResponse(detailRes);
-          if (!detailRes.ok || !detailJson?.ok) return result;
-          const detail = detailJson.result || {};
-          return { ...result, rows: Array.isArray(detail.rows) ? detail.rows : result.rows };
-        } catch {
-          return result;
-        }
-      }));
-      setPreviewResults(hydrated);
-      if (hydrated.some((item) => !item.ok)) {
+      setPreviewResults(results);
+      if (results.some((item) => !item.ok)) {
         setMessage('Some reports failed. Review errors before closing period.');
       } else {
         setMessage('Reports generated successfully. Review full results below and save snapshots if needed.');
@@ -156,7 +124,7 @@ export default function AccountingPeriodsPage() {
           rows,
         }),
       });
-      const json = await parseJsonResponse(res);
+      const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to save snapshot');
       setMessage(`Snapshot saved for ${name}.`);
       await loadSnapshots();
@@ -175,7 +143,7 @@ export default function AccountingPeriodsPage() {
       const res = await fetch(`/api/period-control/snapshots/${snapshotId}?company_id=${companyId}&page=1&per_page=500`, {
         credentials: 'include',
       });
-      const json = await parseJsonResponse(res);
+      const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load snapshot');
       setSelectedSnapshot(json.snapshot || null);
     } catch (err) {

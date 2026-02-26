@@ -771,7 +771,7 @@ export default function MessagingWidget() {
     if (!rootMessageId || !activeCompany) return;
     try {
       const params = new URLSearchParams({ companyId: String(activeCompany) });
-      const threadRes = await fetch(`${API_BASE}/messaging/messages/${rootMessageId}/thread?${params.toString()}`, { credentials: 'include' });
+      const threadRes = await fetch(`${API_BASE}/messaging/conversations/${rootMessageId}/messages?${params.toString()}`, { credentials: 'include' });
       if (!threadRes.ok) return;
       const threadData = await threadRes.json();
       const threadItems = Array.isArray(threadData?.items)
@@ -879,7 +879,7 @@ export default function MessagingWidget() {
       try {
         setNetworkState('loading');
         const params = new URLSearchParams({ companyId: activeCompany, limit: '100' });
-        const res = await fetch(`${API_BASE}/messaging/messages?${params.toString()}`, { credentials: 'include' });
+        const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
         if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
         const data = await res.json();
         if (disposed) return;
@@ -1802,8 +1802,10 @@ export default function MessagingWidget() {
     };
 
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/messages/${explicitReplyTargetId}/reply`
-      : `${API_BASE}/messaging/messages`;
+      ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
+      : (isDraftConversation
+        ? `${API_BASE}/messaging/conversations`
+        : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
 
     const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)

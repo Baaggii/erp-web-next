@@ -7,7 +7,16 @@ process.env.DB_ADMIN_PASS = process.env.DB_ADMIN_PASS || 'test';
 process.env.ERP_ADMIN_USER = process.env.ERP_ADMIN_USER || 'test';
 process.env.ERP_ADMIN_PASS = process.env.ERP_ADMIN_PASS || 'test';
 
-const { deleteMessage, getThread, postMessage, postReply } = await import('./messagingService.js');
+const {
+  createConversationRoot,
+  deleteMessage,
+  getConversationMessages,
+  getThread,
+  listConversations,
+  postConversationMessage,
+  postMessage,
+  postReply,
+} = await import('./messagingService.js');
 
 
 class MockDb {
@@ -70,6 +79,15 @@ class MockDb {
       const id = Number(params[0]);
       const row = this.messages.find((entry) => Number(entry.id) === id) || null;
       return [[row].filter(Boolean), undefined];
+    }
+
+    if (text.includes('SELECT * FROM') && text.includes('parent_message_id IS NULL') && text.includes('ORDER BY id DESC LIMIT ?')) {
+      const limit = Number(params[0]) || 100;
+      const rows = this.messages
+        .filter((entry) => entry.parent_message_id == null)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, limit);
+      return [rows, undefined];
     }
 
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
@@ -233,4 +251,58 @@ test('thread loading resolves root by conversation_id and includes descendants',
   const thread = await getThread({ user: baseUser, companyId: 1, messageId: 12, correlationId: 'corr-thread', db, getSession });
   assert.equal(Number(thread.root.id), 11);
   assert.ok(thread.replies.some((reply) => Number(reply.id) === 12));
+});
+
+
+test('postMessage requires conversationId when parentMessageId is provided', async () => {
+  const db = new MockDb();
+  await assert.rejects(
+    () => postMessage({
+      user: baseUser,
+      companyId: 1,
+      payload: { idempotencyKey: 'missing-conv', body: 'Reply body', parentMessageId: 11 },
+      correlationId: 'corr-missing-conv',
+      db,
+      getSession,
+    }),
+    (error) => error?.code === 'CONVERSATION_REQUIRED',
+  );
+});
+
+test('conversation-centric service helpers preserve canonical thread identity', async () => {
+  const db = new MockDb();
+  const root = await createConversationRoot({
+    user: baseUser,
+    companyId: 1,
+    payload: { idempotencyKey: 'conv-root', body: 'Conversation root', recipientEmpids: ['E200'] },
+    correlationId: 'corr-conv-root',
+    db,
+    getSession,
+  });
+
+  const conversationId = Number(root.message.conversation_id);
+  const nested = await postConversationMessage({
+    user: baseUser,
+    companyId: 1,
+    conversationId,
+    payload: { idempotencyKey: 'conv-reply', body: 'Nested', parentMessageId: root.message.id },
+    correlationId: 'corr-conv-reply',
+    db,
+    getSession,
+  });
+
+  assert.equal(Number(nested.message.conversation_id), conversationId);
+  const list = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-list', db, getSession });
+  assert.ok(list.items.some((item) => Number(item.id) === conversationId));
+
+  const thread = await getConversationMessages({
+    user: baseUser,
+    companyId: 1,
+    conversationId,
+    correlationId: 'corr-conversation-messages',
+    db,
+    getSession,
+  });
+  assert.equal(Number(thread.root.id), conversationId);
+  assert.ok(thread.replies.some((item) => Number(item.id) === Number(nested.message.id)));
 });

@@ -128,20 +128,6 @@ function computeLineAmount(row) {
   return -amount;
 }
 
-
-function extractProcedureRows(rawRows) {
-  if (!Array.isArray(rawRows)) return [];
-  for (const item of rawRows) {
-    if (Array.isArray(item) && item.length > 0 && typeof item[0] === 'object') {
-      return item;
-    }
-  }
-  if (rawRows.length > 0 && typeof rawRows[0] === 'object' && !Array.isArray(rawRows[0])) {
-    return rawRows;
-  }
-  return [];
-}
-
 async function getProcedureInParameterNames(conn, procedureName) {
   const [rows] = await conn.query(
     `SELECT PARAMETER_NAME AS name
@@ -210,8 +196,7 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
     );
     const dynamicSql = `CALL \`${procedureName}\`(${args.map(() => '?').join(', ')})`;
     const [rows] = await conn.query(dynamicSql, args);
-    const resultRows = extractProcedureRows(rows);
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   }
 
   const fourArgSql = `CALL \`${procedureName}\`(?, ?, ?, ?)`;
@@ -222,25 +207,17 @@ async function runReportProcedure(conn, procedureName, { companyId, fiscalYear, 
 
   try {
     const [rows] = await conn.query(fourArgSql, fiscalYearFirstParams);
-    const resultRows = extractProcedureRows(rows);
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   } catch (error) {
     const message = String(error?.message || '');
     if (/Incorrect number of arguments/i.test(message)) {
       const [rows] = await conn.query(twoArgSql, twoArgParams);
-      const resultRows = extractProcedureRows(rows);
-      return { rowCount: resultRows.length, rows: resultRows };
+      return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
     }
-
-    const likelyParameterOrderMismatch =
-      /Incorrect integer value/i.test(message) ||
-      /Incorrect date value/i.test(message);
-
-    if (!likelyParameterOrderMismatch) throw error;
+    if (!/Incorrect integer value/i.test(message)) throw error;
 
     const [rows] = await conn.query(fourArgSql, dateRangeFirstParams);
-    const resultRows = extractProcedureRows(rows);
-    return { rowCount: resultRows.length, rows: resultRows };
+    return Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0].length : 0;
   }
 }
 
@@ -262,8 +239,8 @@ export async function previewFiscalPeriodReports({ companyId, fiscalYear, report
         continue;
       }
       try {
-        const report = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
-        results.push({ name: proc, ok: true, rowCount: report.rowCount, rows: report.rows });
+        const rowCount = await runReportProcedure(conn, proc, { companyId, fiscalYear, fromDate, toDate });
+        results.push({ name: proc, ok: true, rowCount });
       } catch (error) {
         results.push({ name: proc, ok: false, error: error?.message || 'Report failed' });
       }
@@ -395,16 +372,7 @@ export async function saveFiscalPeriodReportSnapshot({
   const conn = await dbPool.getConnection();
   try {
     await ensurePeriodReportSnapshotTable(conn);
-    let normalizedRows = Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') : [];
-    if (normalizedRows.length === 0) {
-      const period = await getOrCreateFiscalPeriod(conn, companyId, fiscalYear);
-      const fromDate = normalizeDate(period.period_from);
-      const toDate = normalizeDate(period.period_to);
-      if (fromDate && toDate && fromDate <= toDate) {
-        const report = await runReportProcedure(conn, procedureName, { companyId, fiscalYear, fromDate, toDate });
-        normalizedRows = Array.isArray(report.rows) ? report.rows : [];
-      }
-    }
+    const normalizedRows = Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') : [];
     const columns = normalizedRows.length ? Object.keys(normalizedRows[0]) : [];
     const artifact = storeSnapshotArtifact({
       rows: normalizedRows,
