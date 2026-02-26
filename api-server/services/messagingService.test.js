@@ -101,17 +101,17 @@ class MockDb {
     }
 
 
-    if (text.includes('JOIN (') && text.includes('MAX(id) AS last_message_id') && text.includes('GROUP BY conversation_id')) {
+    if (text.includes('SELECT conversation_id AS id') && text.includes('GROUP BY conversation_id')) {
       const limit = Number(params[params.length - 1]) || 100;
       const grouped = new Map();
       this.messages.filter((entry) => entry.deleted_at == null).forEach((entry) => {
         const key = Number(entry.conversation_id);
         const existing = grouped.get(key);
-        if (!existing || Number(entry.id) > Number(existing.id)) grouped.set(key, entry);
+        if (!existing || Number(entry.id) > Number(existing.last_message_id)) {
+          grouped.set(key, { id: key, last_message_id: Number(entry.id), last_message_at: entry.created_at });
+        }
       });
-      const rows = Array.from(grouped.values())
-        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime() || b.id - a.id)
-        .slice(0, limit);
+      const rows = Array.from(grouped.values()).sort((a, b) => b.id - a.id).slice(0, limit);
       return [rows, undefined];
     }
     if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
