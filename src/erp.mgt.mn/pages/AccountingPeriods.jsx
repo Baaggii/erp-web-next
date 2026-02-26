@@ -39,7 +39,7 @@ export default function AccountingPeriodsPage() {
     setMessage('');
     try {
       const res = await fetch(`/api/period-control/status?company_id=${companyId}&fiscal_year=${fiscalYear}`, { credentials: 'include' });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to load period');
       setPeriod(json.period);
     } catch (err) {
@@ -178,7 +178,7 @@ export default function AccountingPeriodsPage() {
           report_procedures: parsedProcedures,
         }),
       });
-      const json = await res.json();
+      const json = await parseJsonResponse(res);
       if (!res.ok || !json?.ok) throw new Error(json?.message || 'Failed to close period');
       setMessage(`Period closed. Opening journal #${json.openingJournalId || 'N/A'} created for ${json.nextFiscalYear}.`);
       await loadStatus();
