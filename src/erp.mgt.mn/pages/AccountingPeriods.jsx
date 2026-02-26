@@ -513,10 +513,12 @@ export default function AccountingPeriodsPage() {
                         rows={rows}
                         rowGranularity={previewMeta?.rowGranularity || 'transaction'}
                         drilldownEnabled={Boolean(previewMeta?.drilldown || previewMeta?.drilldownReport)}
-                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, row, rowId })}
-                        drilldownState={previewDrilldownState}
-                        drilldownRowSelection={previewDrilldownSelection}
-                        onDrilldownRowSelectionChange={handlePreviewDrilldownSelectionChange}
+                        onDrilldown={({ row, rowId }) => handlePreviewDrilldown({ reportName: result.name, reportMeta: previewMeta, row, rowId })}
+                        drilldownState={previewDrilldownState[result.name] || {}}
+                        drilldownRowSelection={previewDrilldownSelection[result.name] || {}}
+                        onDrilldownRowSelectionChange={(updater) =>
+                          handlePreviewDrilldownSelectionChange(result.name, updater)
+                        }
                         getDrilldownRowKey={(rowId) => buildPreviewDrilldownKey(result.name, rowId)}
                         excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
