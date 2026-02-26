@@ -339,11 +339,35 @@ export default function Reports() {
   const workplaceSelectionTouchedRef = useRef(false);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
+  const launchPreviewConfigRef = useRef(null);
+  const launchPreviewStartedRef = useRef(false);
   const reportCapabilities = useMemo(
     () => normalizeReportCapabilities(result?.reportCapabilities),
     [result?.reportCapabilities],
   );
   const showTotalRowCount = reportCapabilities.showTotalRowCount !== false;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search || '');
+    const procedure = String(params.get('procedure') || '').trim();
+    if (!procedure) return;
+    launchPreviewConfigRef.current = {
+      procedure,
+      fiscalYear: String(params.get('fiscal_year') || '').trim(),
+      periodFrom: String(params.get('period_from') || '').trim(),
+      periodTo: String(params.get('period_to') || '').trim(),
+      autorun: params.get('autorun') === '1',
+    };
+  }, []);
+
+  useEffect(() => {
+    const launchConfig = launchPreviewConfigRef.current;
+    if (!launchConfig || launchPreviewStartedRef.current) return;
+    const matchedProcedure = procedures.find((item) => item?.name === launchConfig.procedure);
+    if (!matchedProcedure) return;
+    launchPreviewStartedRef.current = true;
+    setSelectedProc(launchConfig.procedure);
+  }, [procedures]);
   const handleRowSelectionChange = useCallback((updater) => {
     setRowSelection((prev) => (typeof updater === 'function' ? updater(prev) : updater || {}));
   }, []);
@@ -1334,6 +1358,48 @@ export default function Reports() {
       .then((data) => setProcParams(data.parameters || []))
       .catch(() => setProcParams([]));
   }, [selectedProc, branch, department]);
+
+  useEffect(() => {
+    const launchConfig = launchPreviewConfigRef.current;
+    if (!launchConfig || selectedProc !== launchConfig.procedure || procParams.length === 0) {
+      return;
+    }
+
+    if (launchConfig.periodFrom) {
+      setStartDate(normalizeDateInput(launchConfig.periodFrom, 'YYYY-MM-DD'));
+    }
+    if (launchConfig.periodTo) {
+      setEndDate(normalizeDateInput(launchConfig.periodTo, 'YYYY-MM-DD'));
+    }
+
+    const nextManualParams = {};
+    procParams.forEach((paramName) => {
+      const normalized = normalizeParamName(paramName);
+      if (!normalized) return;
+      if (
+        (normalized.includes('fiscal') || normalized === 'year' || normalized.endsWith('year')) &&
+        launchConfig.fiscalYear
+      ) {
+        nextManualParams[paramName] = launchConfig.fiscalYear;
+      }
+      if (DATE_PARAM_ALLOWLIST.has(normalized)) {
+        if (normalized.includes('start') || normalized.includes('from')) {
+          if (launchConfig.periodFrom) nextManualParams[paramName] = launchConfig.periodFrom;
+        }
+        if (normalized.includes('end') || normalized.includes('to')) {
+          if (launchConfig.periodTo) nextManualParams[paramName] = launchConfig.periodTo;
+        }
+      }
+    });
+
+    setManualParams((prev) => ({ ...prev, ...nextManualParams }));
+    if (launchConfig.autorun) {
+      window.setTimeout(() => {
+        runReport();
+      }, 0);
+    }
+    launchPreviewConfigRef.current = null;
+  }, [procParams, selectedProc]);
 
   useEffect(() => {
     setResult(null);
