@@ -88,7 +88,10 @@ export default function AccountingPeriodsPage() {
   const [snapshotDrilldownState, setSnapshotDrilldownState] = useState({});
   const [snapshotDrilldownSelection, setSnapshotDrilldownSelection] = useState({});
   const drilldownParamCacheRef = useRef(new Map());
-  const buildPreviewDrilldownKey = useCallback((reportName, rowId) => `${reportName}::${rowId}`, []);
+  const buildPreviewDrilldownKey = useCallback(
+    (reportName, parentRowId, detailIndex) => `${reportName}::${String(parentRowId)}::${String(detailIndex)}`,
+    [],
+  );
 
   const canClosePeriod = Boolean(
     permissions?.['period.close'] ||
@@ -813,7 +816,8 @@ export default function AccountingPeriodsPage() {
                         onDrilldownRowSelectionChange={(updater) =>
                           handlePreviewDrilldownSelectionChange(result.name, updater)
                         }
-                        getDrilldownRowKey={(rowId) => buildPreviewDrilldownKey(result.name, rowId)}
+                        getDrilldownRowKey={(parentRowId, detailIndex) =>
+                          buildPreviewDrilldownKey(result.name, parentRowId, detailIndex)}
                         excludeColumns={INTERNAL_COLS}
                         maxHeight={260}
                         showTotalRowCount={false}
