@@ -227,6 +227,7 @@ export default function ReportTable({
   const headerMap = useHeaderMappings([procedure]);
   const general = generalConfig.general || {};
   const reportSettings = generalConfig.reports || {};
+  const autoFitColumns = reportSettings.autoFitColumns ?? true;
 
   function rowToast(message, type = 'info') {
     if (general.reportRowToastEnabled) {
