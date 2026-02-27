@@ -38,6 +38,25 @@ export const ALLOWED_REQUEST_TYPES = new Set([
   'bulk_edit',
 ]);
 
+async function getPendingRequestColumnSet(companyId = null) {
+  try {
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'pending_request',
+      companyId,
+      'SHOW COLUMNS FROM {{table}}',
+      [],
+    );
+    return new Set(
+      (rows || [])
+        .map((row) => String(row?.Field || row?.field || '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 async function ensureValidTableName(tableName) {
   const cols = await listTableColumns(tableName);
   if (!cols.length) {
@@ -1035,6 +1054,8 @@ export async function listRequests(filters) {
 
   const conditions = [];
   const params = [];
+  const pendingRequestColumns = await getPendingRequestColumnSet(companyId);
+  const hasRespondedAt = pendingRequestColumns.has('responded_at');
 
   const statusList = normalizeStatuses(status);
   if (statusList.length === 1) {
@@ -1061,7 +1082,7 @@ export async function listRequests(filters) {
     params.push(request_type);
   }
   const dateColumn =
-    date_field === 'responded' ? 'responded_at' : 'created_at';
+    date_field === 'responded' && hasRespondedAt ? 'responded_at' : 'created_at';
   if (date_from || date_to) {
     if (date_from && date_to) {
       conditions.push(`DATE(${dateColumn}) BETWEEN ? AND ?`);
@@ -1125,7 +1146,11 @@ export async function listRequests(filters) {
     pool,
     'pending_request',
     companyId,
-    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
+    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, ${
+      hasRespondedAt
+        ? "DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s')"
+        : 'NULL'
+    } AS responded_at_fmt
        FROM {{table}} pr
       WHERE pr.request_id IN (${placeholders})`,
     idOrder,
