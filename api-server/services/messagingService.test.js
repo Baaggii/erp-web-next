@@ -240,9 +240,10 @@ class MockDb {
 
     if (text.includes('UPDATE erp_conversations') && text.includes('visibility_empid = ?')) {
       const [visibilityEmpid, conversationId] = params;
-      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId) && entry.visibility_scope === 'private');
+      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId));
       if (row) {
         row.visibility_empid = visibilityEmpid;
+        if (row.visibility_scope === 'company') row.visibility_scope = 'private';
       }
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
