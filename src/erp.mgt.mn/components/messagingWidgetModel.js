@@ -41,6 +41,16 @@ export function normalizeId(value) {
   return String(value ?? '').trim();
 }
 
+export function normalizeConversationId(value) {
+  const normalized = normalizeId(value);
+  if (!normalized) return null;
+  if (normalized.startsWith('conversation:')) {
+    const stripped = normalizeId(normalized.slice('conversation:'.length));
+    return stripped || null;
+  }
+  return normalized;
+}
+
 export function buildSessionStorageKey(sessionId, suffix) {
   return `messaging-widget:${normalizeId(sessionId) || 'anonymous'}:${suffix}`;
 }
@@ -64,7 +74,7 @@ export function getCompanyCacheKey(companyId) {
 
 
 export function canonicalConversationId(message) {
-  return normalizeId(message?.conversation_id || message?.conversationId) || null;
+  return normalizeConversationId(message?.conversation_id || message?.conversationId);
 }
 
 
@@ -109,16 +119,6 @@ export function createInitialWidgetState({ isOpen = false, activeConversationId 
       attachments: [],
     },
   };
-}
-
-export function resolveThreadRefreshRootId({
-  isReplyMode = false,
-  fallbackRootReplyTargetId = null,
-  createdMessage = null,
-} = {}) {
-  const conversationId = canonicalConversationId(createdMessage);
-  if (isReplyMode) return normalizeId(fallbackRootReplyTargetId || conversationId) || null;
-  return normalizeId(conversationId) || null;
 }
 
 export function messagingWidgetReducer(state, action) {
