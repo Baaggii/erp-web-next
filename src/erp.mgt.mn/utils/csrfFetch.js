@@ -4,24 +4,6 @@ import { currentLoaderKey, dispatchEnd, dispatchStart } from './loadingEvents.js
 let tokenPromise;
 const controllers = new Set();
 
-function buildEndpointCandidates(path) {
-  const normalizedPath = String(path || '').startsWith('/') ? path : `/${path}`;
-  const primary = `${API_BASE}${normalizedPath}`;
-  if (API_BASE === '/api') return [primary, normalizedPath];
-  return [primary];
-}
-
-async function fetchWithApiFallback(path, options = {}) {
-  const candidates = buildEndpointCandidates(path);
-  let lastResponse = null;
-  for (let i = 0; i < candidates.length; i += 1) {
-    const response = await originalFetch(candidates[i], options);
-    lastResponse = response;
-    if (response.status !== 404 || i === candidates.length - 1) return response;
-  }
-  return lastResponse;
-}
-
 function abortAll() {
   controllers.forEach(controller => controller.abort());
   controllers.clear();
@@ -40,7 +22,7 @@ window.addEventListener('pagehide', abortAll);
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = fetchWithApiFallback('/csrf-token', { credentials: 'include' })
+    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) {
           throw new Error(res.statusText || 'Failed to fetch token');
@@ -113,7 +95,7 @@ window.fetch = async (url, options = {}, _retry) => {
         msg = data.message;
       } catch {}
       if (msg && msg.toLowerCase().includes('expired')) {
-        const refreshRes = await fetchWithApiFallback('/auth/refresh', {
+        const refreshRes = await originalFetch(`${API_BASE}/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'X-CSRF-Token': await getToken() },
