@@ -32,23 +32,30 @@ function safeAttachmentName(input = '') {
 const postMessageSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['body'],
+  required: ['idempotencyKey', 'body'],
   properties: {
     companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
     body: { type: 'string', minLength: 1, maxLength: 4000 },
-    topic: { type: 'string', maxLength: 255 },
-    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
-    message_class: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
-    parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    participants: {
+    linkedType: { type: 'string', minLength: 1, maxLength: 64 },
+    linkedId: { type: 'string', minLength: 1, maxLength: 128 },
+    visibilityScope: { type: 'string', enum: ['company', 'department', 'private'] },
+    visibilityDepartmentId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    visibilityEmpid: { type: 'string', minLength: 1, maxLength: 64 },
+    recipientEmpids: {
       type: 'array',
       items: { type: 'string', minLength: 1, maxLength: 64 },
     },
-    type: { type: 'string', enum: ['general', 'private', 'linked'] },
-    linkedType: { type: 'string', minLength: 1, maxLength: 64 },
-    linkedId: { type: 'string', minLength: 1, maxLength: 128 },
+    topic: { type: 'string', maxLength: 120 },
+    messageClass: { type: 'string', minLength: 1, maxLength: 64 },
+    message_class: { type: 'string', minLength: 1, maxLength: 64 },
+    clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
+    conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    conversation_id: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
   },
 };
+
 
 class Ajv {
   compile(schema) {
