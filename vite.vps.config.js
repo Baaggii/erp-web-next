@@ -1,17 +1,13 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
-export default ({ mode }) => {
-  // This loads .env but does NOT manually inject
-  loadEnv(mode, process.cwd());
-
-  return defineConfig({
-    plugins: [react()],
-    root: resolve(__dirname, 'src/erp.mgt.mn'),
-    build: {
-      outDir: resolve(__dirname, 'dist-erp'),
-      emptyOutDir: true,
-    }
-  });
-};
+export default defineConfig({
+  root: resolve(__dirname, 'src/erp.mgt.mn'),
+  envDir: resolve(__dirname),   // 🔥 THIS IS THE FIX
+  plugins: [react()],
+  build: {
+    outDir: resolve(__dirname, 'dist-erp'),
+    emptyOutDir: true,
+  },
+});
