@@ -69,6 +69,7 @@ export default function ReportTable({
   fieldLineage = {},
   showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
+  minHeight,
   onSnapshotReady,
   enableRowSelection,
   rowGranularity = 'transaction',
@@ -752,6 +753,7 @@ export default function ReportTable({
         style={{
           position: 'relative',
           maxWidth: '100%',
+          minHeight,
           maxHeight,
           overflow: 'auto',
           border: '1px solid #d1d5db',
