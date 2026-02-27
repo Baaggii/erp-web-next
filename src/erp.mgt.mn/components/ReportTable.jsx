@@ -106,7 +106,16 @@ export default function ReportTable({
   }, [excludeColumns]);
   const columns = useMemo(() => {
     if (!rows || rows.length === 0) return [];
-    const base = Object.keys(rows[0]);
+    const seen = new Set();
+    const base = [];
+    rows.forEach((row) => {
+      if (!row || typeof row !== 'object') return;
+      Object.keys(row).forEach((col) => {
+        if (seen.has(col)) return;
+        seen.add(col);
+        base.push(col);
+      });
+    });
     if (!normalizedExcludedColumns.size) return base;
     return base.filter((col) => !normalizedExcludedColumns.has(col));
   }, [rows, normalizedExcludedColumns]);
@@ -766,9 +775,9 @@ export default function ReportTable({
           className="table-manager"
           style={{
             borderCollapse: 'collapse',
-            tableLayout: 'fixed',
-            minWidth: '1200px',
-            width: 'max-content',
+            tableLayout: autoFitColumns ? 'auto' : 'fixed',
+            minWidth: autoFitColumns ? '100%' : '1200px',
+            width: autoFitColumns ? '100%' : 'max-content',
           }}
         >
           <thead className="table-manager sticky-header">
@@ -812,8 +821,8 @@ export default function ReportTable({
                     lineHeight: 1.2,
                     fontSize: '0.75rem',
                     textAlign: columnAlign[col],
-                    width: columnWidths[col],
-                    minWidth: columnWidths[col],
+                    width: autoFitColumns ? undefined : columnWidths[col],
+                    minWidth: autoFitColumns ? ch(8) : columnWidths[col],
                     maxWidth: MAX_WIDTH,
                     resize: 'horizontal',
                     overflow: 'hidden',
@@ -868,8 +877,8 @@ export default function ReportTable({
                     wordBreak: 'break-word',
                     fontSize: '0.75rem',
                     textAlign: columnAlign[col],
-                    width: columnWidths[col],
-                    minWidth: columnWidths[col],
+                    width: autoFitColumns ? undefined : columnWidths[col],
+                    minWidth: autoFitColumns ? ch(8) : columnWidths[col],
                     maxWidth: MAX_WIDTH,
                     resize: 'horizontal',
                     overflow: 'hidden',
