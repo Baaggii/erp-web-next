@@ -1686,7 +1686,6 @@ export default function MessagingWidget() {
       : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
-    const participantTargets = allParticipants.filter((empid) => empid !== selfEmpid);
     if (visibilityScope === 'private' && allParticipants.length < 2) {
       setComposerAnnouncement('Select at least one recipient before sending a private message.');
       return;
@@ -1744,7 +1743,7 @@ export default function MessagingWidget() {
       messageClass: visibilityScope === 'private' ? 'private' : 'general',
       companyId: normalizedCompanyId,
       visibilityScope,
-      ...(visibilityScope === 'private' ? { participants: participantTargets, recipientEmpids: participantTargets } : {}),
+      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
