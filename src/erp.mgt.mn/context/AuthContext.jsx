@@ -9,7 +9,7 @@ import React, {
   useRef,
 } from 'react';
 import { debugLog, trackSetState } from '../utils/debug.js';
-import { API_BASE, fetchWithApiFallback } from '../utils/apiBase.js';
+import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 import {
   deriveWorkplacePositionsFromAssignments,
@@ -131,7 +131,7 @@ export default function AuthContextProvider({ children }) {
 
   const loadProfile = useCallback(async () => {
     try {
-      const res = await fetchWithApiFallback(fetch, '/auth/me', {
+      const res = await fetch(`${API_BASE}/auth/me`, {
         credentials: 'include',
       });
 
@@ -139,7 +139,7 @@ export default function AuthContextProvider({ children }) {
         const data = await res.json();
         applyProfile(data);
         try {
-          const resSettings = await fetchWithApiFallback(fetch, '/user/settings', {
+          const resSettings = await fetch(`${API_BASE}/user/settings`, {
             credentials: 'include',
             skipErrorToast: true,
           });

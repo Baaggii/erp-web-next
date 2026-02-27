@@ -1,8 +1,8 @@
 // (for example) src/erp.mgt.mn/hooks/useFetchProfile.js
-import { fetchWithApiFallback } from '../utils/apiBase.js';
+import { API_BASE } from '../utils/apiBase.js';
 
 export async function fetchProfile() {
-  const res = await fetchWithApiFallback(fetch, '/auth/me', { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch profile');
   return res.json();
 }
