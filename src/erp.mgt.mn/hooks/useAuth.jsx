@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
-import { API_BASE } from '../utils/apiBase.js';
+import { fetchWithApiFallback } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
 function buildAuthEndpointCandidates(path) {
