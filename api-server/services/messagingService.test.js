@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-
 process.env.DB_ADMIN_USER = process.env.DB_ADMIN_USER || 'test';
 process.env.DB_ADMIN_PASS = process.env.DB_ADMIN_PASS || 'test';
 process.env.ERP_ADMIN_USER = process.env.ERP_ADMIN_USER || 'test';
@@ -9,531 +8,173 @@ process.env.ERP_ADMIN_PASS = process.env.ERP_ADMIN_PASS || 'test';
 
 const {
   createConversationRoot,
-  deleteMessage,
-  getConversationMessages,
-  getThread,
   listConversations,
   postConversationMessage,
-  postMessage,
-  postReply,
+  getConversationMessages,
 } = await import('./messagingService.js');
-
 
 class MockDb {
   constructor() {
-    this.nextId = 100;
-    this.idempotency = new Map();
-    this.conversations = [{
-      id: 11,
-      company_id: 1,
-      deleted_at: null,
-      visibility_scope: 'private',
-      visibility_department_id: null,
-      visibility_empid: 'E100,E200',
-      last_message_id: 12,
-      last_message_at: new Date().toISOString(),
-    }];
-    this.messages = [
-      {
-        id: 11,
-        company_id: 1,
-        author_empid: 'E100',
-        parent_message_id: null,
-        conversation_id: 11,
-        linked_type: null,
-        linked_id: null,
-        visibility_scope: 'private',
-        visibility_department_id: null,
-        visibility_empid: 'E100,E200',
-        body: 'Root',
-        deleted_at: null,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 12,
-        company_id: 1,
-        author_empid: 'E200',
-        parent_message_id: 11,
-        conversation_id: 11,
-        linked_type: null,
-        linked_id: null,
-        visibility_scope: 'private',
-        visibility_department_id: null,
-        visibility_empid: 'E100,E200',
-        body: 'Reply',
-        deleted_at: null,
-        created_at: new Date().toISOString(),
-      },
-    ];
+    this.nextConversationId = 1;
+    this.nextMessageId = 1;
+    this.conversations = [];
+    this.participants = [];
+    this.messages = [];
   }
 
   async query(sql, params = []) {
-    const text = String(sql);
+    const text = String(sql).replace(/\s+/g, ' ').trim();
 
-    if (text.includes('information_schema.TABLES') && text.includes("TABLE_NAME = 'erp_messages'")) return [[{ count: 1 }], undefined];
-    if (text.startsWith('CALL create_tenant_temp_table')) return [[], undefined];
-
-    if (text.includes('FROM') && text.includes('erp_message_idempotency') && text.includes('SELECT')) {
-      const key = `${params[0]}:${params[1]}`;
-      const row = this.idempotency.get(key) || null;
+    if (text.startsWith('SELECT * FROM erp_conversations WHERE company_id = ? AND type =')) {
+      const [companyId] = params;
+      const row = this.conversations.find((c) => c.company_id === Number(companyId) && c.type === 'general' && !c.deleted_at);
       return [[row].filter(Boolean), undefined];
     }
-
-
-
-    if (text.includes('SELECT id FROM') && text.includes('erp_conversations') && text.includes("linked_type IS NULL") && text.includes("visibility_scope = 'company'")) {
-      const companyId = Number(params[0]);
-      const row = this.conversations.find((entry) => Number(entry.company_id) === companyId && !entry.deleted_at && entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company') || null;
-      return [[row ? { id: row.id } : null].filter(Boolean), undefined];
+    if (text.startsWith('INSERT INTO erp_conversations (company_id, type, created_by_empid)')) {
+      const [companyId, empid] = params;
+      const row = { id: this.nextConversationId++, company_id: Number(companyId), type: 'general', linked_type: null, linked_id: null, created_by_empid: empid, deleted_at: null, last_message_id: null, last_message_at: null };
+      this.conversations.push(row);
+      return [{ insertId: row.id }, undefined];
     }
-
-    if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('WHERE id = ?')) {
-      const id = Number(params[0]);
-      const row = this.conversations.find((entry) => Number(entry.id) === id && !entry.deleted_at) || null;
-      return [[row].filter(Boolean), undefined];
+    if (text.startsWith('INSERT INTO erp_conversations (company_id, type, linked_type, linked_id, created_by_empid)')) {
+      const [companyId, type, linkedType, linkedId, empid] = params;
+      const row = { id: this.nextConversationId++, company_id: Number(companyId), type, linked_type: linkedType, linked_id: linkedId, created_by_empid: empid, deleted_at: null, last_message_id: null, last_message_at: null };
+      this.conversations.push(row);
+      return [{ insertId: row.id }, undefined];
     }
-
-    if (text.includes('SELECT id, last_message_at FROM') && text.includes('erp_conversations') && text.includes('WHERE id = ?')) {
-      const id = Number(params[0]);
-      const row = this.conversations.find((entry) => Number(entry.id) === id && !entry.deleted_at) || null;
-      return [[row ? { id: row.id, last_message_at: row.last_message_at } : null].filter(Boolean), undefined];
+    if (text.startsWith('SELECT * FROM erp_conversations WHERE id = ? LIMIT 1')) {
+      const [id] = params;
+      return [[this.conversations.find((c) => c.id === Number(id))].filter(Boolean), undefined];
     }
-
-    if (text.includes('SELECT') && text.includes('erp_conversations') && text.includes('ORDER BY is_general DESC, last_message_at DESC')) {
-      const limit = Number(params[params.length - 1]) || 100;
-      const hasActivityCursor = text.includes('last_message_at < ? OR (last_message_at = ? AND id < ?)');
-      const cursorTime = hasActivityCursor ? params[0] : null;
-      const cursorId = hasActivityCursor ? params[2] : null;
+    if (text.startsWith('SELECT * FROM erp_conversations WHERE id = ? AND company_id = ?')) {
+      const [id, companyId] = params;
+      return [[this.conversations.find((c) => c.id === Number(id) && c.company_id === Number(companyId) && !c.deleted_at)].filter(Boolean), undefined];
+    }
+    if (text.startsWith('INSERT INTO erp_conversation_participants')) {
+      const [conversationId, companyId, empid] = params;
+      const existing = this.participants.find((p) => p.conversation_id === Number(conversationId) && p.empid === empid);
+      if (existing) existing.left_at = null;
+      else this.participants.push({ conversation_id: Number(conversationId), company_id: Number(companyId), empid, left_at: null });
+      return [{ affectedRows: 1 }, undefined];
+    }
+    if (text.startsWith('SELECT 1 FROM erp_conversation_participants')) {
+      const [companyId, conversationId, empid] = params;
+      const exists = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
+      return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
+    }
+    if (text.startsWith('INSERT INTO erp_messages')) {
+      const [companyId, conversationId, authorEmpid, parentMessageId, body, topic, messageClass] = params;
+      const row = { id: this.nextMessageId++, company_id: Number(companyId), conversation_id: Number(conversationId), author_empid: authorEmpid, parent_message_id: parentMessageId ? Number(parentMessageId) : null, body, topic, message_class: messageClass, created_at: new Date().toISOString(), deleted_at: null };
+      this.messages.push(row);
+      return [{ insertId: row.id }, undefined];
+    }
+    if (text.startsWith('SELECT * FROM erp_messages WHERE id = ? LIMIT 1')) {
+      const [id] = params;
+      return [[this.messages.find((m) => m.id === Number(id))].filter(Boolean), undefined];
+    }
+    if (text.startsWith('UPDATE erp_conversations SET last_message_id = ?')) {
+      const [lastId, at, conversationId] = params;
+      const row = this.conversations.find((c) => c.id === Number(conversationId));
+      if (row) {
+        row.last_message_id = Number(lastId);
+        row.last_message_at = at || new Date().toISOString();
+      }
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+    if (text.startsWith('SELECT c.*, (c.type =')) {
+      const [companyId, empid, maybeCursor, limit] = params;
+      const hasCursor = params.length === 4;
+      const cursorId = hasCursor ? Number(maybeCursor) : null;
+      const max = Number(hasCursor ? limit : maybeCursor);
       const rows = this.conversations
-        .filter((entry) => !entry.deleted_at)
-        .filter((entry) => {
-          if (!cursorTime) return true;
-          const entryTime = new Date(entry.last_message_at).getTime();
-          const boundaryTime = new Date(cursorTime).getTime();
-          if (entryTime < boundaryTime) return true;
-          return entryTime === boundaryTime && Number(entry.id) < Number(cursorId);
-        })
-        .sort((a, b) => (new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()) || (b.id - a.id))
-        .slice(0, limit)
-        .map((entry) => ({
-          ...entry,
-          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
-        }));
+        .filter((c) => c.company_id === Number(companyId) && !c.deleted_at)
+        .filter((c) => c.type === 'general' || this.participants.some((p) => p.company_id === c.company_id && p.conversation_id === c.id && p.empid === empid && !p.left_at))
+        .filter((c) => (hasCursor ? c.id < cursorId : true))
+        .sort((a, b) => (b.type === 'general') - (a.type === 'general') || b.id - a.id)
+        .slice(0, max)
+        .map((c) => ({ ...c, is_general: c.type === 'general' }));
       return [rows, undefined];
     }
-
-    if (text.includes('INSERT INTO erp_conversations')) {
-            const [companyId] = params;
-      const isGeneralInsert = text.includes("VALUES (?, NULL, NULL, 'company', NULL, NULL, ?, CURRENT_TIMESTAMP, NULL)");
-      const linkedType = isGeneralInsert ? null : params[1];
-      const linkedId = isGeneralInsert ? null : params[2];
-      const visibilityScope = isGeneralInsert ? 'company' : params[3];
-      const visibilityDepartmentId = isGeneralInsert ? null : params[4];
-      const visibilityEmpid = isGeneralInsert ? null : params[5];
-      const id = this.nextId++;
-      this.conversations.push({
-        id,
-        company_id: Number(companyId),
-        linked_type: linkedType ?? null,
-        linked_id: linkedId ?? null,
-        deleted_at: null,
-        visibility_scope: visibilityScope || 'company',
-        visibility_department_id: visibilityDepartmentId ?? null,
-        visibility_empid: visibilityEmpid ?? null,
-        last_message_id: null,
-        last_message_at: new Date().toISOString(),
-      });
-      return [{ insertId: id }, undefined];
+    if (text.startsWith('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL')) {
+      const [id, companyId] = params;
+      return [[this.messages.find((m) => m.id === Number(id) && m.company_id === Number(companyId) && !m.deleted_at)].filter(Boolean), undefined];
     }
-
-    if (text.includes('UPDATE erp_conversations') && text.includes('SET last_message_id')) {
-      const [lastMessageId, , conversationId] = params;
-      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId));
-      if (row) {
-        row.last_message_id = Number(lastMessageId);
-        row.last_message_at = new Date().toISOString();
-      }
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.includes('INSERT INTO erp_message_idempotency')) {
-      const key = `${params[1]}:${params[2]}`;
-      this.idempotency.set(key, { message_id: params[3], request_hash: params[4] ?? null, expires_at: params[5] ?? null });
-      return [{ affectedRows: 1 }, undefined];
-    }
-
-    if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('WHERE id = ? LIMIT 1')) {
-      const id = Number(params[0]);
-      const row = this.messages.find((entry) => Number(entry.id) === id) || null;
-      return [[row].filter(Boolean), undefined];
-    }
-
-    if (text.includes('SELECT * FROM') && text.includes('parent_message_id IS NULL') && text.includes('ORDER BY id DESC LIMIT ?')) {
-      const limit = Number(params[0]) || 100;
+    if (text.startsWith('SELECT * FROM erp_messages WHERE company_id = ? AND conversation_id = ?')) {
+      const [companyId, conversationId] = params;
+      const hasCursor = text.includes('AND id < ?');
+      const cursor = hasCursor ? Number(params[2]) : null;
+      const limit = Number(params[params.length - 1]);
       const rows = this.messages
-        .filter((entry) => entry.parent_message_id == null)
+        .filter((m) => m.company_id === Number(companyId) && m.conversation_id === Number(conversationId) && !m.deleted_at)
+        .filter((m) => (hasCursor ? m.id < cursor : true))
         .sort((a, b) => b.id - a.id)
-        .slice(0, limit)
-        .map((entry) => ({
-          ...entry,
-          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
-        }));
+        .slice(0, limit);
       return [rows, undefined];
     }
 
-    if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('WHERE conversation_id = ?') && text.includes('ORDER BY id DESC')) {
-      const conversationId = Number(params[0]);
-      const limit = Number(params[params.length - 1]) || 100;
-      const rows = this.messages
-        .filter((entry) => Number(entry.conversation_id) === conversationId && !entry.deleted_at)
-        .sort((a, b) => b.id - a.id)
-        .slice(0, limit)
-        .map((entry) => ({
-          ...entry,
-          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
-        }));
-      return [rows, undefined];
-    }
-
-    if (text.includes('SELECT * FROM') && text.includes('erp_messages') && text.includes('ORDER BY id ASC')) {
-      return [[...this.messages].sort((a, b) => a.id - b.id), undefined];
-    }
-
-    if (text.includes('SELECT id, parent_message_id FROM') && text.includes('erp_messages')) {
-      return [[this.messages.map(({ id, parent_message_id }) => ({ id, parent_message_id }))], undefined];
-    }
-
-    if (text.includes('INSERT INTO erp_messages')) {
-      const [companyId, empid, parentMessageId, conversationId] = params;
-      const parent = parentMessageId ? this.messages.find((entry) => Number(entry.id) === Number(parentMessageId)) : null;
-      const id = this.nextId++;
-      this.messages.push({
-        id,
-        company_id: Number(companyId),
-        author_empid: empid,
-        parent_message_id: parentMessageId == null ? null : Number(parentMessageId),
-        conversation_id: conversationId ? Number(conversationId) : parent ? Number(parent.conversation_id || parent.id) : null,
-        linked_type: null,
-        linked_id: null,
-        visibility_scope: 'private',
-        visibility_department_id: null,
-        visibility_empid: 'E100,E200',
-        body: 'inserted',
-        deleted_at: null,
-        created_at: new Date().toISOString(),
-      });
-      return [{ insertId: id }, undefined];
-    }
-
-
-    if (text.startsWith('UPDATE erp_messages SET topic = ?') || text.startsWith('UPDATE erp_messages SET message_class = ?') || text.startsWith('UPDATE erp_messages SET topic = ?, message_class = ?')) {
-      const maybeTopic = params[0];
-      const maybeClass = params.length === 4 ? params[1] : (text.includes('message_class') ? params[0] : null);
-      const messageId = Number(params[params.length - 2]);
-      const row = this.messages.find((entry) => Number(entry.id) === messageId);
-      if (row) {
-        if (text.includes('topic')) row.topic = maybeTopic;
-        if (text.includes('message_class')) row.message_class = maybeClass;
-      }
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.includes('UPDATE erp_conversations') && text.includes('visibility_empid = ?')) {
-      const [visibilityEmpid, conversationId] = params;
-      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId));
-      if (row) {
-        row.visibility_empid = visibilityEmpid;
-        if (row.visibility_scope === 'company') row.visibility_scope = 'private';
-      }
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.startsWith('UPDATE erp_messages SET conversation_id = ?')) {
-      const [conversationId, messageId] = params;
-      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
-      if (row) row.conversation_id = Number(conversationId);
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.startsWith('UPDATE erp_messages SET visibility_empid = ?')) {
-      const [visibilityEmpid, messageId] = params;
-      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
-      if (row) row.visibility_empid = visibilityEmpid;
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.startsWith('UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP, deleted_by_empid = ? WHERE company_id = ? AND conversation_id = ?')) {
-      const [, companyId, conversationId] = params;
-      let count = 0;
-      this.messages.forEach((row) => {
-        if (Number(row.company_id) === Number(companyId) && Number(row.conversation_id) === Number(conversationId)) {
-          row.deleted_at = new Date().toISOString();
-          count += 1;
-        }
-      });
-      return [{ affectedRows: count }, undefined];
-    }
-
-    if (text.startsWith('UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP')) {
-      const [, messageId, companyId] = params;
-      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId) && Number(entry.company_id) === Number(companyId));
-      if (row) row.deleted_at = new Date().toISOString();
-      return [{ affectedRows: row ? 1 : 0 }, undefined];
-    }
-
-    if (text.includes('INSERT IGNORE INTO erp_message_receipts')) {
-      return [{ affectedRows: 1 }, undefined];
-    }
-
-    if (text.includes('INSERT INTO security_audit_events')) {
-      return [{ affectedRows: 1 }, undefined];
-    }
-
-    throw new Error(`Unexpected query: ${text}`);
+    throw new Error(`Unhandled SQL: ${text}`);
   }
 }
 
-const getSession = async () => ({ department_id: 10, permissions: { system_settings: true } });
-const baseUser = { empid: 'E100', companyId: 1 };
+const session = { permissions: { messaging: true } };
+const getSession = async () => session;
 
-test('conversation creation returns strict conversation id', async () => {
+test('general conversation is auto-created and visible to all users in company', async () => {
   const db = new MockDb();
-  const result = await createConversationRoot({
-    user: baseUser,
-    companyId: 1,
-    payload: { idempotencyKey: 'root-1', body: 'Root body', recipientEmpids: ['E200'] },
-    correlationId: 'corr-root',
-    db,
-    getSession,
-  });
+  const userA = { empid: 'A1', companyId: 7 };
+  const userB = { empid: 'B1', companyId: 7 };
 
-  assert.ok(Number(result.conversation.id) > 0);
-  assert.equal(Number(result.message.conversation_id), Number(result.conversation.id));
-  assert.equal(result.message.parent_message_id, null);
+  await listConversations({ user: userA, companyId: 7, db, getSession });
+  const listForB = await listConversations({ user: userB, companyId: 7, db, getSession });
+
+  assert.equal(listForB.items.length, 1);
+  assert.equal(listForB.items[0].type, 'general');
 });
 
-test('reply creation enforces conversation_id consistency', async () => {
+test('private conversation visibility is participant-only and topic stored separately', async () => {
   const db = new MockDb();
-  await assert.rejects(
-    () => postReply({
-      user: baseUser,
-      companyId: 1,
-      messageId: 11,
-      payload: { idempotencyKey: 'reply-bad', body: 'Bad reply', conversation_id: 999 },
-      correlationId: 'corr-reply-bad',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'CONVERSATION_MISMATCH',
-  );
+  const creator = { empid: 'E1', companyId: 1 };
 
-  const ok = await postReply({
-    user: baseUser,
+  const created = await createConversationRoot({
+    user: creator,
     companyId: 1,
-    messageId: 11,
-    payload: { idempotencyKey: 'reply-ok', body: 'OK reply', conversation_id: 11 },
-    correlationId: 'corr-reply-ok',
     db,
     getSession,
+    payload: {
+      type: 'private',
+      participants: ['E2'],
+      topic: 'Finance',
+      body: 'First message',
+      messageClass: 'financial',
+    },
   });
-  assert.equal(Number(ok.message.conversation_id), 11);
-  assert.equal(Number(ok.message.parent_message_id), 11);
+
+  assert.equal(created.message.topic, 'Finance');
+  assert.equal(created.message.body, 'First message');
+
+  const visibleToE2 = await listConversations({ user: { empid: 'E2', companyId: 1 }, companyId: 1, db, getSession });
+  const visibleToE3 = await listConversations({ user: { empid: 'E3', companyId: 1 }, companyId: 1, db, getSession });
+  assert.equal(visibleToE2.items.some((entry) => entry.id === created.conversation.id), true);
+  assert.equal(visibleToE3.items.some((entry) => entry.id === created.conversation.id), false);
 });
 
-test('duplicate send idempotency replays existing message without creating another conversation', async () => {
+test('sending message requires participant access and validates message_class enum', async () => {
   const db = new MockDb();
-  const payload = { idempotencyKey: 'idem-dup', body: 'same body', recipientEmpids: ['E200'], conversationId: 11 };
-  const first = await postMessage({ user: baseUser, companyId: 1, payload, correlationId: 'corr-idem-1', db, getSession });
-  const second = await postMessage({ user: baseUser, companyId: 1, payload, correlationId: 'corr-idem-2', db, getSession });
-
-  assert.equal(first.message.id, second.message.id);
-  assert.equal(Number(first.message.conversation_id), Number(second.message.conversation_id));
-});
-
-
-
-test('idempotency rejects same key when metadata differs', async () => {
-  const db = new MockDb();
-  await postMessage({
-    user: baseUser,
-    companyId: 1,
-    payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic A', messageClass: 'private' },
-    correlationId: 'corr-idem-meta-1',
-    db,
-    getSession,
-  });
+  const creator = { empid: 'E1', companyId: 1 };
+  const created = await createConversationRoot({ user: creator, companyId: 1, db, getSession, payload: { type: 'private', participants: ['E2'], body: 'First message' } });
 
   await assert.rejects(
-    () => postMessage({
-      user: baseUser,
-      companyId: 1,
-      payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic B', messageClass: 'private' },
-      correlationId: 'corr-idem-meta-2',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'IDEMPOTENCY_KEY_CONFLICT',
+    () => postConversationMessage({ user: { empid: 'E3', companyId: 1 }, companyId: 1, conversationId: created.conversation.id, db, getSession, payload: { body: 'No access' } }),
+    /Conversation not found/,
   );
-});
 
-test('deleting root message deletes only that conversation scope', async () => {
-  const db = new MockDb();
-  db.messages.push({
-    id: 50,
-    company_id: 1,
-    author_empid: 'E300',
-    parent_message_id: null,
-    conversation_id: 50,
-    linked_type: null,
-    linked_id: null,
-    visibility_scope: 'private',
-    visibility_department_id: null,
-    visibility_empid: 'E100,E300',
-    body: 'Other conversation root',
-    deleted_at: null,
-    created_at: new Date().toISOString(),
-  });
-
-  await deleteMessage({ user: baseUser, companyId: 1, messageId: 11, correlationId: 'corr-del', db, getSession });
-
-  assert.ok(db.messages.find((m) => m.id === 11)?.deleted_at);
-  assert.ok(db.messages.find((m) => m.id === 12)?.deleted_at);
-  assert.equal(db.messages.find((m) => m.id === 50)?.deleted_at, null);
-});
-
-test('thread loading resolves root by conversation_id and includes descendants', async () => {
-  const db = new MockDb();
-  const thread = await getThread({ user: baseUser, companyId: 1, messageId: 12, correlationId: 'corr-thread', db, getSession });
-  assert.equal(Number(thread.root.id), 11);
-  assert.ok(thread.replies.some((reply) => Number(reply.id) === 12));
-});
-
-
-test('postMessage requires conversationId when parentMessageId is provided', async () => {
-  const db = new MockDb();
   await assert.rejects(
-    () => postMessage({
-      user: baseUser,
-      companyId: 1,
-      payload: { idempotencyKey: 'missing-conv', body: 'Reply body', parentMessageId: 11 },
-      correlationId: 'corr-missing-conv',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'CONVERSATION_REQUIRED',
+    () => postConversationMessage({ user: { empid: 'E2', companyId: 1 }, companyId: 1, conversationId: created.conversation.id, db, getSession, payload: { body: 'Bad class', messageClass: 'private' } }),
+    /messageClass must be one of/,
   );
-});
 
-test('conversation-centric service helpers preserve canonical thread identity', async () => {
-  const db = new MockDb();
-  const root = await createConversationRoot({
-    user: baseUser,
-    companyId: 1,
-    payload: { idempotencyKey: 'conv-root', body: 'Conversation root', recipientEmpids: ['E200'] },
-    correlationId: 'corr-conv-root',
-    db,
-    getSession,
-  });
-
-  const conversationId = Number(root.conversation.id);
-  const nested = await postConversationMessage({
-    user: baseUser,
-    companyId: 1,
-    conversationId,
-    payload: { idempotencyKey: 'conv-reply', body: 'Nested', parentMessageId: root.message.id },
-    correlationId: 'corr-conv-reply',
-    db,
-    getSession,
-  });
-
-  assert.equal(Number(nested.message.conversation_id), conversationId);
-  const list = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-list', db, getSession });
-  assert.ok(list.items.some((item) => Number(item.id) === conversationId));
-
-  const thread = await getConversationMessages({
-    user: baseUser,
-    companyId: 1,
-    conversationId,
-    correlationId: 'corr-conversation-messages',
-    db,
-    getSession,
-  });
-  assert.ok(Array.isArray(thread.items));
-  assert.ok(thread.items.some((item) => Number(item.id) === Number(nested.message.id)));
-});
-
-test('postConversationMessage rejects non-root conversationId values', async () => {
-  const db = new MockDb();
-  await assert.rejects(
-    () => postConversationMessage({
-      user: baseUser,
-      companyId: 1,
-      conversationId: 12,
-      payload: { idempotencyKey: 'non-root-conv-id', body: 'Should fail' },
-      correlationId: 'corr-non-root-conv-id',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'CONVERSATION_NOT_FOUND',
-  );
-});
-
-test('postMessage rejects writes to conversations outside viewer scope', async () => {
-  const db = new MockDb();
-  const blockedUser = { empid: 'E999', companyId: 1 };
-  await assert.rejects(
-    () => postMessage({
-      user: blockedUser,
-      companyId: 1,
-      payload: { idempotencyKey: 'forbidden-conversation', body: 'Cannot post', conversationId: 11 },
-      correlationId: 'corr-forbidden-conversation',
-      db,
-      getSession,
-    }),
-    (error) => error?.code === 'CONVERSATION_NOT_FOUND',
-  );
-});
-
-test('listConversations hides private conversations and paginates with activity cursor', async () => {
-  const db = new MockDb();
-  db.conversations = [
-    { id: 21, company_id: 1, deleted_at: null, visibility_scope: 'private', visibility_empid: 'E100,E200', last_message_at: '2026-01-10T10:00:00.000Z' },
-    { id: 80, company_id: 1, deleted_at: null, visibility_scope: 'company', visibility_empid: null, last_message_at: '2026-01-09T10:00:00.000Z' },
-    { id: 19, company_id: 1, deleted_at: null, visibility_scope: 'company', visibility_empid: null, last_message_at: '2026-01-08T10:00:00.000Z' },
-  ];
-
-  const outsider = await listConversations({
-    user: { empid: 'E999', companyId: 1 },
-    companyId: 1,
-    correlationId: 'corr-outsider-list',
-    db,
-    getSession,
-  });
-  assert.deepEqual(outsider.items.map((item) => Number(item.id)), [80, 19]);
-
-  const page1 = await listConversations({ user: baseUser, companyId: 1, limit: 1, correlationId: 'corr-page-1', db, getSession });
-  assert.equal(Number(page1.items[0].id), 21);
-  assert.equal(Boolean(page1.pageInfo.hasMore), true);
-
-  const page2 = await listConversations({
-    user: baseUser,
-    companyId: 1,
-    limit: 2,
-    cursor: page1.pageInfo.nextCursor,
-    correlationId: 'corr-page-2',
-    db,
-    getSession,
-  });
-  assert.deepEqual(page2.items.map((item) => Number(item.id)), [80, 19]);
-});
-
-
-test('listConversations ensures a company general conversation exists and marks it general', async () => {
-  const db = new MockDb();
-  db.conversations = [
-    { id: 31, company_id: 1, deleted_at: null, linked_type: 'transaction', linked_id: '55', visibility_scope: 'private', visibility_empid: 'E100,E200', last_message_at: '2026-01-10T10:00:00.000Z' },
-  ];
-
-  const result = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-general-list', db, getSession });
-  assert.ok(result.items.some((item) => Number(item.id) !== 31 && item.is_general === true));
+  const sent = await postConversationMessage({ user: { empid: 'E2', companyId: 1 }, companyId: 1, conversationId: created.conversation.id, db, getSession, payload: { body: 'Allowed', messageClass: 'general' } });
+  const thread = await getConversationMessages({ user: creator, companyId: 1, conversationId: created.conversation.id, db, getSession });
+  assert.equal(sent.message.body, 'Allowed');
+  assert.equal(thread.items.length, 2);
 });

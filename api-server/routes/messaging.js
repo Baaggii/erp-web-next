@@ -29,34 +29,6 @@ function safeAttachmentName(input = '') {
   return name || 'file';
 }
 
-const postMessageSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['idempotencyKey', 'body'],
-  properties: {
-    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
-    body: { type: 'string', minLength: 1, maxLength: 4000 },
-    linkedType: { type: 'string', minLength: 1, maxLength: 64 },
-    linkedId: { type: 'string', minLength: 1, maxLength: 128 },
-    visibilityScope: { type: 'string', enum: ['company', 'department', 'private'] },
-    visibilityDepartmentId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    visibilityEmpid: { type: 'string', minLength: 1, maxLength: 64 },
-    recipientEmpids: {
-      type: 'array',
-      items: { type: 'string', minLength: 1, maxLength: 64 },
-    },
-    topic: { type: 'string', maxLength: 120 },
-    messageClass: { type: 'string', minLength: 1, maxLength: 64 },
-    message_class: { type: 'string', minLength: 1, maxLength: 64 },
-    clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
-    conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    conversation_id: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-  },
-};
-
-
 class Ajv {
   compile(schema) {
     return (value) => validateSchema(schema, value);
@@ -78,22 +50,13 @@ function validateSchema(schema, value) {
       return validateSchema(childSchema, value[key]);
     });
   }
-
   if (schema.type === 'array') {
     if (!Array.isArray(value)) return false;
     if (schema.minItems !== undefined && value.length < schema.minItems) return false;
-    if (schema.maxItems !== undefined && value.length > schema.maxItems) return false;
     return value.every((item) => validateSchema(schema.items || {}, item));
   }
-
-  if (schema.anyOf) {
-    return schema.anyOf.some((option) => validateSchema(option, value));
-  }
-
-  if (schema.type === 'integer') {
-    return Number.isInteger(value);
-  }
-
+  if (schema.anyOf) return schema.anyOf.some((option) => validateSchema(option, value));
+  if (schema.type === 'integer') return Number.isInteger(value);
   if (schema.type === 'string') {
     if (typeof value !== 'string') return false;
     if (schema.minLength !== undefined && value.length < schema.minLength) return false;
@@ -102,9 +65,37 @@ function validateSchema(schema, value) {
     if (schema.enum && !schema.enum.includes(value)) return false;
     return true;
   }
-
   return true;
 }
+
+const createConversationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['type', 'participants', 'body'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    type: { type: 'string', enum: ['private', 'linked'] },
+    participants: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1, maxLength: 64 } },
+    topic: { type: 'string', maxLength: 255 },
+    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    linkedType: { type: 'string', maxLength: 64 },
+    linkedId: { type: 'string', maxLength: 128 },
+  },
+};
+
+const postConversationMessageSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['body'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    topic: { type: 'string', maxLength: 255 },
+    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+  },
+};
 
 function correlation(req, res, next) {
   const correlationId = req.headers['x-correlation-id'] || createCorrelationId();
@@ -112,36 +103,17 @@ function correlation(req, res, next) {
   res.setHeader('x-correlation-id', correlationId);
   next();
 }
-
 router.use(correlation);
 
 const ajv = new Ajv();
-const validatePostMessage = ajv.compile(postMessageSchema);
+const validateCreateConversation = ajv.compile(createConversationSchema);
+const validatePostConversationMessage = ajv.compile(postConversationMessageSchema);
 
-
-function normalizeConversationPayload(req, _res, next) {
-  if (req?.body && typeof req.body === 'object') {
-    if (req.body.conversation_id != null && req.body.conversationId == null) {
-      req.body.conversationId = req.body.conversation_id;
-    }
-    if (req.body.conversationId != null && req.body.conversation_id == null) {
-      req.body.conversation_id = req.body.conversationId;
-    }
-  }
-  next();
-}
-
-
-function validatePostMessageBody(req, res, next) {
-  if (validatePostMessage(req.body)) return next();
-  return res.status(400).json({
-    status: 400,
-    error: {
-      code: 'VALIDATION_ERROR',
-      message: 'Invalid message payload',
-      correlationId: req.correlationId,
-    },
-  });
+function validateBody(validator, message) {
+  return (req, res, next) => {
+    if (validator(req.body)) return next();
+    return res.status(400).json({ status: 400, error: { code: 'VALIDATION_ERROR', message, correlationId: req.correlationId } });
+  };
 }
 
 async function handle(res, req, work, okStatus = 200) {
@@ -155,56 +127,16 @@ async function handle(res, req, work, okStatus = 200) {
 }
 
 router.get('/conversations', (req, res) =>
-  handle(res, req, () =>
-    listConversations({
-      user: req.user,
-      companyId: req.query.companyId,
-      linkedType: req.query.linkedType,
-      linkedId: req.query.linkedId,
-      cursor: req.query.cursor,
-      limit: req.query.limit,
-      correlationId: req.correlationId,
-    })));
+  handle(res, req, () => listConversations({ user: req.user, companyId: req.query.companyId, cursor: req.query.cursor, limit: req.query.limit, correlationId: req.correlationId })));
 
-router.post('/conversations', normalizeConversationPayload, validatePostMessageBody, (req, res) =>
-  handle(
-    res,
-    req,
-    () =>
-      createConversationRoot({
-        user: req.user,
-        companyId: req.body?.companyId ?? req.query.companyId,
-        payload: req.body,
-        correlationId: req.correlationId,
-      }),
-    201,
-  ));
+router.post('/conversations', validateBody(validateCreateConversation, 'Invalid conversation payload'), (req, res) =>
+  handle(res, req, () => createConversationRoot({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, payload: req.body, correlationId: req.correlationId }), 201));
 
 router.get('/conversations/:conversationId/messages', (req, res) =>
-  handle(res, req, () =>
-    getConversationMessages({
-      user: req.user,
-      companyId: req.query.companyId,
-      conversationId: Number(req.params.conversationId),
-      cursor: req.query.cursor,
-      limit: req.query.limit,
-      correlationId: req.correlationId,
-    })));
+  handle(res, req, () => getConversationMessages({ user: req.user, companyId: req.query.companyId, conversationId: Number(req.params.conversationId), cursor: req.query.cursor, limit: req.query.limit, correlationId: req.correlationId })));
 
-router.post('/conversations/:conversationId/messages', normalizeConversationPayload, validatePostMessageBody, (req, res) =>
-  handle(
-    res,
-    req,
-    () =>
-      postConversationMessage({
-        user: req.user,
-        companyId: req.body?.companyId ?? req.query.companyId,
-        conversationId: Number(req.params.conversationId),
-        payload: req.body,
-        correlationId: req.correlationId,
-      }),
-    201,
-  ));
+router.post('/conversations/:conversationId/messages', validateBody(validatePostConversationMessage, 'Invalid message payload'), (req, res) =>
+  handle(res, req, () => postConversationMessage({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, conversationId: Number(req.params.conversationId), payload: req.body, correlationId: req.correlationId }), 201));
 
 router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
   try {

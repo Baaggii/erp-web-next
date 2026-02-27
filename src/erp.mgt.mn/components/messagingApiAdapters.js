@@ -1,10 +1,7 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
 function deriveConversationTitle(entry) {
-  const isGeneral = (entry?.linked_type ?? entry?.linkedType) == null
-    && (entry?.linked_id ?? entry?.linkedId) == null
-    && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company';
-  if (isGeneral) return 'General';
+  if ((entry?.type || '').toLowerCase() === 'general') return 'General';
   return sanitizeMessageText(
     entry?.title
     || entry?.topic
@@ -23,17 +20,16 @@ export function adaptConversationListResponse(data) {
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (conversationId == null) return null;
         const normalizedId = normalizeId(conversationId);
+        const type = String(entry?.type || 'private').toLowerCase();
         return {
           id: `conversation:${normalizedId}`,
           conversationId,
           title: deriveConversationTitle(entry),
+          type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
-          visibilityScope: String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase(),
-          isGeneral: (entry?.is_general ?? entry?.isGeneral) === true
-            || ((entry?.linked_type ?? entry?.linkedType) == null
-              && (entry?.linked_id ?? entry?.linkedId) == null
-              && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company'),
+          isGeneral: type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true,
+          participants: Array.isArray(entry?.participants) ? entry.participants : [],
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
           unread: 0,
