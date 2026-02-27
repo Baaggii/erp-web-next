@@ -123,15 +123,23 @@ class MockDb {
     }
 
     if (text.includes('INSERT INTO erp_conversations')) {
-      const [companyId] = params;
+            const [companyId] = params;
+      const isGeneralInsert = text.includes("VALUES (?, NULL, NULL, 'company', NULL, NULL, ?, CURRENT_TIMESTAMP, NULL)");
+      const linkedType = isGeneralInsert ? null : params[1];
+      const linkedId = isGeneralInsert ? null : params[2];
+      const visibilityScope = isGeneralInsert ? 'company' : params[3];
+      const visibilityDepartmentId = isGeneralInsert ? null : params[4];
+      const visibilityEmpid = isGeneralInsert ? null : params[5];
       const id = this.nextId++;
       this.conversations.push({
         id,
         company_id: Number(companyId),
+        linked_type: linkedType ?? null,
+        linked_id: linkedId ?? null,
         deleted_at: null,
-        visibility_scope: 'company',
-        visibility_department_id: null,
-        visibility_empid: null,
+        visibility_scope: visibilityScope || 'company',
+        visibility_department_id: visibilityDepartmentId ?? null,
+        visibility_empid: visibilityEmpid ?? null,
         last_message_id: null,
         last_message_at: new Date().toISOString(),
       });
@@ -215,6 +223,28 @@ class MockDb {
         created_at: new Date().toISOString(),
       });
       return [{ insertId: id }, undefined];
+    }
+
+
+    if (text.startsWith('UPDATE erp_messages SET topic = ?') || text.startsWith('UPDATE erp_messages SET message_class = ?') || text.startsWith('UPDATE erp_messages SET topic = ?, message_class = ?')) {
+      const maybeTopic = params[0];
+      const maybeClass = params.length === 4 ? params[1] : (text.includes('message_class') ? params[0] : null);
+      const messageId = Number(params[params.length - 2]);
+      const row = this.messages.find((entry) => Number(entry.id) === messageId);
+      if (row) {
+        if (text.includes('topic')) row.topic = maybeTopic;
+        if (text.includes('message_class')) row.message_class = maybeClass;
+      }
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+    if (text.includes('UPDATE erp_conversations') && text.includes('visibility_empid = ?')) {
+      const [visibilityEmpid, conversationId] = params;
+      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId) && entry.visibility_scope === 'private');
+      if (row) {
+        row.visibility_empid = visibilityEmpid;
+      }
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
 
     if (text.startsWith('UPDATE erp_messages SET conversation_id = ?')) {
@@ -317,6 +347,32 @@ test('duplicate send idempotency replays existing message without creating anoth
 
   assert.equal(first.message.id, second.message.id);
   assert.equal(Number(first.message.conversation_id), Number(second.message.conversation_id));
+});
+
+
+
+test('idempotency rejects same key when metadata differs', async () => {
+  const db = new MockDb();
+  await postMessage({
+    user: baseUser,
+    companyId: 1,
+    payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic A', messageClass: 'private' },
+    correlationId: 'corr-idem-meta-1',
+    db,
+    getSession,
+  });
+
+  await assert.rejects(
+    () => postMessage({
+      user: baseUser,
+      companyId: 1,
+      payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic B', messageClass: 'private' },
+      correlationId: 'corr-idem-meta-2',
+      db,
+      getSession,
+    }),
+    (error) => error?.code === 'IDEMPOTENCY_KEY_CONFLICT',
+  );
 });
 
 test('deleting root message deletes only that conversation scope', async () => {

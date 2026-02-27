@@ -184,10 +184,11 @@ export function groupConversations(messages, viewerEmpid = null) {
   const generalParticipants = new Set();
 
   const isGeneralConversationMessage = (message) => {
+    const conversationId = getMessageConversationId(message);
+    if (conversationId) return false;
     const link = extractContextLink(message);
     const scope = resolveMessageVisibilityScope(message);
-    const hasTopic = Boolean(extractMessageTopic(message));
-    return !link.linkedType && !link.linkedId && scope === 'company' && !hasTopic;
+    return !link.linkedType && !link.linkedId && scope === 'company';
   };
 
   messages.forEach((msg) => {
@@ -1737,7 +1738,9 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      topic: canEditTopic ? safeTopic : undefined,
+      messageClass: visibilityScope === 'private' ? 'private' : 'general',
       companyId: normalizedCompanyId,
       visibilityScope,
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
@@ -1761,6 +1764,8 @@ export default function MessagingWidget() {
       id: clientTempId,
       company_id: normalizedCompanyId,
       body: payload.body,
+      topic: payload.topic || null,
+      message_class: payload.messageClass,
       author_empid: selfEmpid,
       recipient_empids: visibilityScope === 'private' ? allParticipants : null,
       visibility_scope: visibilityScope,
