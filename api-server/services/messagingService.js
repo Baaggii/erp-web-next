@@ -14,7 +14,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
-const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'private', 'financial', 'hr_sensitive', 'legal']);
+const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -342,25 +342,12 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const participantList = Array.isArray(payload?.participants)
-    ? payload.participants
-    : payload?.participantEmpids;
   const recipients = Array.isArray(payload?.recipientEmpids)
-    ? payload.recipientEmpids
-    : participantList;
-  const normalizedRecipients = Array.from(new Set((recipients || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
+    : [];
 
   const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
-  const scope = requestedScope || (normalizedRecipients.length > 0 ? 'private' : 'company');
-  if (requestedScope === 'company' && normalizedRecipients.length > 0) {
-    throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'company visibility cannot include participants');
-  }
-  if (scope === 'company' && normalizedRecipients.length > 0) {
-    throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be private when participants are provided');
-  }
-  if (scope === 'private' && normalizedRecipients.length === 0) {
-    throw createError(400, 'VISIBILITY_EMPID_REQUIRED', 'participants are required for private scope');
-  }
+  const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
   if (!VISIBILITY_SCOPES.has(scope)) {
     throw createError(400, 'VISIBILITY_SCOPE_INVALID', 'visibilityScope must be company, department, or private');
   }
@@ -374,7 +361,6 @@ function normalizeVisibility(payload, session, user) {
     ? Array.from(new Set([
       ...recipients,
       ...parsePrivateParticipants(payload?.visibilityEmpid),
-      ...parsePrivateParticipants(payload?.participantEmpids),
       String(user?.empid || '').trim(),
     ].filter(Boolean)))
     : [];
@@ -434,35 +420,6 @@ async function persistMessageMetadata(db, { messageId, companyId, topic, message
   }
   if (messageClass) {
     assignments.push('message_class = ?');
-  try {
-    await db.query('DELETE FROM erp_conversation_participants WHERE company_id = ? AND conversation_id = ?', [companyId, conversationId]);
-    if (normalizedParticipants.length > 0) {
-      const valuesSql = normalizedParticipants.map(() => '(?, ?, ?)').join(', ');
-      const params = normalizedParticipants.flatMap((empid) => [conversationId, companyId, empid]);
-      await db.query(
-        `INSERT INTO erp_conversation_participants (conversation_id, company_id, empid) VALUES ${valuesSql}`,
-        params,
-      );
-    }
-  } catch (error) {
-    if (!isUnknownColumnError(error, 'conversation_id') && !String(error?.message || '').includes('erp_conversation_participants')) throw error;
-  }
-}
-
-async function syncMessageParticipants(db, { companyId, messageId, participants }) {
-  if (!companyId || !messageId) return;
-  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
-  if (normalizedParticipants.length === 0) return;
-  try {
-    const valuesSql = normalizedParticipants.map(() => '(?, ?, ?)').join(', ');
-    const params = normalizedParticipants.flatMap((empid) => [messageId, companyId, empid]);
-    await db.query(
-      `INSERT IGNORE INTO erp_message_participants (message_id, company_id, empid) VALUES ${valuesSql}`,
-      params,
-    );
-  } catch (error) {
-    if (!String(error?.message || '').includes('erp_message_participants')) throw error;
-  }
     params.push(messageClass);
   }
   if (assignments.length === 0) return;
@@ -1023,17 +980,10 @@ async function createMessageInternal({
         `INSERT INTO erp_messages
           (company_id, author_empid, parent_message_id, conversation_id, body)
           VALUES (?, ?, ?, ?, ?)`,
-    const conversationParticipants = [
-      ...parsePrivateParticipants(visibility.visibilityEmpid),
-      ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
-      ...(Array.isArray(payload?.participants) ? payload.participants : []),
-    ];
-      participants: conversationParticipants,
-    });
-    await syncMessageParticipants(db, {
-      companyId: ctx.companyId,
-      messageId,
-      participants: conversationParticipants,
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
           canonicalConversationId || parentMessageId || 0,
           body,
         ],
@@ -1107,49 +1057,9 @@ export async function postMessage({ user, companyId, payload, correlationId, db 
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
   const ctx = { user, companyId: scopedCompanyId, correlationId, session };
 
-  const conversationParticipants = parsePrivateParticipants(conversation.visibility_empid);
-  const payloadParticipants = Array.isArray(payload?.participants)
-    ? payload.participants
-    : (Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []);
-  const mergedParticipants = conversation.visibility_scope === 'private'
-    ? Array.from(new Set([
-      ...conversationParticipants,
-      ...payloadParticipants.map((entry) => String(entry || '').trim()).filter(Boolean),
-    ]))
-    : [];
-
-    payload: {
-      ...(payload || {}),
-      visibilityScope: conversation.visibility_scope,
-      visibilityDepartmentId: conversation.visibility_department_id,
-      visibilityEmpid: conversation.visibility_scope === 'private' ? mergedParticipants.join(',') : conversation.visibility_empid,
-      recipientEmpids: conversation.visibility_scope === 'private' ? mergedParticipants : undefined,
-      participants: conversation.visibility_scope === 'private' ? mergedParticipants : undefined,
-    },
-  if (visibility.visibilityScope === 'private') {
-    await syncConversationParticipants(db, {
-      companyId: scopedCompanyId,
-      conversationId,
-      participants: parsePrivateParticipants(visibility.visibilityEmpid),
-    });
-  }
-    return {
-      conversation: {
-        id: conversationId,
-        company_id: scopedCompanyId,
-        visibility_scope: visibility.visibilityScope,
-        visibility_empid: visibility.visibilityEmpid,
-      },
-    };
-  return {
-    conversation: {
-      id: conversationId,
-      company_id: scopedCompanyId,
-      visibility_scope: visibility.visibilityScope,
-      visibility_empid: visibility.visibilityEmpid,
-    },
-    message: created.message,
-  };
+  const parentMessageId = toId(payload?.parentMessageId ?? payload?.parent_message_id);
+  const requestedConversationId = readConversationId(payload);
+  if (!requestedConversationId) {
     throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
   }
 
@@ -1354,12 +1264,8 @@ export async function getConversationMessages({ conversationId, ...rest }) {
   const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   return {
     correlationId,
-  const participantPayload = Array.isArray(payload?.participants)
-    ? payload.participants
-    : payload?.recipientEmpids;
-  const requestedParticipants = Array.isArray(participantPayload)
-    ? participantPayload.map((entry) => String(entry || '').trim()).filter(Boolean)
-      participants: message.visibility_scope === 'private' ? Array.from(privateParticipants) : payload?.participants,
+    conversationId: normalizedConversationId,
+    items,
     pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
 }
