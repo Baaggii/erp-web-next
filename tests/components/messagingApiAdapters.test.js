@@ -8,12 +8,11 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
     items: [
       {
         id: 15,
-        type: 'private',
         linked_type: 'sales_order',
         linked_id: 44,
+        visibility_scope: 'private',
         last_message_at: '2026-01-02T03:04:05.000Z',
         last_message_id: 901,
-        participants: [{ empid: 'E100' }, { empid: 'E200' }],
       },
     ],
     pageInfo: { page: 1, limit: 20 },
@@ -25,20 +24,18 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
     title: 'sales_order #44',
     linkedType: 'sales_order',
     linkedId: '44',
-    type: 'private',
+    visibilityScope: 'private',
     isGeneral: false,
     lastMessageAt: '2026-01-02T03:04:05.000Z',
     lastMessageId: '901',
-    participants: ['E100', 'E200'],
     unread: 0,
     raw: {
       id: 15,
-      type: 'private',
       linked_type: 'sales_order',
       linked_id: 44,
+      visibility_scope: 'private',
       last_message_at: '2026-01-02T03:04:05.000Z',
       last_message_id: 901,
-      participants: [{ empid: 'E100' }, { empid: 'E200' }],
     },
   });
   assert.deepEqual(adapted.pageInfo, { page: 1, limit: 20 });
@@ -63,9 +60,9 @@ test('adaptThreadResponse normalizes thread items with guaranteed conversation_i
 });
 
 
-test('adaptConversationListResponse marks type=general conversation as general', () => {
+test('adaptConversationListResponse marks company-wide unlinked conversation as general', () => {
   const adapted = adaptConversationListResponse({
-    items: [{ id: 5, type: 'general', linked_type: null, linked_id: null }],
+    items: [{ id: 5, linked_type: null, linked_id: null, visibility_scope: 'company' }],
   });
 
   assert.equal(adapted.items[0].isGeneral, true);
