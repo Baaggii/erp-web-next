@@ -123,18 +123,38 @@ class MockDb {
     }
 
     if (text.includes('INSERT INTO erp_conversations')) {
-      const [companyId] = params;
       const id = this.nextId++;
-      this.conversations.push({
-        id,
-        company_id: Number(companyId),
-        deleted_at: null,
-        visibility_scope: 'company',
-        visibility_department_id: null,
-        visibility_empid: null,
-        last_message_id: null,
-        last_message_at: new Date().toISOString(),
-      });
+      let conversation;
+      if (params.length <= 2) {
+        const [companyId] = params;
+        conversation = {
+          id,
+          company_id: Number(companyId),
+          linked_type: null,
+          linked_id: null,
+          deleted_at: null,
+          visibility_scope: 'company',
+          visibility_department_id: null,
+          visibility_empid: null,
+          last_message_id: null,
+          last_message_at: new Date().toISOString(),
+        };
+      } else {
+        const [companyId, linkedType, linkedId, visibilityScope, visibilityDepartmentId, visibilityEmpid] = params;
+        conversation = {
+          id,
+          company_id: Number(companyId),
+          linked_type: linkedType ?? null,
+          linked_id: linkedId ?? null,
+          deleted_at: null,
+          visibility_scope: visibilityScope || 'company',
+          visibility_department_id: visibilityDepartmentId ?? null,
+          visibility_empid: visibilityEmpid ?? null,
+          last_message_id: null,
+          last_message_at: new Date().toISOString(),
+        };
+      }
+      this.conversations.push(conversation);
       return [{ insertId: id }, undefined];
     }
 
@@ -250,6 +270,28 @@ class MockDb {
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
 
+
+    if (text.startsWith('UPDATE erp_messages SET topic = ?')) {
+      const [topic, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.topic = topic;
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_messages SET message_class = ?')) {
+      const [messageClass, messageId] = params;
+      const row = this.messages.find((entry) => Number(entry.id) === Number(messageId));
+      if (row) row.message_class = messageClass;
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_conversations SET topic = ?')) {
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (text.includes('INSERT IGNORE INTO erp_message_participants')) {
+      return [{ affectedRows: 1 }, undefined];
+    }
     if (text.includes('INSERT IGNORE INTO erp_message_receipts')) {
       return [{ affectedRows: 1 }, undefined];
     }
