@@ -5235,10 +5235,18 @@ export async function listTableRows(
         }
       } else {
         await ensureValidColumns(tableName, columns, [field]);
-        const range = String(value).match(/^(\d{4}[-.]\d{2}[-.]\d{2})\s*-\s*(\d{4}[-.]\d{2}[-.]\d{2})$/);
+        const normalizedValue =
+          typeof value === 'string' ? value.trim().replace(/\./g, '-') : value;
+        const range = String(normalizedValue).match(/^(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})$/);
         if (range) {
-          filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
+          filterClauses.push(`DATE(\`${field}\`) BETWEEN ? AND ?`);
           params.push(range[1], range[2]);
+        } else if (
+          typeof normalizedValue === 'string' &&
+          /^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)
+        ) {
+          filterClauses.push(`DATE(\`${field}\`) = ?`);
+          params.push(normalizedValue);
         } else if (typeof value === 'string') {
           const hasWildcards = value.includes('%') || value.includes('_');
           if (hasWildcards) {
