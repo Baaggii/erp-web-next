@@ -15,6 +15,9 @@ const INTERNAL_COLS = new Set([
   '__detail_report',
 ]);
 
+const REPORT_FRAME_MIN_HEIGHT = '26rem';
+const REPORT_FRAME_MAX_HEIGHT = 'max(26rem, min(72vh, calc(100vh - 16rem)))';
+
 function normalizeParamName(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -888,7 +891,9 @@ export default function AccountingPeriodsPage() {
                         getDrilldownRowKey={(parentRowId, detailIndex) =>
                           buildPreviewDrilldownKey(result.name, parentRowId, detailIndex)}
                         excludeColumns={INTERNAL_COLS}
-                        maxHeight={260}
+                        autoFitColumns={true}
+                        minHeight={REPORT_FRAME_MIN_HEIGHT}
+                        maxHeight={REPORT_FRAME_MAX_HEIGHT}
                         showTotalRowCount
                       />
                     ) : <p style={{ margin: 0 }}>No rows returned.</p>}
@@ -946,7 +951,9 @@ export default function AccountingPeriodsPage() {
               drilldownRowSelection={snapshotDrilldownSelection}
               onDrilldownRowSelectionChange={handleSnapshotDrilldownSelectionChange}
               excludeColumns={INTERNAL_COLS}
-              maxHeight={320}
+              autoFitColumns={true}
+              minHeight={REPORT_FRAME_MIN_HEIGHT}
+              maxHeight={REPORT_FRAME_MAX_HEIGHT}
               showTotalRowCount
             />
           ) : (
