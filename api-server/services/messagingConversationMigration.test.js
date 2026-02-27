@@ -4,12 +4,14 @@ import fs from 'node:fs';
 
 const migrationPath = new URL('../../db/migrations/2026-02-26_messaging_strict_conversation_table.sql', import.meta.url);
 
-test('strict conversation migration creates conversation table and enforces FK guards', () => {
+test('strict conversation migration creates normalized conversation schema', () => {
   const sql = fs.readFileSync(migrationPath, 'utf8');
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS erp_conversations/);
-  assert.match(sql, /erp_message_conversation_repair_report/);
-  assert.match(sql, /FOREIGN KEY \(conversation_id\) REFERENCES erp_conversations\(id\)/);
-  assert.match(sql, /idx_erp_messages_company_conversation_id_desc/);
-  assert.match(sql, /CONVERSATION_IMMUTABLE/);
-  assert.match(sql, /CONVERSATION_MISMATCH/);
+  assert.match(sql, /CREATE TABLE erp_conversations/);
+  assert.match(sql, /type ENUM\('general','private','linked'\)/);
+  assert.match(sql, /CREATE TABLE erp_conversation_participants/);
+  assert.match(sql, /PRIMARY KEY \(conversation_id, empid\)/);
+  assert.match(sql, /CREATE TABLE erp_messages/);
+  assert.match(sql, /message_class ENUM\('general','financial','hr_sensitive','legal'\)/);
+  assert.doesNotMatch(sql, /visibility_scope/);
+  assert.doesNotMatch(sql, /visibility_empid/);
 });

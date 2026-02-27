@@ -1684,9 +1684,8 @@ export default function MessagingWidget() {
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
       : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
-    const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
-    if (visibilityScope === 'private' && allParticipants.length < 2) {
+    if (!isGeneralChannel && allParticipants.length < 2) {
       setComposerAnnouncement('Select at least one recipient before sending a private message.');
       return;
     }
@@ -1740,14 +1739,17 @@ export default function MessagingWidget() {
       clientTempId,
       body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       topic: canEditTopic ? safeTopic : undefined,
-      messageClass: visibilityScope === 'private' ? 'private' : 'general',
+      messageClass: 'general',
       companyId: normalizedCompanyId,
-      visibilityScope,
-      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
+
+    if (isDraftConversation) {
+      payload.type = 'private';
+      payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
+    }
 
     const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !targetConversationId && !shouldSendReply);
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
@@ -1767,8 +1769,7 @@ export default function MessagingWidget() {
       topic: payload.topic || null,
       message_class: payload.messageClass,
       author_empid: selfEmpid,
-      recipient_empids: visibilityScope === 'private' ? allParticipants : null,
-      visibility_scope: visibilityScope,
+      recipient_empids: !isGeneralChannel ? allParticipants : null,
       linked_type: linkedType,
       linked_id: linkedId,
       conversation_id: optimisticConversationId,
@@ -1831,7 +1832,7 @@ export default function MessagingWidget() {
         threadRootIdToRefresh = targetConversationId || activeConversation?.conversationId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
-      if (visibilityScope === 'private') {
+      if (!isGeneralChannel) {
         rememberConversationParticipants(threadRootIdToRefresh || createdMessage?.id, allParticipants);
       }
       try {
