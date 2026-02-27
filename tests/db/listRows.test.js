@@ -164,3 +164,24 @@ test('listTableRows can include soft-deleted rows when requested', async () => {
     'count query should omit soft delete filter when includeDeleted is true',
   );
 });
+
+
+test('listTableRows applies date-only equality for date-like filters', async () => {
+  const restore = mockPool({}, [{ id: 1, created_at: '2026-01-01 12:00:00' }], ['company_id', 'id', 'created_at']);
+  await db.listTableRows('users', {
+    filters: { created_at: '2026-01-01' },
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.ok(main.sql.includes('DATE(`created_at`) ='));
+});
+
+test('listTableRows applies date-only ranges for date-like range filters', async () => {
+  const restore = mockPool({}, [{ id: 1, created_at: '2026-01-01 12:00:00' }], ['company_id', 'id', 'created_at']);
+  await db.listTableRows('users', {
+    filters: { created_at: '2026-01-01-2026-01-31' },
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.ok(main.sql.includes('DATE(`created_at`) BETWEEN'));
+});
