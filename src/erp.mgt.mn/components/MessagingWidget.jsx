@@ -10,9 +10,9 @@ import {
   getCompanyCacheKey,
   prioritizeConversationSummaries,
   messagingWidgetReducer,
+  normalizeConversationId,
   normalizeId,
   resolvePresenceStatus,
-  resolveThreadRefreshRootId,
   safePreviewableFile,
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
@@ -183,26 +183,6 @@ export function groupConversations(messages, viewerEmpid = null) {
   const map = new Map();
   const generalMessages = [];
   const generalParticipants = new Set();
-  const byId = new Map(messages.map((msg) => [String(msg.id), msg]));
-
-  const resolveRootMessageId = (message) => {
-    if (!message) return null;
-    const conversationId = canonicalConversationId(message);
-    const seedId = conversationId || null;
-    if (!seedId) return null;
-
-    let current = byId.get(String(seedId)) || message;
-    const visited = new Set();
-    while (current) {
-      const parentId = current.parent_message_id || current.parentMessageId;
-      if (!parentId) return Number(current.id);
-      if (visited.has(String(parentId))) return Number(parentId);
-      visited.add(String(parentId));
-      current = byId.get(String(parentId));
-      if (!current) return Number(parentId);
-    }
-    return null;
-  };
 
   const isGeneralConversationMessage = (message) => {
     const link = extractContextLink(message);
@@ -218,33 +198,23 @@ export function groupConversations(messages, viewerEmpid = null) {
       return;
     }
 
-    const resolvedRootMessageId = resolveRootMessageId(msg);
-    if (!resolvedRootMessageId) return;
-    const rootMessage = byId.get(String(resolvedRootMessageId));
-    if (rootMessage && isGeneralConversationMessage(rootMessage)) {
-      generalMessages.push(msg);
-      collectMessageParticipantEmpids(msg).forEach((empid) => generalParticipants.add(empid));
-      return;
-    }
-    const hasAnyThreadPointer = Boolean(
-      normalizeId(canonicalConversationId(msg)),
-    );
-    if (!rootMessage && hasAnyThreadPointer) {
-      return;
-    }
-    const topic = extractMessageTopic(rootMessage || msg) || extractMessageTopic(msg);
-    const rootLink = extractContextLink(rootMessage || msg);
-    const key = `message:${resolvedRootMessageId}`;
+    const conversationId = canonicalConversationId(msg);
+    if (!conversationId) return;
+
+    const topic = extractMessageTopic(msg);
+    const rootLink = extractContextLink(msg);
+    const key = `conversation:${conversationId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
+        conversationId,
         title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId
           ? `Transaction #${rootLink.linkedId}`
-          : sanitizeMessageText(decodeMessageContent((rootMessage || msg)?.body || '').text).slice(0, 72) || 'Conversation'),
+          : sanitizeMessageText(decodeMessageContent(msg?.body || '').text).slice(0, 72) || 'Conversation'),
         messages: [],
         linkedType: rootLink.linkedType,
         linkedId: rootLink.linkedId,
-        rootMessageId: resolvedRootMessageId,
+        isGeneral: false,
         participants: [],
         isPrivateOnly: true,
       });
@@ -264,7 +234,6 @@ export function groupConversations(messages, viewerEmpid = null) {
     messages: generalMessages,
     linkedType: null,
     linkedId: null,
-    rootMessageId: null,
     isGeneral: true,
     isPrivateOnly: false,
     participants: Array.from(generalParticipants),
@@ -278,15 +247,15 @@ export function groupConversations(messages, viewerEmpid = null) {
     return conversation.messages.every((message) => canViewerAccessMessage(message, normalizedViewer));
   });
 
-  const sorted = visibleConversations.sort((a, b) => {
+  return visibleConversations.sort((a, b) => {
     if (a.isGeneral) return -1;
     if (b.isGeneral) return 1;
     const aTime = new Date(a.messages.at(-1)?.created_at || 0).getTime();
     const bTime = new Date(b.messages.at(-1)?.created_at || 0).getTime();
     return bTime - aTime;
   });
-  return sorted;
 }
+
 
 function resolvePresence(record) {
   return resolvePresenceStatus(record);
@@ -318,14 +287,10 @@ function createIdempotencyKey() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function conversationRootIdFromSelection(conversationId) {
-  const raw = normalizeId(conversationId);
+function conversationIdFromSelection(conversationId) {
+  const raw = normalizeConversationId(conversationId);
   if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  if (raw.startsWith('message:')) {
-    const candidate = raw.slice('message:'.length);
-    return /^\d+$/.test(candidate) ? candidate : null;
-  }
-  return /^\d+$/.test(raw) ? raw : null;
+  return raw;
 }
 
 
@@ -713,8 +678,8 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('message:')) return rawConversationId;
-      if (/^\d+$/.test(rawConversationId)) return `message:${rawConversationId}`;
+      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
+      if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
       return null;
     })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
@@ -884,59 +849,30 @@ export default function MessagingWidget() {
         const data = await res.json();
         if (disposed) return;
         const adaptedConversations = adaptConversationListResponse(data);
-        const incomingMessages = adaptedConversations.items.map((conversation) => ({
-          id: conversation.lastMessageId || `conversation:${conversation.conversationId}`,
-          conversation_id: conversation.conversationId,
-          parent_message_id: null,
-          body: '',
-          created_at: conversation.lastMessageAt,
-          visibility_scope: conversation.visibilityScope || 'company',
-          linked_type: conversation.linkedType,
-          linked_id: conversation.linkedId,
-          topic: conversation.title,
-        }));
-        const participantCache = readParticipantCache(participantCacheKey);
-        const hydratedMessages = incomingMessages.map((message) => {
-          const rootMessageId = normalizeId(
-            message?.conversation_id
-            || message?.conversationId
-            || message?.parentMessageId
-            || message?.id,
-          );
-          const rememberedParticipants = participantCache[rootMessageId];
-          if (!rememberedParticipants?.length) return message;
-          const detectedParticipants = collectMessageParticipantEmpids(message);
-          if (detectedParticipants.length > 1) return message;
-          return {
-            ...message,
-            recipient_empids: message?.recipient_empids ?? message?.recipientEmpids ?? rememberedParticipants,
-            visibility_scope: message?.visibility_scope || message?.visibilityScope || 'private',
-          };
+        dispatch({
+          type: 'conversations/loadSuccess',
+          payload: {
+            companyKey: getCompanyCacheKey(activeCompany),
+            items: adaptedConversations.items,
+          },
         });
-        const visibleMessages = filterVisibleMessages(hydratedMessages, selfEmpid);
-        groupConversations(visibleMessages, selfEmpid).forEach((conversation) => {
-          if (conversation?.isGeneral || !conversation?.rootMessageId) return;
-          rememberConversationParticipants(conversation.rootMessageId, conversation.participants || []);
-        });
-        const visibleConversationIds = new Set(
-          groupConversations(visibleMessages, selfEmpid)
-            .filter((conversation) => conversation.isGeneral || !selfEmpid || conversation.participants.includes(selfEmpid))
-            .map((conversation) => conversation.id),
-        );
+
+        const visibleConversationIds = new Set(adaptedConversations.items.map((conversation) => conversation.id));
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
-        const storedConversationId = (() => {
-          if (!rawStoredConversationId) return null;
-          if (rawStoredConversationId === 'general' || rawStoredConversationId.startsWith('message:')) return rawStoredConversationId;
-          if (/^\d+$/.test(rawStoredConversationId)) return `message:${rawStoredConversationId}`;
-          return null;
-        })();
+        const normalizedStoredConversationId = normalizeConversationId(rawStoredConversationId);
+        const storedConversationId = rawStoredConversationId === 'general'
+          ? 'general'
+          : normalizedStoredConversationId
+            ? `conversation:${normalizedStoredConversationId}`
+            : null;
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
           dispatch({ type: 'widget/setConversation', payload: null });
           globalThis.sessionStorage?.removeItem(sessionConversationKey);
         }
+
         setMessagesByCompany((prev) => ({
           ...prev,
-          [getCompanyCacheKey(activeCompany)]: visibleMessages,
+          [getCompanyCacheKey(activeCompany)]: prev[getCompanyCacheKey(activeCompany)] || [],
         }));
         setNetworkState('ready');
       } catch (err) {
@@ -1188,7 +1124,7 @@ export default function MessagingWidget() {
         return;
       }
 
-      const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+      const selectedRootId = conversationIdFromSelection(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
       fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
     };
@@ -1233,13 +1169,25 @@ export default function MessagingWidget() {
       });
     };
     const onConversationDeleted = (payload) => {
-      const conversationId = Number(payload?.conversation_id || payload?.conversationId || payload?.id);
+      const conversationId = normalizeConversationId(payload?.conversation_id || payload?.conversationId || payload?.id);
       if (!conversationId) return;
+      const conversationUiId = `conversation:${conversationId}`;
+      const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
       setMessagesByCompany((prev) => {
-        const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.conversation_id || entry.conversationId || entry.id) !== conversationId);
-        return { ...prev, [key]: nextMessages };
+        const nextMessages = (prev[companyKey] || []).filter((entry) => normalizeConversationId(entry.conversation_id || entry.conversationId) !== conversationId);
+        return { ...prev, [companyKey]: nextMessages };
       });
+      const currentConversations = state.conversationsByCompany[companyKey] || [];
+      dispatch({
+        type: 'conversations/loadSuccess',
+        payload: {
+          companyKey,
+          items: currentConversations.filter((entry) => entry.id !== conversationUiId),
+        },
+      });
+      if (state.activeConversationId === conversationUiId) {
+        dispatch({ type: 'widget/setConversation', payload: null });
+      }
     };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1260,7 +1208,7 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
 
-      const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+      const selectedRootId = conversationIdFromSelection(state.activeConversationId);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
@@ -1307,22 +1255,15 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const groupedConversations = useMemo(() => groupConversations(messages, selfEmpid), [messages, selfEmpid]);
   const conversations = useMemo(() => {
-    if (!selfEmpid) return groupedConversations;
-    return groupedConversations.filter((conversation) => conversation.isGeneral || conversation.participants.includes(selfEmpid));
-  }, [groupedConversations, selfEmpid]);
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    return state.conversationsByCompany[companyKey] || [];
+  }, [companyId, state.activeCompanyId, state.conversationsByCompany]);
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
-      .map((conversation) => {
-        const latestBySelf = conversation.messages
-          .filter((msg) => normalizeId(msg.author_empid) === selfEmpid)
-          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
-        if (!latestBySelf) return null;
-        return { id: conversation.id, at: new Date(latestBySelf.created_at || 0).getTime() };
-      })
-      .filter(Boolean)
+      .map((conversation) => ({ id: conversation.id, at: new Date(conversation.lastMessageAt || 0).getTime() }))
+      .filter((entry) => Number.isFinite(entry.at) && entry.at > 0)
       .sort((a, b) => b.at - a.at);
     return latestByConversation[0]?.id || null;
   }, [conversations, selfEmpid]);
@@ -1335,7 +1276,6 @@ export default function MessagingWidget() {
       isGeneral: false,
       linkedType: state.composer.linkedType,
       linkedId: state.composer.linkedId,
-      rootMessageId: null,
       messages: [],
       participants: Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
       isDraft: true,
@@ -1351,7 +1291,12 @@ export default function MessagingWidget() {
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
   const activeConversation = isDraftConversation ? null : requestedConversation;
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
-  const threadMessages = useMemo(() => buildNestedThreads(activeConversation?.messages || []), [activeConversation]);
+  const activeConversationNumericId = normalizeConversationId(activeConversationId);
+  const threadMessagesRaw = useMemo(
+    () => messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === activeConversationNumericId),
+    [activeConversationNumericId, messages],
+  );
+  const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
   const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
 
@@ -1380,29 +1325,13 @@ export default function MessagingWidget() {
   }, [conversations, lastUserConversationId, state.activeConversationId]);
 
   useEffect(() => {
-    if (!activeConversation?.rootMessageId) return;
-    const rootExists = messages.some((entry) => Number(entry.id) === Number(activeConversation.rootMessageId));
-    if (!rootExists) dispatch({ type: 'widget/setConversation', payload: null });
-  }, [activeConversation?.rootMessageId, messages]);
-
-  useEffect(() => {
     if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) return;
     const exists = conversations.some((conversation) => conversation.id === state.activeConversationId);
     if (!exists) dispatch({ type: 'widget/setConversation', payload: null });
   }, [conversations, state.activeConversationId]);
 
   useEffect(() => {
-    if (!state.activeConversationId || state.activeConversationId === NEW_CONVERSATION_ID) return;
-    if (state.activeConversationId === 'general' || !selfEmpid) return;
-    const selectedConversation = conversations.find((conversation) => conversation.id === state.activeConversationId);
-    if (!selectedConversation) return;
-    if (!selectedConversation.participants.includes(selfEmpid)) {
-      dispatch({ type: 'widget/setConversation', payload: null });
-    }
-  }, [conversations, selfEmpid, state.activeConversationId]);
-
-  useEffect(() => {
-    const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+    const selectedRootId = conversationIdFromSelection(state.activeConversationId);
     const activeCompany = state.activeCompanyId || companyId;
     if (!selectedRootId || !activeCompany) return;
     fetchThreadMessages(selectedRootId, activeCompany);
@@ -1497,20 +1426,23 @@ export default function MessagingWidget() {
   }, [employeeRecords, employeeStatusFilter, employeeSearch]);
 
   const conversationSummaries = useMemo(() => conversationSummariesSource.map((conversation) => {
-    const previewMessage = conversation.messages.at(-1);
+    const convId = normalizeConversationId(conversation.conversationId || conversation.id);
+    const conversationMessages = messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === convId);
+    const previewMessage = conversationMessages.at(-1);
     const previewDecoded = decodeMessageContent(previewMessage?.body || '');
     return {
       ...conversation,
-      unread: conversation.messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
+      messages: conversationMessages,
+      unread: conversationMessages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
       groupName: conversation.isGeneral
         ? 'Company-wide'
         : conversation.linkedType && conversation.linkedId
           ? `${conversation.linkedType} #${conversation.linkedId}`
-          : `Thread #${conversation.rootMessageId}`,
-      lastActivity: previewMessage?.created_at || null,
+          : `Conversation #${conversation.conversationId || normalizeConversationId(conversation.id)}`,
+      lastActivity: previewMessage?.created_at || conversation.lastMessageAt || null,
     };
-  }), [conversationSummariesSource, selfEmpid]);
+  }), [conversationSummariesSource, messages, selfEmpid]);
 
   const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
   const sessionUserLabel = sanitizeMessageText(
@@ -1571,8 +1503,8 @@ export default function MessagingWidget() {
   }, [composerRecipientSearch, employeeRecords, conversationParticipantIds]);
 
   const activeRootMessage = useMemo(
-    () => messages.find((entry) => Number(entry.id) === Number(activeConversation?.rootMessageId)) || null,
-    [messages, activeConversation?.rootMessageId],
+    () => messages.find((entry) => Number(entry.id) === Number(activeConversation?.conversationId)) || null,
+    [messages, activeConversation?.conversationId],
   );
 
   const isReplyMode = Boolean(state.composer.replyToId);
@@ -1635,7 +1567,7 @@ export default function MessagingWidget() {
       const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
       return { ...prev, [key]: nextMessages };
     });
-    if (Number(activeConversation?.rootMessageId) === Number(messageId)) {
+    if (Number(activeConversation?.conversationId) === Number(messageId)) {
       dispatch({ type: 'widget/setConversation', payload: null });
     }
     setComposerAnnouncement('Conversation deleted.');
@@ -1662,13 +1594,13 @@ export default function MessagingWidget() {
   };
 
   const handleDeleteConversationFromList = async (conversation) => {
-    if (!conversation?.rootMessageId) return;
-    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId));
+    if (!conversation?.conversationId) return;
+    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.conversationId));
     if (!canDeleteMessage(rootMessage)) {
       setComposerAnnouncement('You do not have permission to delete this thread.');
       return;
     }
-    await handleDeleteMessage(conversation.rootMessageId);
+    await handleDeleteMessage(conversation.conversationId);
   };
 
   const dropTemporaryComposerMessage = (activeCompany, clientTempId) => {
@@ -1691,7 +1623,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
-    const selectedRootIdFromState = conversationRootIdFromSelection(state.activeConversationId);
+    const selectedConversationIdFromState = conversationIdFromSelection(state.activeConversationId);
     if (!state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Select an existing conversation or click New conversation before sending.');
       return;
@@ -1699,7 +1631,7 @@ export default function MessagingWidget() {
     const hasSelectedConversation = Boolean(
       isDraftConversation
       || activeConversation
-      || selectedRootIdFromState
+      || selectedConversationIdFromState
       || state.activeConversationId === 'general',
     );
 
@@ -1758,11 +1690,11 @@ export default function MessagingWidget() {
     }
     const clientTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !selectedRootIdFromState) {
+    if (!isDraftConversation && state.activeConversationId && !selectedIsGeneral && !selectedConversationIdFromState) {
       setComposerAnnouncement('The selected conversation is unavailable. Refresh and try again.');
       return;
     }
-    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && Boolean(selectedRootIdFromState);
+    const hasThreadContext = !isDraftConversation && !selectedIsGeneral && Boolean(selectedConversationIdFromState);
     if (!hasThreadContext && !state.activeConversationId && !isDraftConversation) {
       setComposerAnnouncement('Start a new conversation from the New conversation button.');
       return;
@@ -1780,13 +1712,13 @@ export default function MessagingWidget() {
           ?.id,
       )
       : null;
-    const fallbackRootReplyTargetId = parseThreadMessageId(
-      selectedConversation?.rootMessageId
-      || selectedRootIdFromState
+    const targetConversationId = parseThreadMessageId(
+      selectedConversation?.conversationId
+      || selectedConversationIdFromState
       || generalConversationRootId,
     );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
-    if ((shouldSendReply || hasThreadContext) && !fallbackRootReplyTargetId && !explicitReplyTargetId) {
+    if ((shouldSendReply || hasThreadContext) && !targetConversationId && !explicitReplyTargetId) {
       setComposerAnnouncement('This conversation is missing its thread root. Refresh and try again.');
       return;
     }
@@ -1794,7 +1726,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select a conversation before sending a reply.');
       return;
     }
-    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !fallbackRootReplyTargetId) {
+    if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !targetConversationId) {
       setComposerAnnouncement('Unable to create a conversation here. Use New conversation.');
       return;
     }
@@ -1810,21 +1742,17 @@ export default function MessagingWidget() {
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && !selectedIsGeneral && !shouldSendReply && fallbackRootReplyTargetId ? { conversationId: fallbackRootReplyTargetId } : {}),
-      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId && fallbackRootReplyTargetId
-        ? { conversationId: fallbackRootReplyTargetId }
-        : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
     };
 
-    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !fallbackRootReplyTargetId && !shouldSendReply);
+    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !targetConversationId && !shouldSendReply);
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`
+      ? `${API_BASE}/messaging/conversations/${targetConversationId}/messages`
       : (shouldCreateConversationRoot
         ? `${API_BASE}/messaging/conversations`
-        : `${API_BASE}/messaging/conversations/${fallbackRootReplyTargetId}/messages`);
+        : `${API_BASE}/messaging/conversations/${targetConversationId}/messages`);
 
-    const optimisticConversationId = fallbackRootReplyTargetId || explicitReplyTargetId || null;
+    const optimisticConversationId = targetConversationId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? explicitReplyTargetId
       : null;
@@ -1868,8 +1796,8 @@ export default function MessagingWidget() {
       const createdMessage = successPayload?.message
         ? {
           ...successPayload.message,
-          ...(!isDraftConversation && !selectedIsGeneral && fallbackRootReplyTargetId
-            ? { conversation_id: fallbackRootReplyTargetId }
+          ...(!isDraftConversation && !selectedIsGeneral && targetConversationId
+            ? { conversation_id: targetConversationId }
             : {}),
           recipient_empids: Array.isArray(successPayload?.message?.recipient_empids)
             ? successPayload.message.recipient_empids
@@ -1878,12 +1806,8 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const createdRootMessageId = resolveThreadRefreshRootId({ createdMessage });
-        threadRootIdToRefresh = resolveThreadRefreshRootId({
-          isReplyMode: shouldSendReply,
-          fallbackRootReplyTargetId,
-          createdMessage,
-        });
+        const createdConversationId = canonicalConversationId(createdMessage);
+        threadRootIdToRefresh = createdConversationId || targetConversationId;
         const shouldMergeIntoActiveCache = isDraftConversation
           || selectedIsGeneral
           || !threadRootIdToRefresh;
@@ -1894,11 +1818,11 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdRootMessageId ? `message:${createdRootMessageId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdConversationId ? `conversation:${createdConversationId}` : null });
         }
       }
       if (!threadRootIdToRefresh) {
-        threadRootIdToRefresh = explicitReplyTargetId || fallbackRootReplyTargetId || activeConversation?.rootMessageId || null;
+        threadRootIdToRefresh = targetConversationId || activeConversation?.conversationId || null;
       }
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       if (visibilityScope === 'private') {
@@ -1998,7 +1922,7 @@ export default function MessagingWidget() {
       return;
     }
     if (!id || state.composer.recipients.includes(id)) return;
-    const selectedRootId = conversationRootIdFromSelection(state.activeConversationId);
+    const selectedRootId = conversationIdFromSelection(state.activeConversationId);
     const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
     if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
       const label = resolveEmployeeLabel(id);
@@ -2071,9 +1995,9 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!activeCompany || !activeConversation?.rootMessageId) return;
+    if (!activeCompany || !activeConversation?.conversationId) return;
     fetchThreadMessages(activeConversation.rootMessageId, activeCompany);
-  }, [activeConversation?.rootMessageId, state.activeCompanyId, companyId]);
+  }, [activeConversation?.conversationId, state.activeCompanyId, companyId]);
 
   if (!state.isOpen) {
     return (
@@ -2226,7 +2150,7 @@ export default function MessagingWidget() {
                       type="button"
                       aria-label={`Delete conversation ${conversation.title}`}
                       onClick={() => handleDeleteConversationFromList(conversation)}
-                      disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.rootMessageId)))}
+                      disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.conversationId)))}
                       style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 11, cursor: 'pointer', padding: 0 }}
                     >
                       🗑
@@ -2247,7 +2171,7 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
-              {activeConversation?.rootMessageId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
+              {activeConversation?.conversationId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
                 <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 4 }}>
                   Delete thread
                 </button>

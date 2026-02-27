@@ -70,7 +70,6 @@ export default function ReportTable({
   showTotalRowCount = true,
   maxHeight = 'min(70vh, calc(100vh - 20rem))',
   minHeight,
-  autoFitColumns = false,
   onSnapshotReady,
   enableRowSelection,
   rowGranularity = 'transaction',
