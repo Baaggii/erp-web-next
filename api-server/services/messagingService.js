@@ -305,11 +305,6 @@ async function markConversationDeleted(db, { companyId, conversationId, empid })
   );
 }
 
-
-function sanitizeMessageText(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
-
 function sanitizeBody(value) {
   const body = String(value ?? '').trim();
   if (!body) throw createError(400, 'MESSAGE_BODY_REQUIRED', 'Message body is required');
@@ -383,40 +378,6 @@ function parsePrivateParticipants(value) {
     .filter(Boolean)));
 }
 
-function resolveMessageClassFromScope(scope) {
-  return String(scope || 'company').toLowerCase() === 'private' ? 'private' : 'general';
-}
-
-function isMissingTableError(error, tableName) {
-  const code = String(error?.code || '').toUpperCase();
-  const sqlMessage = String(error?.sqlMessage || error?.message || '').toLowerCase();
-  return code === 'ER_NO_SUCH_TABLE' || sqlMessage.includes(`table`) && sqlMessage.includes(String(tableName || '').toLowerCase());
-}
-
-async function upsertConversationTopic(db, companyId, conversationId, topic) {
-  const safeTopic = sanitizeMessageText(topic || '').slice(0, 120);
-  if (!safeTopic) return;
-  try {
-    await db.query('UPDATE erp_conversations SET topic = ? WHERE id = ? AND company_id = ?', [safeTopic, conversationId, companyId]);
-  } catch (error) {
-    if (!isUnknownColumnError(error, 'topic')) throw error;
-  }
-}
-
-async function saveMessageParticipants(db, { companyId, messageId, participantEmpids = [] }) {
-  const uniqueParticipants = Array.from(new Set((participantEmpids || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
-  if (uniqueParticipants.length === 0) return;
-  try {
-    await Promise.all(uniqueParticipants.map((empid) =>
-      db.query(
-        'INSERT IGNORE INTO erp_message_participants (company_id, message_id, participant_empid, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-        [companyId, messageId, empid],
-      )));
-  } catch (error) {
-    if (!isMissingTableError(error, 'erp_message_participants') && !isUnknownColumnError(error, 'participant_empid')) throw error;
-  }
-}
-
 function getEncryptionKey() {
   const keyMaterial = process.env.MESSAGING_ENCRYPTION_KEY || '';
   if (!keyMaterial) return null;
@@ -476,8 +437,6 @@ function sanitizeForViewer(message, session, user) {
   return {
     ...message,
     body: decryptBody(message),
-    message_class: message?.message_class || resolveMessageClassFromScope(message?.visibility_scope),
-    messageClass: message?.messageClass || message?.message_class || resolveMessageClassFromScope(message?.visibility_scope),
   };
 }
 
@@ -763,8 +722,6 @@ async function createMessageInternal({
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
-  const topic = sanitizeMessageText(payload?.topic || '').slice(0, 120);
-  const messageClass = String(payload?.messageClass || payload?.message_class || resolveMessageClassFromScope(visibility.visibilityScope)).trim().toLowerCase();
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -970,28 +927,6 @@ async function createMessageInternal({
     requestHash,
     expiresAt,
   });
-  const participantEmpids = visibility.visibilityScope === 'private'
-    ? Array.from(new Set([
-      ...parsePrivateParticipants(visibility.visibilityEmpid),
-      ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
-      String(ctx?.user?.empid || '').trim(),
-    ].map((entry) => String(entry || '').trim()).filter(Boolean)))
-    : [];
-  await saveMessageParticipants(db, { companyId: ctx.companyId, messageId, participantEmpids });
-
-  if (topic) {
-    try {
-      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, ctx.companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'topic')) throw error;
-    }
-  }
-  try {
-    await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, ctx.companyId]);
-  } catch (error) {
-    if (!isUnknownColumnError(error, 'message_class')) throw error;
-  }
-
   if (canonicalConversationId || !parentMessageId) {
     try {
       await db.query(
@@ -1085,7 +1020,7 @@ export async function createConversationRoot(args) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
 
-  const visibility = normalizeVisibility(payload, session, user);
+  const visibility = normalizeVisibility(payload?.visibilityScope, payload?.visibilityDepartmentId, payload?.visibilityEmpid, session, user);
   const linked = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const [conversationInsert] = await db.query(
     `INSERT INTO erp_conversations
@@ -1112,7 +1047,6 @@ export async function createConversationRoot(args) {
       parent_message_id: null,
     },
   });
-  await upsertConversationTopic(db, scopedCompanyId, conversationId, payload?.topic);
   return { conversation: { id: conversationId, company_id: scopedCompanyId }, message: created.message };
 }
 

@@ -1736,9 +1736,7 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
-      ...(canEditTopic && safeTopic ? { topic: safeTopic } : {}),
-      messageClass: visibilityScope === 'private' ? 'private' : 'general',
+      body: `${canEditTopic ? `[${safeTopic}] ` : ''}${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       companyId: normalizedCompanyId,
       visibilityScope,
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
