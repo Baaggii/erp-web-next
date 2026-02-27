@@ -81,7 +81,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass }) {
   const payload = {
     body,
     linkedType,
@@ -91,6 +91,8 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
     conversationId,
+    topic,
+    messageClass,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -376,6 +378,53 @@ function parsePrivateParticipants(value) {
     .split(',')
     .map((entry) => String(entry || '').trim())
     .filter(Boolean)));
+}
+
+
+function resolveMessageClass(payload, visibilityScope) {
+  const raw = String(payload?.messageClass || payload?.message_class || '').trim().toLowerCase();
+  if (raw) return raw;
+  return visibilityScope === 'private' ? 'private' : 'general';
+}
+
+function normalizeTopic(value) {
+  const topic = String(value ?? '').trim();
+  if (!topic) return null;
+  const cleaned = topic.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/<[^>]*>/g, '').trim();
+  return cleaned.slice(0, 120) || null;
+}
+
+async function persistMessageMetadata(db, { messageId, companyId, topic, messageClass }) {
+  if (!messageId || !companyId) return;
+
+  if (topic !== undefined) {
+    try {
+      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, companyId]);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'topic')) throw error;
+    }
+  }
+
+  if (messageClass) {
+    try {
+      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, companyId]);
+    } catch (error) {
+      if (!isUnknownColumnError(error, 'message_class')) throw error;
+    }
+  }
+}
+
+async function syncConversationParticipants(db, { companyId, conversationId, participants }) {
+  if (!companyId || !conversationId) return;
+  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (normalizedParticipants.length === 0) return;
+  const csv = normalizedParticipants.join(',');
+  await db.query(
+    `UPDATE erp_conversations
+        SET visibility_empid = ?
+      WHERE id = ? AND company_id = ? AND visibility_scope = 'private'`,
+    [csv, conversationId, companyId],
+  );
 }
 
 function getEncryptionKey() {
@@ -722,6 +771,8 @@ async function createMessageInternal({
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
+  const topic = normalizeTopic(payload?.topic);
+  const messageClass = resolveMessageClass(payload, visibility.visibilityScope);
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -737,7 +788,7 @@ async function createMessageInternal({
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
@@ -927,6 +978,22 @@ async function createMessageInternal({
     requestHash,
     expiresAt,
   });
+  await persistMessageMetadata(db, {
+    messageId,
+    companyId: ctx.companyId,
+    topic,
+    messageClass,
+  });
+  if (visibility.visibilityScope === 'private' && canonicalConversationId) {
+    await syncConversationParticipants(db, {
+      companyId: ctx.companyId,
+      conversationId: canonicalConversationId,
+      participants: [
+        ...parsePrivateParticipants(visibility.visibilityEmpid),
+        ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+      ],
+    });
+  }
   if (canonicalConversationId || !parentMessageId) {
     try {
       await db.query(
@@ -1020,7 +1087,7 @@ export async function createConversationRoot(args) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
 
-  const visibility = normalizeVisibility(payload?.visibilityScope, payload?.visibilityDepartmentId, payload?.visibilityEmpid, session, user);
+  const visibility = normalizeVisibility(payload, session, user);
   const linked = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const [conversationInsert] = await db.query(
     `INSERT INTO erp_conversations
