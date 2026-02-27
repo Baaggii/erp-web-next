@@ -5,7 +5,6 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import {
   PRESENCE,
   buildSessionStorageKey,
-  canonicalConversationId,
   createInitialWidgetState,
   getCompanyCacheKey,
   prioritizeConversationSummaries,
@@ -198,7 +197,7 @@ export function groupConversations(messages, viewerEmpid = null) {
       return;
     }
 
-    const conversationId = canonicalConversationId(msg);
+    const conversationId = getMessageConversationId(msg);
     if (!conversationId) return;
 
     const topic = extractMessageTopic(msg);
@@ -257,6 +256,10 @@ export function groupConversations(messages, viewerEmpid = null) {
 }
 
 
+function getMessageConversationId(message) {
+  return normalizeConversationId(message?.conversation_id || message?.conversationId);
+}
+
 function resolvePresence(record) {
   return resolvePresenceStatus(record);
 }
@@ -303,8 +306,8 @@ function mergeMessageList(current, incoming) {
   const existingIdx = next.findIndex((entry) => String(entry.id) === String(incoming.id));
   if (existingIdx >= 0) {
     const existing = next[existingIdx] || {};
-    const incomingConversationId = normalizeId(canonicalConversationId(incoming));
-    const existingConversationId = normalizeId(canonicalConversationId(existing));
+    const incomingConversationId = normalizeId(getMessageConversationId(incoming));
+    const existingConversationId = normalizeId(getMessageConversationId(existing));
     const incomingParentId = normalizeId(incoming.parent_message_id || incoming.parentMessageId);
     const existingParentId = normalizeId(existing.parent_message_id || existing.parentMessageId);
 
@@ -312,7 +315,7 @@ function mergeMessageList(current, incoming) {
       ...existing,
       ...incoming,
       ...(incomingConversationId ? {} : {
-        conversation_id: canonicalConversationId(existing) || null,
+        conversation_id: getMessageConversationId(existing) || null,
       }),
       ...(incomingParentId ? {} : {
         parent_message_id: existing.parent_message_id || existing.parentMessageId || null,
@@ -467,7 +470,7 @@ function filterVisibleMessages(messages = [], viewerEmpid) {
 
     const parentId = normalizeId(message.parent_message_id || message.parentMessageId);
     const parentMessage = parentId ? byId.get(parentId) : null;
-    const rootConversationId = normalizeId(canonicalConversationId(message));
+    const rootConversationId = normalizeId(getMessageConversationId(message));
     const rootMessage = rootConversationId ? byId.get(rootConversationId) : null;
 
     if (isPrivateMessage) {
@@ -1068,7 +1071,7 @@ export default function MessagingWidget() {
       if (!parentId) {
         const hasDirectAccess = canViewerAccessMessage(nextMessage, selfEmpid);
         if (!hasDirectAccess) {
-          const rootMessageId = normalizeId(nextMessage?.id || canonicalConversationId(nextMessage));
+          const rootMessageId = normalizeId(getMessageConversationId(nextMessage));
           if (rootMessageId) {
             fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
           }
@@ -1091,7 +1094,7 @@ export default function MessagingWidget() {
         });
       }, 2400);
 
-      let resolvedRootId = normalizeId(canonicalConversationId(nextMessage) || parentId);
+      let resolvedRootId = normalizeId(getMessageConversationId(nextMessage));
       let fallbackThreadRefreshId = null;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
@@ -1102,13 +1105,12 @@ export default function MessagingWidget() {
         const inferredConversationId = normalizeId(
           nextMessage?.conversation_id
           || nextMessage?.conversationId
-          || canonicalConversationId(parentMessage)
-          || parentMessage?.id
+          || getMessageConversationId(parentMessage)
           || null,
         );
         if (inferredConversationId) resolvedRootId = inferredConversationId;
         const normalizedMessage = inferredConversationId
-          ? { ...nextMessage, conversation_id: canonicalConversationId(nextMessage) || inferredConversationId }
+          ? { ...nextMessage, conversation_id: getMessageConversationId(nextMessage) || inferredConversationId }
           : nextMessage;
         const isParticipantMessage = canViewerAccessMessage(normalizedMessage, selfEmpid);
         const canAccessFromParent = Boolean(normalizedParentId && byId.has(normalizedParentId));
@@ -1198,9 +1200,7 @@ export default function MessagingWidget() {
 
       const resolvedRootId = normalizeId(
         nextMessage?.conversation_id
-        || nextMessage?.conversationId
-        || nextMessage?.parentMessageId
-        || nextMessage?.id,
+        || nextMessage?.conversationId,
       );
 
       setMessagesByCompany((prev) => {
@@ -1806,7 +1806,7 @@ export default function MessagingWidget() {
         : null;
       let threadRootIdToRefresh = null;
       if (createdMessage) {
-        const createdConversationId = canonicalConversationId(createdMessage);
+        const createdConversationId = getMessageConversationId(createdMessage) || normalizeConversationId(successPayload?.conversation?.id);
         threadRootIdToRefresh = createdConversationId || targetConversationId;
         const shouldMergeIntoActiveCache = isDraftConversation
           || selectedIsGeneral
@@ -1827,6 +1827,23 @@ export default function MessagingWidget() {
       if (threadRootIdToRefresh) await fetchThreadMessages(threadRootIdToRefresh, activeCompany);
       if (visibilityScope === 'private') {
         rememberConversationParticipants(threadRootIdToRefresh || createdMessage?.id, allParticipants);
+      }
+      try {
+        const params = new URLSearchParams({ companyId: String(activeCompany), limit: '100' });
+        const listRes = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const adaptedConversations = adaptConversationListResponse(listData);
+          dispatch({
+            type: 'conversations/loadSuccess',
+            payload: {
+              companyKey: getCompanyCacheKey(activeCompany),
+              items: adaptedConversations.items,
+            },
+          });
+        }
+      } catch {
+        // Non-blocking refresh; optimistic list still keeps conversation accessible.
       }
       dispatch({ type: 'composer/reset' });
       if (isDraftConversation) setNewConversationSelections([]);

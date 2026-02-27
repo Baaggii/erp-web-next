@@ -1065,11 +1065,38 @@ export async function postConversationMessage({ conversationId, payload, ...rest
   });
 }
 
+async function ensureGeneralConversation(db, scopedCompanyId, createdByEmpid = null) {
+  const [existingRows] = await queryWithTenantScope(
+    db,
+    'erp_conversations',
+    scopedCompanyId,
+    `SELECT id FROM {{table}}
+      WHERE company_id = ?
+        AND deleted_at IS NULL
+        AND linked_type IS NULL
+        AND linked_id IS NULL
+        AND visibility_scope = 'company'
+      ORDER BY id ASC
+      LIMIT 1`,
+    [scopedCompanyId],
+  );
+  if (existingRows[0]?.id) return existingRows[0].id;
+
+  const [insertResult] = await db.query(
+    `INSERT INTO erp_conversations
+      (company_id, linked_type, linked_id, visibility_scope, visibility_department_id, visibility_empid, created_by_empid, created_at, last_message_at)
+      VALUES (?, NULL, NULL, 'company', NULL, NULL, ?, CURRENT_TIMESTAMP, NULL)`,
+    [scopedCompanyId, createdByEmpid || 'system'],
+  );
+  return toId(insertResult?.insertId);
+}
+
 export async function listConversations(args) {
   const { user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession } = args;
   await assertMessagingSchema(db);
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   if (!canMessage(session)) throwPermissionDenied({ db, user, companyId: scopedCompanyId, action: 'message:list' });
+  await ensureGeneralConversation(db, scopedCompanyId, user?.empid || null);
   const parsedLimit = Math.min(Math.max(Number(limit) || CURSOR_PAGE_SIZE, 1), 100);
   const cursorId = toId(cursor);
   let cursorClause = '';
@@ -1092,9 +1119,11 @@ export async function listConversations(args) {
     db,
     'erp_conversations',
     scopedCompanyId,
-    `SELECT * FROM {{table}}
+    `SELECT *,
+        (linked_type IS NULL AND linked_id IS NULL AND visibility_scope = 'company') AS is_general
+      FROM {{table}}
       WHERE deleted_at IS NULL ${cursorClause}
-      ORDER BY last_message_at DESC, id DESC
+      ORDER BY is_general DESC, last_message_at DESC, id DESC
       LIMIT ?`,
     queryParams,
   );

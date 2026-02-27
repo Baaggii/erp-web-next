@@ -1,6 +1,10 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
 function deriveConversationTitle(entry) {
+  const isGeneral = (entry?.linked_type ?? entry?.linkedType) == null
+    && (entry?.linked_id ?? entry?.linkedId) == null
+    && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company';
+  if (isGeneral) return 'General';
   return sanitizeMessageText(
     entry?.title
     || entry?.topic
@@ -26,6 +30,10 @@ export function adaptConversationListResponse(data) {
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
           visibilityScope: String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase(),
+          isGeneral: (entry?.is_general ?? entry?.isGeneral) === true
+            || ((entry?.linked_type ?? entry?.linkedType) == null
+              && (entry?.linked_id ?? entry?.linkedId) == null
+              && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company'),
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
           unread: 0,
@@ -47,6 +55,8 @@ export function adaptThreadResponse(data) {
       .filter((entry) => entry && typeof entry === 'object')
       .map((entry) => ({
         ...entry,
+        id: normalizeId(entry?.id),
+        parent_message_id: normalizeId(entry?.parent_message_id ?? entry?.parentMessageId) || null,
         conversation_id: normalizeConversationId(entry?.conversation_id ?? entry?.conversationId ?? conversationId),
       })),
     pageInfo: data?.pageInfo ?? null,

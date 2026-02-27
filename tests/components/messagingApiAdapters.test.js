@@ -25,6 +25,7 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
     linkedType: 'sales_order',
     linkedId: '44',
     visibilityScope: 'private',
+    isGeneral: false,
     lastMessageAt: '2026-01-02T03:04:05.000Z',
     lastMessageId: '901',
     unread: 0,
@@ -51,7 +52,19 @@ test('adaptThreadResponse normalizes thread items with guaranteed conversation_i
   });
 
   assert.equal(adapted.conversationId, '77');
+  assert.equal(adapted.items[0].id, '1');
   assert.equal(adapted.items[0].conversation_id, '77');
+  assert.equal(adapted.items[1].id, '2');
   assert.equal(adapted.items[1].conversation_id, '77');
   assert.deepEqual(adapted.pageInfo, { page: 1, hasNextPage: false });
+});
+
+
+test('adaptConversationListResponse marks company-wide unlinked conversation as general', () => {
+  const adapted = adaptConversationListResponse({
+    items: [{ id: 5, linked_type: null, linked_id: null, visibility_scope: 'company' }],
+  });
+
+  assert.equal(adapted.items[0].isGeneral, true);
+  assert.equal(adapted.items[0].title, 'General');
 });

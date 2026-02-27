@@ -72,12 +72,6 @@ export function getCompanyCacheKey(companyId) {
   return `company:${normalizeId(companyId) || 'none'}`;
 }
 
-
-export function canonicalConversationId(message) {
-  return normalizeConversationId(message?.conversation_id || message?.conversationId);
-}
-
-
 export function excludeGeneralConversationSummaries(conversations = []) {
   return Array.isArray(conversations)
     ? conversations.filter((conversation) => !conversation?.isGeneral)
