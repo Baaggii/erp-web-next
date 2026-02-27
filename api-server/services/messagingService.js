@@ -14,7 +14,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
-const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'private', 'financial', 'hr_sensitive', 'legal']);
+const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -142,13 +142,6 @@ function isMissingDefaultForFieldError(error, columnName) {
   return message.includes(String(columnName).toLowerCase());
 }
 
-
-
-function isMissingTableError(error) {
-  const code = String(error?.code || '').toUpperCase();
-  const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
-  return code.includes('NO_SUCH_TABLE') || message.includes("doesn't exist") || message.includes('no such table') || message.includes('unexpected query');
-}
 
 function isTruncatedColumnValueError(error, columnName) {
   const code = String(error?.code || '').toUpperCase();
@@ -349,7 +342,9 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const recipients = parsePayloadParticipants(payload);
+  const recipients = Array.isArray(payload?.recipientEmpids)
+    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
+    : [];
 
   const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
   const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
@@ -384,14 +379,6 @@ function normalizeVisibility(payload, session, user) {
     visibilityDepartmentId,
     visibilityEmpid,
   };
-}
-
-function parsePayloadParticipants(payload) {
-  const rawParticipants = [
-    ...(Array.isArray(payload?.participants) ? payload.participants : []),
-    ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
-  ];
-  return Array.from(new Set(rawParticipants.map((entry) => String(entry || '').trim()).filter(Boolean)));
 }
 
 
@@ -433,46 +420,6 @@ async function persistMessageMetadata(db, { messageId, companyId, topic, message
   }
   if (messageClass) {
     assignments.push('message_class = ?');
-  try {
-    await db.query(
-      `DELETE FROM erp_conversation_participants
-       WHERE company_id = ? AND conversation_id = ? AND empid NOT IN (?)`,
-      [companyId, conversationId, normalizedParticipants],
-    );
-    for (const empid of normalizedParticipants) {
-      await db.query(
-        `INSERT INTO erp_conversation_participants (conversation_id, company_id, empid)
-         VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE empid = VALUES(empid)`,
-        [conversationId, companyId, empid],
-      );
-    }
-  } catch (error) {
-    if (!isMissingTableError(error)) {
-      throw error;
-    }
-  }
-}
-
-async function syncMessageParticipants(db, { companyId, messageId, conversationId, participants }) {
-  if (!companyId || !messageId || !conversationId) return;
-  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
-  if (normalizedParticipants.length === 0) return;
-  try {
-    await db.query('DELETE FROM erp_message_participants WHERE company_id = ? AND message_id = ?', [companyId, messageId]);
-    for (const empid of normalizedParticipants) {
-      await db.query(
-        `INSERT INTO erp_message_participants (message_id, conversation_id, company_id, empid)
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE empid = VALUES(empid)`,
-        [messageId, conversationId, companyId, empid],
-      );
-    }
-  } catch (error) {
-    if (!isMissingTableError(error)) {
-      throw error;
-    }
-  }
     params.push(messageClass);
   }
   if (assignments.length === 0) return;
@@ -1033,39 +980,14 @@ async function createMessageInternal({
         `INSERT INTO erp_messages
           (company_id, author_empid, parent_message_id, conversation_id, body)
           VALUES (?, ?, ?, ?, ?)`,
-    const participantEmpids = [
-      ...parsePrivateParticipants(visibility.visibilityEmpid),
-      ...parsePayloadParticipants(payload),
-    ];
-      participants: participantEmpids,
-    });
-    await syncMessageParticipants(db, {
-      companyId: ctx.companyId,
-      messageId,
-      conversationId: canonicalConversationId,
-      participants: participantEmpids,
-    participantEmpids: parsePayloadParticipants(payload),
-  const normalizedPayload = {
-    ...(payload || {}),
-    visibilityScope: payload?.visibilityScope ?? conversation.visibility_scope,
-    visibilityDepartmentId: payload?.visibilityDepartmentId ?? conversation.visibility_department_id,
-    visibilityEmpid: payload?.visibilityEmpid ?? conversation.visibility_empid,
-    participants: (Array.isArray(payload?.participants) || Array.isArray(payload?.recipientEmpids))
-      ? parsePayloadParticipants(payload)
-      : parsePrivateParticipants(conversation.visibility_empid),
-    recipientEmpids: (Array.isArray(payload?.recipientEmpids) || Array.isArray(payload?.participants))
-      ? parsePayloadParticipants(payload)
-      : parsePrivateParticipants(conversation.visibility_empid),
-  };
-
-    payload: normalizedPayload,
-  if (visibility.visibilityScope === 'private') {
-    await syncConversationParticipants(db, {
-      companyId: scopedCompanyId,
-      conversationId,
-      participants: parsePrivateParticipants(visibility.visibilityEmpid),
-    });
-  }
+        [
+          ctx.companyId,
+          ctx.user.empid,
+          parentMessageId,
+          canonicalConversationId || parentMessageId || 0,
+          body,
+        ],
+      );
       messageConversationColumnSupport.set(db, true);
     }
   }
@@ -1342,8 +1264,9 @@ export async function getConversationMessages({ conversationId, ...rest }) {
   const items = hasMore ? visibleRows.slice(0, parsedLimit) : visibleRows;
   return {
     correlationId,
-  const requestedParticipants = parsePayloadParticipants(payload);
-      participants: message.visibility_scope === 'private' ? Array.from(privateParticipants) : payload?.participants,
+    conversationId: normalizedConversationId,
+    items,
+    pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
 }
 
