@@ -378,6 +378,58 @@ function parsePrivateParticipants(value) {
     .filter(Boolean)));
 }
 
+
+function resolveMessageClass(payload, visibilityScope) {
+  const raw = String(payload?.messageClass || payload?.message_class || '').trim().toLowerCase();
+  if (raw) return raw;
+  return visibilityScope === 'private' ? 'private' : 'general';
+}
+
+function normalizeTopic(value) {
+  const topic = String(value ?? '').trim();
+  if (!topic) return null;
+  return sanitizeMessageText(topic).slice(0, 120) || null;
+}
+
+async function persistMessageMetadata(db, { messageId, companyId, topic, messageClass }) {
+  if (!messageId || !companyId) return;
+  const assignments = [];
+  const params = [];
+  if (topic !== undefined) {
+    assignments.push('topic = ?');
+    params.push(topic);
+  }
+  if (messageClass) {
+    assignments.push('message_class = ?');
+    params.push(messageClass);
+  }
+  if (assignments.length === 0) return;
+  try {
+    await db.query(
+      `UPDATE erp_messages SET ${assignments.join(', ')} WHERE id = ? AND company_id = ?`,
+      [...params, messageId, companyId],
+    );
+  } catch (error) {
+    const topicUnsupported = topic !== undefined && isUnknownColumnError(error, 'topic');
+    const classUnsupported = Boolean(messageClass) && isUnknownColumnError(error, 'message_class');
+    if (!topicUnsupported && !classUnsupported) throw error;
+  }
+}
+
+async function syncConversationParticipants(db, { companyId, conversationId, participants }) {
+  if (!companyId || !conversationId) return;
+  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (normalizedParticipants.length === 0) return;
+  const csv = normalizedParticipants.join(',');
+  await db.query(
+    `UPDATE erp_conversations
+        SET visibility_empid = ?,
+            visibility_scope = CASE WHEN visibility_scope = 'company' THEN 'private' ELSE visibility_scope END
+      WHERE id = ? AND company_id = ?`,
+    [csv, conversationId, companyId],
+  );
+}
+
 function getEncryptionKey() {
   const keyMaterial = process.env.MESSAGING_ENCRYPTION_KEY || '';
   if (!keyMaterial) return null;
@@ -722,6 +774,8 @@ async function createMessageInternal({
   const body = sanitizeBody(payload?.body);
   const { linkedType, linkedId } = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const visibility = normalizeVisibility(payload, ctx.session, ctx.user);
+  const topic = normalizeTopic(payload?.topic);
+  const messageClass = resolveMessageClass(payload, visibility.visibilityScope);
   const encryptedBody = encryptBody(body);
 
   if (isProfanity(body) || isSpam(body)) {
@@ -927,6 +981,22 @@ async function createMessageInternal({
     requestHash,
     expiresAt,
   });
+  await persistMessageMetadata(db, {
+    messageId,
+    companyId: ctx.companyId,
+    topic,
+    messageClass,
+  });
+  if (visibility.visibilityScope === 'private' && canonicalConversationId) {
+    await syncConversationParticipants(db, {
+      companyId: ctx.companyId,
+      conversationId: canonicalConversationId,
+      participants: [
+        ...parsePrivateParticipants(visibility.visibilityEmpid),
+        ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+      ],
+    });
+  }
   if (canonicalConversationId || !parentMessageId) {
     try {
       await db.query(
@@ -1020,7 +1090,7 @@ export async function createConversationRoot(args) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertPermission({ action: 'message:create', user, companyId: scopedCompanyId, session, db });
 
-  const visibility = normalizeVisibility(payload?.visibilityScope, payload?.visibilityDepartmentId, payload?.visibilityEmpid, session, user);
+  const visibility = normalizeVisibility(payload, session, user);
   const linked = validateLinkedContext(payload?.linkedType, payload?.linkedId);
   const [conversationInsert] = await db.query(
     `INSERT INTO erp_conversations
