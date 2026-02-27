@@ -1,6 +1,24 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
-import { fetchWithApiFallback as requestWithApiFallback } from '../utils/apiBase.js';
+import { fetchWithApiFallback } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
+
+function buildAuthEndpointCandidates(path) {
+  const normalizedPath = String(path || '').startsWith('/') ? path : `/${path}`;
+  const primary = `${API_BASE}${normalizedPath}`;
+  if (API_BASE === '/api') return [primary, normalizedPath];
+  return [primary];
+}
+
+async function fetchWithApiFallback(path, options) {
+  const candidates = buildAuthEndpointCandidates(path);
+  let lastResponse = null;
+  for (let i = 0; i < candidates.length; i += 1) {
+    const response = await fetch(candidates[i], options);
+    lastResponse = response;
+    if (response.status !== 404 || i === candidates.length - 1) return response;
+  }
+  return lastResponse;
+}
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
 /**
@@ -13,7 +31,7 @@ import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 export async function login({ empid, password, companyId }, t = (key, fallback) => fallback || key) {
   let res;
   try {
-    res = await requestWithApiFallback(fetch, '/auth/login', {
+    res = await fetchWithApiFallback('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
@@ -86,7 +104,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
  * logic remains centralised.
  */
 export async function logout(empid) {
-  await requestWithApiFallback(fetch, '/auth/logout', {
+  await fetchWithApiFallback('/auth/logout', {
     method: 'POST',
     credentials: 'include',
   });
@@ -116,7 +134,7 @@ export async function logout(empid) {
  * @returns {Promise<{id: number, empid: string, position: string}>}
 */
 export async function fetchProfile(t = (key, fallback) => fallback || key) {
-  const res = await requestWithApiFallback(fetch, '/auth/me', { credentials: 'include' });
+  const res = await fetchWithApiFallback('/auth/me', { credentials: 'include' });
   if (!res.ok) throw new Error(t('notAuthenticated', 'Not authenticated'));
   const data = await res.json();
   const normalizedSession = normalizeEmploymentSession(data?.session);

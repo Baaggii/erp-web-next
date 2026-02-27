@@ -41,6 +41,15 @@ function normalizeDateValue(value) {
   return trimmed.slice(0, 10);
 }
 
+function formatDateDisplay(value) {
+  if (value == null || value === '') return '-';
+  if (typeof value === 'string') return normalizeDateValue(value) || value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
 function parseDrilldownLevel(value) {
   const level = Number.parseInt(value, 10);
   return Number.isFinite(level) && level >= 0 ? level : 0;
@@ -821,7 +830,7 @@ export default function AccountingPeriodsPage() {
 
       <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
         <div><strong>Status:</strong> {Number(period?.is_closed) ? 'Closed' : 'Open'}</div>
-        <div><strong>Range:</strong> {period?.period_from || '-'} ~ {period?.period_to || '-'}</div>
+        <div><strong>Range:</strong> {formatDateDisplay(period?.period_from)} ~ {formatDateDisplay(period?.period_to)}</div>
         <div><strong>Closed At:</strong> {period?.closed_at || '-'}</div>
         <div><strong>Closed By:</strong> {period?.closed_by || '-'}</div>
       </div>
