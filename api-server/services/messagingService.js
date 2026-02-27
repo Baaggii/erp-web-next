@@ -390,27 +390,31 @@ function resolveMessageClass(payload, visibilityScope) {
 function normalizeTopic(value) {
   const topic = String(value ?? '').trim();
   if (!topic) return null;
-  const cleaned = topic.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/<[^>]*>/g, '').trim();
-  return cleaned.slice(0, 120) || null;
+  return sanitizeMessageText(topic).slice(0, 120) || null;
 }
 
 async function persistMessageMetadata(db, { messageId, companyId, topic, messageClass }) {
   if (!messageId || !companyId) return;
-
+  const assignments = [];
+  const params = [];
   if (topic !== undefined) {
-    try {
-      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'topic')) throw error;
-    }
+    assignments.push('topic = ?');
+    params.push(topic);
   }
-
   if (messageClass) {
-    try {
-      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'message_class')) throw error;
-    }
+    assignments.push('message_class = ?');
+    params.push(messageClass);
+  }
+  if (assignments.length === 0) return;
+  try {
+    await db.query(
+      `UPDATE erp_messages SET ${assignments.join(', ')} WHERE id = ? AND company_id = ?`,
+      [...params, messageId, companyId],
+    );
+  } catch (error) {
+    const topicUnsupported = topic !== undefined && isUnknownColumnError(error, 'topic');
+    const classUnsupported = Boolean(messageClass) && isUnknownColumnError(error, 'message_class');
+    if (!topicUnsupported && !classUnsupported) throw error;
   }
 }
 
@@ -421,8 +425,9 @@ async function syncConversationParticipants(db, { companyId, conversationId, par
   const csv = normalizedParticipants.join(',');
   await db.query(
     `UPDATE erp_conversations
-        SET visibility_empid = ?
-      WHERE id = ? AND company_id = ? AND visibility_scope = 'private'`,
+        SET visibility_empid = ?,
+            visibility_scope = CASE WHEN visibility_scope = 'company' THEN 'private' ELSE visibility_scope END
+      WHERE id = ? AND company_id = ?`,
     [csv, conversationId, companyId],
   );
 }
