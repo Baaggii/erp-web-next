@@ -1,8 +1,9 @@
-import { API_BASE } from './apiBase.js';
+import { API_BASE, fetchWithApiFallback as fetchWithFallback } from './apiBase.js';
 import { currentLoaderKey, dispatchEnd, dispatchStart } from './loadingEvents.js';
 
 let tokenPromise;
 const controllers = new Set();
+const originalFetch = window.fetch.bind(window);
 
 function abortAll() {
   controllers.forEach(controller => controller.abort());
@@ -19,55 +20,42 @@ window.addEventListener('beforeunload', event => {
 window.addEventListener('unload', abortAll);
 window.addEventListener('pagehide', abortAll);
 
+function toFallbackPath(url) {
+  if (typeof url !== 'string') return null;
+  if (API_BASE !== '/api') return null;
+  if (!url.startsWith('/api/')) return null;
+  return url.slice('/api'.length);
+}
 
 async function getToken() {
   if (!tokenPromise) {
-    tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
+    tokenPromise = fetchWithFallback(originalFetch, '/csrf-token', { credentials: 'include' })
       .then(async res => {
-        if (!res.ok) {
-          throw new Error(res.statusText || 'Failed to fetch token');
-        }
+        if (!res.ok) throw new Error(res.statusText || 'Failed to fetch token');
         const data = await res.json();
         const token = data?.csrfToken;
-        if (!token) {
-          throw new Error('Missing CSRF token in response');
-        }
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: { message: 'CSRF token retrieved successfully.', type: 'success' },
-          })
-        );
+        if (!token) throw new Error('Missing CSRF token in response');
+        window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'CSRF token retrieved successfully.', type: 'success' } }));
         return token;
       })
       .catch(err => {
         tokenPromise = undefined;
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `CSRF token request failed: ${err?.message || 'Unknown error'}`,
-              type: 'error',
-            },
-          })
-        );
+        window.dispatchEvent(new CustomEvent('toast', { detail: { message: `CSRF token request failed: ${err?.message || 'Unknown error'}`, type: 'error' } }));
         return undefined;
       });
   }
   return tokenPromise;
 }
 
-const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}, _retry) => {
   const controller = new AbortController();
   controllers.add(controller);
   let key = null;
-  let opts = {};
-  let skipErrorToast = false;
 
   try {
     const parsed = options || {};
-    const { skipLoader, skipErrorToast: toastFlag, ...rest } = parsed;
-    skipErrorToast = Boolean(toastFlag);
-    opts = rest || {};
+    const { skipLoader, skipErrorToast, ...rest } = parsed;
+    const opts = rest || {};
 
     if (opts.signal) {
       const userSignal = opts.signal;
@@ -86,7 +74,10 @@ window.fetch = async (url, options = {}, _retry) => {
       opts.credentials = opts.credentials || 'include';
     }
 
-    const res = await originalFetch(url, opts);
+    const fallbackPath = toFallbackPath(url);
+    const res = fallbackPath
+      ? await fetchWithFallback(originalFetch, fallbackPath, opts)
+      : await originalFetch(url, opts);
 
     if (res.status === 401 && !_retry) {
       let msg;
@@ -95,20 +86,16 @@ window.fetch = async (url, options = {}, _retry) => {
         msg = data.message;
       } catch {}
       if (msg && msg.toLowerCase().includes('expired')) {
-        const refreshRes = await originalFetch(`${API_BASE}/auth/refresh`, {
+        const refreshRes = await fetchWithFallback(originalFetch, '/auth/refresh', {
           method: 'POST',
           credentials: 'include',
           headers: { 'X-CSRF-Token': await getToken() },
         });
-        if (refreshRes.ok) {
-          return window.fetch(url, { ...opts, skipLoader }, true);
-        }
+        if (refreshRes.ok) return window.fetch(url, { ...opts, skipLoader }, true);
       }
       if (!url.toString().includes('/auth/login')) {
         window.dispatchEvent(new CustomEvent('auth:logout'));
-        if (!window.location.hash.startsWith('#/login')) {
-          window.location.hash = '#/login';
-        }
+        if (!window.location.hash.startsWith('#/login')) window.location.hash = '#/login';
       }
       return res;
     }
@@ -124,14 +111,8 @@ window.fetch = async (url, options = {}, _retry) => {
           errorMsg = text.slice(0, 200);
         } catch {}
       }
-      if (import.meta.env.DEV) {
-        console.error('API Error:', method, url, errorMsg);
-      }
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: { message: `Request failed: ${errorMsg}`, type: 'error' },
-        })
-      );
+      if (import.meta.env.DEV) console.error('API Error:', method, url, errorMsg);
+      window.dispatchEvent(new CustomEvent('toast', { detail: { message: `Request failed: ${errorMsg}`, type: 'error' } }));
     }
 
     return res;

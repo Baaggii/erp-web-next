@@ -1,7 +1,6 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
-import { API_BASE } from '../utils/apiBase.js';
+import { fetchWithApiFallback } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
-
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
 /**
@@ -14,7 +13,7 @@ import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 export async function login({ empid, password, companyId }, t = (key, fallback) => fallback || key) {
   let res;
   try {
-    res = await fetch(`${API_BASE}/auth/login`, {
+    res = await fetchWithApiFallback(fetch, '/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
@@ -87,7 +86,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
  * logic remains centralised.
  */
 export async function logout(empid) {
-  await fetch(`${API_BASE}/auth/logout`, {
+  await fetchWithApiFallback(fetch, '/auth/logout', {
     method: 'POST',
     credentials: 'include',
   });
@@ -117,7 +116,7 @@ export async function logout(empid) {
  * @returns {Promise<{id: number, empid: string, position: string}>}
 */
 export async function fetchProfile(t = (key, fallback) => fallback || key) {
-  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+  const res = await fetchWithApiFallback(fetch, '/auth/me', { credentials: 'include' });
   if (!res.ok) throw new Error(t('notAuthenticated', 'Not authenticated'));
   const data = await res.json();
   const normalizedSession = normalizeEmploymentSession(data?.session);
