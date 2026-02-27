@@ -350,6 +350,32 @@ test('duplicate send idempotency replays existing message without creating anoth
   assert.equal(Number(first.message.conversation_id), Number(second.message.conversation_id));
 });
 
+
+
+test('idempotency rejects same key when metadata differs', async () => {
+  const db = new MockDb();
+  await postMessage({
+    user: baseUser,
+    companyId: 1,
+    payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic A', messageClass: 'private' },
+    correlationId: 'corr-idem-meta-1',
+    db,
+    getSession,
+  });
+
+  await assert.rejects(
+    () => postMessage({
+      user: baseUser,
+      companyId: 1,
+      payload: { idempotencyKey: 'idem-meta', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, topic: 'Topic B', messageClass: 'private' },
+      correlationId: 'corr-idem-meta-2',
+      db,
+      getSession,
+    }),
+    (error) => error?.code === 'IDEMPOTENCY_KEY_CONFLICT',
+  );
+});
+
 test('deleting root message deletes only that conversation scope', async () => {
   const db = new MockDb();
   db.messages.push({

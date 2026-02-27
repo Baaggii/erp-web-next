@@ -81,7 +81,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId }) {
+function computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass }) {
   const payload = {
     body,
     linkedType,
@@ -91,6 +91,8 @@ function computeRequestHash({ body, linkedType, linkedId, visibility, parentMess
     visibilityEmpid: visibility.visibilityEmpid,
     parentMessageId,
     conversationId,
+    topic,
+    messageClass,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
@@ -791,7 +793,7 @@ async function createMessageInternal({
 
   const idempotencyKey = String(payload?.idempotencyKey || '').trim();
   if (!idempotencyKey) throw createError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required');
-  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId });
+  const requestHash = computeRequestHash({ body, linkedType, linkedId, visibility, parentMessageId, conversationId, topic, messageClass });
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
 
   const existing = await readIdempotencyRow(db, {
