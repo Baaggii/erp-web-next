@@ -46,6 +46,14 @@ const postMessageSchema = {
       type: 'array',
       items: { type: 'string', minLength: 1, maxLength: 64 },
     },
+    participants: {
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
+    participantEmpids: {
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
     topic: { type: 'string', maxLength: 120 },
     messageClass: { type: 'string', minLength: 1, maxLength: 64 },
     message_class: { type: 'string', minLength: 1, maxLength: 64 },
