@@ -1682,11 +1682,11 @@ export default function MessagingWidget() {
     const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
-      ? Array.from(new Set(payloadRecipients.map(normalizeId).filter(Boolean)))
-      : Array.from(new Set(existingThreadParticipants.map(normalizeId).filter(Boolean)));
+      ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
+      : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
     const visibilityScope = isGeneralChannel ? 'company' : 'private';
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
-    if (visibilityScope === 'private' && finalRecipients.length < 1) {
+    if (visibilityScope === 'private' && allParticipants.length < 2) {
       setComposerAnnouncement('Select at least one recipient before sending a private message.');
       return;
     }
@@ -1740,10 +1740,10 @@ export default function MessagingWidget() {
       clientTempId,
       body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       topic: canEditTopic ? safeTopic : undefined,
-      ...(visibilityScope === 'private' ? { messageClass: 'private' } : {}),
+      messageClass: visibilityScope === 'private' ? 'private' : 'general',
       companyId: normalizedCompanyId,
       visibilityScope,
-      ...(visibilityScope === 'private' ? { participants: finalRecipients, recipientEmpids: finalRecipients } : {}),
+      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
