@@ -1,11 +1,4 @@
-import { normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
-
-function normalizeConversationId(value) {
-  const normalized = normalizeId(value);
-  if (!normalized) return null;
-  const asNumber = Number(normalized);
-  return Number.isFinite(asNumber) ? asNumber : normalized;
-}
+import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
 function deriveConversationTitle(entry) {
   return sanitizeMessageText(
@@ -54,7 +47,7 @@ export function adaptThreadResponse(data) {
       .filter((entry) => entry && typeof entry === 'object')
       .map((entry) => ({
         ...entry,
-        conversation_id: entry?.conversation_id ?? entry?.conversationId ?? conversationId ?? null,
+        conversation_id: normalizeConversationId(entry?.conversation_id ?? entry?.conversationId ?? conversationId),
       })),
     pageInfo: data?.pageInfo ?? null,
   };
