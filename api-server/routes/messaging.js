@@ -46,6 +46,12 @@ const postMessageSchema = {
       type: 'array',
       items: { type: 'string', minLength: 1, maxLength: 64 },
     },
+    participants: {
+      type: 'array',
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
+    topic: { type: 'string', minLength: 1, maxLength: 120 },
+    messageClass: { type: 'string', minLength: 1, maxLength: 64 },
     clientTempId: { type: 'string', minLength: 1, maxLength: 128 },
     conversationId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     conversation_id: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
@@ -123,6 +129,9 @@ function normalizeConversationPayload(req, _res, next) {
     }
     if (req.body.conversationId != null && req.body.conversation_id == null) {
       req.body.conversation_id = req.body.conversationId;
+    }
+    if (Array.isArray(req.body.participants) && !Array.isArray(req.body.recipientEmpids)) {
+      req.body.recipientEmpids = req.body.participants;
     }
   }
   next();
