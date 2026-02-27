@@ -1,14 +1,11 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
 function deriveConversationTitle(entry) {
-  const isGeneral = (entry?.linked_type ?? entry?.linkedType) == null
-    && (entry?.linked_id ?? entry?.linkedId) == null
-    && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company';
-  if (isGeneral) return 'General';
+  const type = String(entry?.type || '').toLowerCase();
+  if (type === 'general') return 'General';
   return sanitizeMessageText(
     entry?.title
     || entry?.topic
-    || entry?.subject
     || (entry?.linked_type && entry?.linked_id ? `${entry.linked_type} #${entry.linked_id}` : '')
     || 'Untitled conversation',
   ).slice(0, 120) || 'Untitled conversation';
@@ -23,19 +20,18 @@ export function adaptConversationListResponse(data) {
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (conversationId == null) return null;
         const normalizedId = normalizeId(conversationId);
+        const participants = Array.isArray(entry?.participants) ? entry.participants : [];
         return {
           id: `conversation:${normalizedId}`,
           conversationId,
           title: deriveConversationTitle(entry),
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
-          visibilityScope: String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase(),
-          isGeneral: (entry?.is_general ?? entry?.isGeneral) === true
-            || ((entry?.linked_type ?? entry?.linkedType) == null
-              && (entry?.linked_id ?? entry?.linkedId) == null
-              && String(entry?.visibility_scope ?? entry?.visibilityScope ?? 'company').toLowerCase() === 'company'),
+          type: String(entry?.type || 'private').toLowerCase(),
+          isGeneral: String(entry?.type || '').toLowerCase() === 'general' || entry?.is_general === true,
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
+          participants: participants.map((p) => normalizeId(p?.empid || p)).filter(Boolean),
           unread: 0,
           raw: entry,
         };
