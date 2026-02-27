@@ -129,21 +129,28 @@ function buildGroups(notifications) {
     .sort((a, b) => b.latestAt - a.latestAt);
 }
 
-export default function useTransactionNotifications() {
+export default function useTransactionNotifications(options = {}) {
   const { user } = useContext(AuthContext);
+  const enabled = options?.enabled !== false;
   const [notifications, setNotifications] = useState([]);
   const [connected, setConnected] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const refreshTimerRef = useRef(null);
+  const notificationsUnavailableRef = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (!user || user === undefined) return;
+    if (!enabled || !user || user === undefined) return;
+    if (notificationsUnavailableRef.current) return;
     try {
       const res = await fetch(`${API_BASE}/transactions/notifications?limit=100`, {
         credentials: 'include',
         skipErrorToast: true,
         skipLoader: true,
       });
+      if (!res.ok && res.status >= 500) {
+        notificationsUnavailableRef.current = true;
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -153,7 +160,7 @@ export default function useTransactionNotifications() {
     } catch (err) {
       console.warn('Failed to load transaction notifications', err);
     }
-  }, [user]);
+  }, [enabled, user]);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) return;
@@ -210,6 +217,10 @@ export default function useTransactionNotifications() {
 
   useEffect(() => {
     if (user === undefined) return;
+    if (!enabled) {
+      setConnected(false);
+      return;
+    }
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
@@ -264,7 +275,7 @@ export default function useTransactionNotifications() {
       console.warn('Failed to connect notification socket', err);
     }
     return undefined;
-  }, [refresh, scheduleRefresh, user]);
+  }, [enabled, refresh, scheduleRefresh, user]);
 
   useEffect(() => {
     return () => {

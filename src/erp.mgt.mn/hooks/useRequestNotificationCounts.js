@@ -153,6 +153,7 @@ export default function useRequestNotificationCounts(
   const fetchCounts = useCallback(async () => {
     const newIncoming = createInitial();
     const newOutgoing = createInitial();
+    let outgoingUnavailable = false;
 
     await Promise.all(
       STATUSES.map(async (status) => {
@@ -214,6 +215,10 @@ export default function useRequestNotificationCounts(
 
         // Outgoing requests (always for current user)
         try {
+          if (outgoingUnavailable) {
+            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+            return;
+          }
           const params = new URLSearchParams({ status });
           params.append('count_only', '1');
           Object.entries(memoFilters).forEach(([k, v]) => {
@@ -228,7 +233,13 @@ export default function useRequestNotificationCounts(
           const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
             credentials: 'include',
             skipLoader: true,
+            skipErrorToast: true,
           });
+          if (!res.ok && res.status >= 500) {
+            outgoingUnavailable = true;
+            newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };
+            return;
+          }
           let c = 0;
           if (res.ok) {
             const data = await res.json().catch(() => 0);
