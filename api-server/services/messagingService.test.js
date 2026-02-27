@@ -240,9 +240,10 @@ class MockDb {
 
     if (text.includes('UPDATE erp_conversations') && text.includes('visibility_empid = ?')) {
       const [visibilityEmpid, conversationId] = params;
-      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId) && entry.visibility_scope === 'private');
+      const row = this.conversations.find((entry) => Number(entry.id) === Number(conversationId));
       if (row) {
         row.visibility_empid = visibilityEmpid;
+        if (row.visibility_scope === 'company') row.visibility_scope = 'private';
       }
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
@@ -350,23 +351,6 @@ test('duplicate send idempotency replays existing message without creating anoth
 });
 
 
-
-
-
-test('private messageClass payload is normalized to supported class', async () => {
-  const db = new MockDb();
-  const created = await postMessage({
-    user: baseUser,
-    companyId: 1,
-    payload: { idempotencyKey: 'idem-private-class', body: 'same body', recipientEmpids: ['E200'], conversationId: 11, messageClass: 'private' },
-    correlationId: 'corr-private-class',
-    db,
-    getSession,
-  });
-
-  const row = db.messages.find((entry) => Number(entry.id) === Number(created.message.id));
-  assert.equal(row?.message_class, 'general');
-});
 
 test('idempotency rejects same key when metadata differs', async () => {
   const db = new MockDb();

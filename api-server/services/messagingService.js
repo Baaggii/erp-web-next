@@ -384,11 +384,10 @@ function normalizeVisibility(payload, session, user) {
 
 function sanitizeMessageText(value) {
   return String(value ?? '')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+    .replace(/[ --]/g, '')
     .replace(/<[^>]*>/g, '')
     .trim();
 }
-
 
 function parsePrivateParticipants(value) {
   if (!value) return [];
@@ -401,9 +400,8 @@ function parsePrivateParticipants(value) {
 
 function resolveMessageClass(payload, visibilityScope) {
   const raw = String(payload?.messageClass || payload?.message_class || '').trim().toLowerCase();
-  if (MESSAGE_CLASS_ALLOWLIST.has(raw)) return raw;
-  if (raw === 'private') return 'general';
-  return visibilityScope === 'private' ? 'general' : 'general';
+  if (raw) return raw;
+  return visibilityScope === 'private' ? 'private' : 'general';
 }
 
 function normalizeTopic(value) {
@@ -414,21 +412,26 @@ function normalizeTopic(value) {
 
 async function persistMessageMetadata(db, { messageId, companyId, topic, messageClass }) {
   if (!messageId || !companyId) return;
-
+  const assignments = [];
+  const params = [];
   if (topic !== undefined) {
-    try {
-      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'topic')) throw error;
-    }
+    assignments.push('topic = ?');
+    params.push(topic);
   }
-
   if (messageClass) {
-    try {
-      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', [messageClass, messageId, companyId]);
-    } catch (error) {
-      if (!isUnknownColumnError(error, 'message_class') && !isTruncatedColumnValueError(error, 'message_class')) throw error;
-    }
+    assignments.push('message_class = ?');
+    params.push(messageClass);
+  }
+  if (assignments.length === 0) return;
+  try {
+    await db.query(
+      `UPDATE erp_messages SET ${assignments.join(', ')} WHERE id = ? AND company_id = ?`,
+      [...params, messageId, companyId],
+    );
+  } catch (error) {
+    const topicUnsupported = topic !== undefined && isUnknownColumnError(error, 'topic');
+    const classUnsupported = Boolean(messageClass) && isUnknownColumnError(error, 'message_class');
+    if (!topicUnsupported && !classUnsupported) throw error;
   }
 }
 
@@ -439,8 +442,9 @@ async function syncConversationParticipants(db, { companyId, conversationId, par
   const csv = normalizedParticipants.join(',');
   await db.query(
     `UPDATE erp_conversations
-        SET visibility_empid = ?
-      WHERE id = ? AND company_id = ? AND visibility_scope = 'private'`,
+        SET visibility_empid = ?,
+            visibility_scope = CASE WHEN visibility_scope = 'company' THEN 'private' ELSE visibility_scope END
+      WHERE id = ? AND company_id = ?`,
     [csv, conversationId, companyId],
   );
 }

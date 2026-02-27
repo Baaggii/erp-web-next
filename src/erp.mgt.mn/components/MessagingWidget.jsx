@@ -1740,7 +1740,7 @@ export default function MessagingWidget() {
       clientTempId,
       body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       topic: canEditTopic ? safeTopic : undefined,
-      messageClass: 'general',
+      messageClass: visibilityScope === 'private' ? 'private' : 'general',
       companyId: normalizedCompanyId,
       visibilityScope,
       ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
