@@ -80,6 +80,13 @@ class MockDb {
     }
 
 
+
+    if (text.includes('SELECT id FROM') && text.includes('erp_conversations') && text.includes("linked_type IS NULL") && text.includes("visibility_scope = 'company'")) {
+      const companyId = Number(params[0]);
+      const row = this.conversations.find((entry) => Number(entry.company_id) === companyId && !entry.deleted_at && entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company') || null;
+      return [[row ? { id: row.id } : null].filter(Boolean), undefined];
+    }
+
     if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('WHERE id = ?')) {
       const id = Number(params[0]);
       const row = this.conversations.find((entry) => Number(entry.id) === id && !entry.deleted_at) || null;
@@ -92,7 +99,7 @@ class MockDb {
       return [[row ? { id: row.id, last_message_at: row.last_message_at } : null].filter(Boolean), undefined];
     }
 
-    if (text.includes('SELECT * FROM') && text.includes('erp_conversations') && text.includes('ORDER BY last_message_at DESC')) {
+    if (text.includes('SELECT') && text.includes('erp_conversations') && text.includes('ORDER BY is_general DESC, last_message_at DESC')) {
       const limit = Number(params[params.length - 1]) || 100;
       const hasActivityCursor = text.includes('last_message_at < ? OR (last_message_at = ? AND id < ?)');
       const cursorTime = hasActivityCursor ? params[0] : null;
@@ -107,7 +114,11 @@ class MockDb {
           return entryTime === boundaryTime && Number(entry.id) < Number(cursorId);
         })
         .sort((a, b) => (new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()) || (b.id - a.id))
-        .slice(0, limit);
+        .slice(0, limit)
+        .map((entry) => ({
+          ...entry,
+          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
+        }));
       return [rows, undefined];
     }
 
@@ -154,7 +165,11 @@ class MockDb {
       const rows = this.messages
         .filter((entry) => entry.parent_message_id == null)
         .sort((a, b) => b.id - a.id)
-        .slice(0, limit);
+        .slice(0, limit)
+        .map((entry) => ({
+          ...entry,
+          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
+        }));
       return [rows, undefined];
     }
 
@@ -164,7 +179,11 @@ class MockDb {
       const rows = this.messages
         .filter((entry) => Number(entry.conversation_id) === conversationId && !entry.deleted_at)
         .sort((a, b) => b.id - a.id)
-        .slice(0, limit);
+        .slice(0, limit)
+        .map((entry) => ({
+          ...entry,
+          is_general: entry.linked_type == null && entry.linked_id == null && entry.visibility_scope === 'company',
+        }));
       return [rows, undefined];
     }
 
@@ -449,4 +468,15 @@ test('listConversations hides private conversations and paginates with activity 
     getSession,
   });
   assert.deepEqual(page2.items.map((item) => Number(item.id)), [80, 19]);
+});
+
+
+test('listConversations ensures a company general conversation exists and marks it general', async () => {
+  const db = new MockDb();
+  db.conversations = [
+    { id: 31, company_id: 1, deleted_at: null, linked_type: 'transaction', linked_id: '55', visibility_scope: 'private', visibility_empid: 'E100,E200', last_message_at: '2026-01-10T10:00:00.000Z' },
+  ];
+
+  const result = await listConversations({ user: baseUser, companyId: 1, correlationId: 'corr-general-list', db, getSession });
+  assert.ok(result.items.some((item) => Number(item.id) !== 31 && item.is_general === true));
 });

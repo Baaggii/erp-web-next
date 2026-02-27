@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   buildSessionStorageKey,
-  canonicalConversationId,
   createInitialWidgetState,
   excludeGeneralConversationSummaries,
   messagingWidgetReducer,
@@ -103,12 +102,6 @@ test('normalizeConversationId strips UI prefix', () => {
   assert.equal(normalizeConversationId(55), '55');
   assert.equal(normalizeConversationId(''), null);
 });
-test('canonicalConversationId only uses explicit conversation fields', () => {
-  assert.equal(canonicalConversationId({ conversation_id: 44, id: 91 }), '44');
-  assert.equal(canonicalConversationId({ conversationId: '55', id: 91 }), '55');
-  assert.equal(canonicalConversationId({ id: 91, parent_message_id: 10 }), null);
-});
-
 test('excludeGeneralConversationSummaries hides general channel entries', () => {
   const filtered = excludeGeneralConversationSummaries([
     { id: 'general', isGeneral: true },
