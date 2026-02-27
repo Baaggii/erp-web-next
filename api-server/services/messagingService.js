@@ -384,7 +384,14 @@ function normalizeVisibility(payload, session, user) {
 
 function sanitizeMessageText(value) {
   return String(value ?? '')
-    .replace(/[ --]/g, '')
+  if (!raw) {
+    return 'general';
+  }
+  if (!MESSAGE_CLASS_ALLOWLIST.has(raw)) {
+    return 'general';
+  }
+  return raw;
+-]/g, '')
     .replace(/<[^>]*>/g, '')
     .trim();
 }
