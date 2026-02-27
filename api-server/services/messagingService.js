@@ -14,7 +14,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
-const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
+const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'private', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -22,6 +22,8 @@ const messageLinkedContextSupport = new WeakMap();
 const messageEncryptionColumnSupport = new WeakMap();
 const messageDeleteByColumnSupport = new WeakMap();
 const messageConversationColumnSupport = new WeakMap();
+const conversationParticipantTableSupport = new WeakMap();
+const messageParticipantTableSupport = new WeakMap();
 let ioRef = null;
 
 const onlineByCompany = new Map();
@@ -342,9 +344,11 @@ function validateLinkedContext(linkedType, linkedId) {
 }
 
 function normalizeVisibility(payload, session, user) {
-  const recipients = Array.isArray(payload?.recipientEmpids)
-    ? Array.from(new Set(payload.recipientEmpids.map((entry) => String(entry || '').trim()).filter(Boolean)))
-    : [];
+  const rawParticipants = [
+    ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+    ...(Array.isArray(payload?.participants) ? payload.participants : []),
+  ];
+  const recipients = Array.from(new Set(rawParticipants.map((entry) => String(entry || '').trim()).filter(Boolean)));
 
   const requestedScope = String(payload?.visibilityScope || '').trim().toLowerCase();
   const scope = requestedScope || (recipients.length > 0 ? 'private' : 'company');
@@ -384,7 +388,72 @@ function normalizeVisibility(payload, session, user) {
 
 function sanitizeMessageText(value) {
   return String(value ?? '')
-    .replace(/[ --]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+  if (raw && MESSAGE_CLASS_ALLOWLIST.has(raw)) {
+    if (raw === 'private' && visibilityScope !== 'private') return 'general';
+    return raw;
+  }
+function normalizeIncomingMessageClass(payload, fallbackScope = 'company') {
+  const raw = String(payload?.messageClass ?? payload?.message_class ?? '').trim().toLowerCase();
+  if (!raw) return null;
+  if (MESSAGE_CLASS_ALLOWLIST.has(raw)) {
+    if (raw === 'private' && fallbackScope !== 'private') return 'general';
+    return raw;
+  }
+  return 'general';
+}
+
+    const classTruncated = Boolean(messageClass) && isTruncatedColumnValueError(error, 'message_class');
+    if (!topicUnsupported && !classUnsupported && !classTruncated) throw error;
+    if (classTruncated && topic !== undefined) {
+      await db.query('UPDATE erp_messages SET topic = ? WHERE id = ? AND company_id = ?', [topic, messageId, companyId]);
+    }
+    if (classTruncated && topic === undefined) {
+      await db.query('UPDATE erp_messages SET message_class = ? WHERE id = ? AND company_id = ?', ['general', messageId, companyId]);
+    }
+  }
+}
+
+async function upsertConversationParticipants(db, { companyId, conversationId, participants }) {
+  if (!companyId || !conversationId) return;
+  if (conversationParticipantTableSupport.get(db) === false) return;
+  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (normalizedParticipants.length === 0) return;
+  try {
+    await db.query(
+      'DELETE FROM erp_conversation_participants WHERE company_id = ? AND conversation_id = ?',
+      [companyId, conversationId],
+    );
+    await Promise.all(normalizedParticipants.map((empid) => db.query(
+      `INSERT INTO erp_conversation_participants (company_id, conversation_id, empid, created_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE empid = VALUES(empid)`,
+      [companyId, conversationId, empid],
+    )));
+    conversationParticipantTableSupport.set(db, true);
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'conversation_id') && !String(error?.message || '').includes('erp_conversation_participants')) throw error;
+    conversationParticipantTableSupport.set(db, false);
+  }
+}
+
+async function upsertMessageParticipants(db, { companyId, messageId, participants }) {
+  if (!companyId || !messageId) return;
+  if (messageParticipantTableSupport.get(db) === false) return;
+  const normalizedParticipants = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (normalizedParticipants.length === 0) return;
+  try {
+    await Promise.all(normalizedParticipants.map((empid) => db.query(
+      `INSERT INTO erp_message_participants (company_id, message_id, empid, created_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE empid = VALUES(empid)`,
+      [companyId, messageId, empid],
+    )));
+    messageParticipantTableSupport.set(db, true);
+  } catch (error) {
+    if (!isUnknownColumnError(error, 'message_id') && !String(error?.message || '').includes('erp_message_participants')) throw error;
+    messageParticipantTableSupport.set(db, false);
+  await upsertConversationParticipants(db, { companyId, conversationId, participants: normalizedParticipants });
     .replace(/<[^>]*>/g, '')
     .trim();
 }
@@ -979,13 +1048,23 @@ async function createMessageInternal({
       [result] = await db.query(
         `INSERT INTO erp_messages
           (company_id, author_empid, parent_message_id, conversation_id, body)
-          VALUES (?, ?, ?, ?, ?)`,
-        [
-          ctx.companyId,
-          ctx.user.empid,
-          parentMessageId,
-          canonicalConversationId || parentMessageId || 0,
-          body,
+  if (visibility.visibilityScope === 'private') {
+    const privateParticipants = [
+      ...parsePrivateParticipants(visibility.visibilityEmpid),
+      ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+      ...(Array.isArray(payload?.participants) ? payload.participants : []),
+      String(ctx.user?.empid || '').trim(),
+    ];
+    await upsertMessageParticipants(db, {
+      messageId,
+      participants: privateParticipants,
+    if (canonicalConversationId) {
+      await syncConversationParticipants(db, {
+        companyId: ctx.companyId,
+        conversationId: canonicalConversationId,
+        participants: privateParticipants,
+      });
+    }
         ],
       );
       messageConversationColumnSupport.set(db, true);
@@ -1048,6 +1127,24 @@ async function createMessageInternal({
     status: 'success',
   });
 
+  if (String(conversation.visibility_scope || '').toLowerCase() === 'private') {
+    await syncConversationParticipants(db, {
+      companyId: scopedCompanyId,
+      conversationId: requestedConversationId,
+      participants: [
+        ...parsePrivateParticipants(conversation.visibility_empid),
+        ...(Array.isArray(payload?.recipientEmpids) ? payload.recipientEmpids : []),
+        ...(Array.isArray(payload?.participants) ? payload.participants : []),
+        String(user?.empid || '').trim(),
+      ],
+    });
+  }
+
+  const normalizedMessageClass = normalizeIncomingMessageClass(payload, visibility.visibilityScope);
+      ...(normalizedMessageClass ? { messageClass: normalizedMessageClass, message_class: normalizedMessageClass } : {}),
+  const requestedScope = String(payload?.visibilityScope || payload?.visibility_scope || '').trim().toLowerCase() || 'company';
+  const normalizedMessageClass = normalizeIncomingMessageClass(payload, requestedScope);
+      ...(normalizedMessageClass ? { messageClass: normalizedMessageClass, message_class: normalizedMessageClass } : {}),
   return { message: viewerMessage, idempotentReplay: false };
 }
 
