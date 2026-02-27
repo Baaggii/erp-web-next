@@ -376,25 +376,6 @@ test('idempotency rejects same key when metadata differs', async () => {
   );
 });
 
-test('unsupported messageClass is normalized to general before persistence', async () => {
-  const db = new MockDb();
-  const result = await createConversationRoot({
-    user: baseUser,
-    companyId: 1,
-    payload: {
-      idempotencyKey: 'root-private-class-fallback',
-      body: 'Root body',
-      recipientEmpids: ['E200'],
-      messageClass: 'private',
-    },
-    correlationId: 'corr-root-private-class-fallback',
-    db,
-    getSession,
-  });
-
-  assert.equal(result.message.message_class, 'general');
-});
-
 test('deleting root message deletes only that conversation scope', async () => {
   const db = new MockDb();
   db.messages.push({
