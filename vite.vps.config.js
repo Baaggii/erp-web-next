@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 export default ({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  // This loads .env but does NOT manually inject
+  loadEnv(mode, process.cwd());
 
   return defineConfig({
     plugins: [react()],
@@ -11,11 +12,6 @@ export default ({ mode }) => {
     build: {
       outDir: resolve(__dirname, 'dist-erp'),
       emptyOutDir: true,
-    },
-    define: {
-      'import.meta.env': {
-        ...env
-      }
     }
   });
 };
