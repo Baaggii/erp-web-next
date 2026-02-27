@@ -14,6 +14,7 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_DEPTH = 5;
 const LINKED_TYPE_ALLOWLIST = new Set(['transaction', 'plan', 'topic', 'task', 'ticket']);
 const VISIBILITY_SCOPES = new Set(['company', 'department', 'private']);
+const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 
 const validatedMessagingSchemas = new WeakSet();
 const idempotencyRequestHashSupport = new WeakMap();
@@ -139,6 +140,14 @@ function isMissingDefaultForFieldError(error, columnName) {
   if (String(error?.code || '').toUpperCase() !== 'ER_NO_DEFAULT_FOR_FIELD') return false;
   const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
   return message.includes(String(columnName).toLowerCase());
+}
+
+
+function isTruncatedColumnValueError(error, columnName) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.sqlMessage || error?.message || '').toLowerCase();
+  if (!message.includes(String(columnName).toLowerCase())) return false;
+  return code === 'WARN_DATA_TRUNCATED' || code === 'ER_WARN_DATA_TRUNCATED' || message.includes('data truncated');
 }
 
 async function readIdempotencyRow(db, { companyId, empid, idempotencyKey }) {
