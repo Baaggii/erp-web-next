@@ -129,7 +129,12 @@ function countNestedReplies(message) {
 }
 
 function extractMessageTopic(message) {
-  return sanitizeMessageText(message?.topic || '').slice(0, 120);
+  const directTopic = sanitizeMessageText(message?.topic || '').slice(0, 120);
+  if (directTopic) return directTopic;
+  const decoded = decodeMessageContent(message?.body || '');
+  const inlineTopicMatch = decoded.text.match(/^\[([^\]]{1,120})\]\s+/);
+  if (!inlineTopicMatch) return '';
+  return sanitizeMessageText(inlineTopicMatch[1] || '').slice(0, 120);
 }
 
 function extractContextLink(message) {
@@ -1738,7 +1743,7 @@ export default function MessagingWidget() {
       messageClass: visibilityScope === 'private' ? 'private' : 'general',
       companyId: normalizedCompanyId,
       visibilityScope,
-      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants, participants: allParticipants } : {}),
+      ...(visibilityScope === 'private' ? { recipientEmpids: allParticipants } : {}),
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
