@@ -9,7 +9,7 @@ import {
   messagingWidgetReducer,
   prioritizeConversationSummaries,
   resolvePresenceStatus,
-  resolveThreadRefreshRootId,
+  normalizeConversationId,
   safePreviewableFile,
   sanitizeMessageText,
 } from '../../src/erp.mgt.mn/components/messagingWidgetModel.js';
@@ -63,7 +63,7 @@ test('messagingWidgetReducer conversation load lifecycle stores conversation ord
 });
 
 test('composer start and reset clear reply target state', () => {
-  const initial = createInitialWidgetState({ activeConversationId: 'message:101', companyId: 'A' });
+  const initial = createInitialWidgetState({ activeConversationId: 'conversation:101', companyId: 'A' });
   const withReplyTo = messagingWidgetReducer(initial, { type: 'composer/setReplyTo', payload: '88' });
   const started = messagingWidgetReducer(withReplyTo, { type: 'composer/start', payload: { conversationId: '__new__' } });
 
@@ -96,55 +96,40 @@ test('resolvePresenceStatus marks stale online users as away or offline', () => 
 
 
 
+
+
+test('normalizeConversationId strips UI prefix', () => {
+  assert.equal(normalizeConversationId('conversation:44'), '44');
+  assert.equal(normalizeConversationId(55), '55');
+  assert.equal(normalizeConversationId(''), null);
+});
 test('canonicalConversationId only uses explicit conversation fields', () => {
   assert.equal(canonicalConversationId({ conversation_id: 44, id: 91 }), '44');
   assert.equal(canonicalConversationId({ conversationId: '55', id: 91 }), '55');
   assert.equal(canonicalConversationId({ id: 91, parent_message_id: 10 }), null);
 });
 
-test('resolveThreadRefreshRootId keeps replies inside the active thread root', () => {
-  const createdNestedReply = { id: 22, parent_message_id: 15 };
-  assert.equal(
-    resolveThreadRefreshRootId({
-      isReplyMode: true,
-      fallbackRootReplyTargetId: '8',
-      createdMessage: createdNestedReply,
-    }),
-    '8',
-  );
-
-  assert.equal(
-    resolveThreadRefreshRootId({
-      isReplyMode: false,
-      fallbackRootReplyTargetId: '8',
-      createdMessage: { id: 30, conversation_id: 9 },
-    }),
-    '9',
-  );
-});
-
-
 test('excludeGeneralConversationSummaries hides general channel entries', () => {
   const filtered = excludeGeneralConversationSummaries([
     { id: 'general', isGeneral: true },
-    { id: 'message:1', isGeneral: false },
+    { id: 'conversation:1', isGeneral: false },
     { id: '__new__', isDraft: true, isGeneral: false },
   ]);
 
-  assert.deepEqual(filtered.map((entry) => entry.id), ['message:1', '__new__']);
+  assert.deepEqual(filtered.map((entry) => entry.id), ['conversation:1', '__new__']);
 });
 
 
 test('prioritizeConversationSummaries keeps general channel first and includes it without messages', () => {
   const summaries = prioritizeConversationSummaries(
     [
-      { id: 'message:2', isGeneral: false, messages: [{ id: 2 }] },
+      { id: 'conversation:2', isGeneral: false, messages: [{ id: 2 }] },
       { id: 'general', isGeneral: true, messages: [] },
-      { id: 'message:1', isGeneral: false, messages: [{ id: 1 }] },
-      { id: 'message:empty', isGeneral: false, messages: [] },
+      { id: 'conversation:1', isGeneral: false, messages: [{ id: 1 }] },
+      { id: 'conversation:empty', isGeneral: false, messages: [] },
     ],
     { id: '__new__', isDraft: true, isGeneral: false, messages: [] },
   );
 
-  assert.deepEqual(summaries.map((entry) => entry.id), ['general', '__new__', 'message:2', 'message:1']);
+  assert.deepEqual(summaries.map((entry) => entry.id), ['general', '__new__', 'conversation:2', 'conversation:1']);
 });

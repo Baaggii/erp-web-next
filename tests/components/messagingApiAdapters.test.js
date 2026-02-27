@@ -20,7 +20,7 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
 
   assert.deepEqual(adapted.items[0], {
     id: 'conversation:15',
-    conversationId: 15,
+    conversationId: '15',
     title: 'sales_order #44',
     linkedType: 'sales_order',
     linkedId: '44',
@@ -42,7 +42,7 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
 
 test('adaptThreadResponse normalizes thread items with guaranteed conversation_id', () => {
   const adapted = adaptThreadResponse({
-    conversationId: 77,
+    conversationId: '77',
     items: [
       { id: 1, body: 'root' },
       { id: 2, body: 'reply', conversation_id: 77 },
@@ -50,8 +50,8 @@ test('adaptThreadResponse normalizes thread items with guaranteed conversation_i
     pageInfo: { page: 1, hasNextPage: false },
   });
 
-  assert.equal(adapted.conversationId, 77);
-  assert.equal(adapted.items[0].conversation_id, 77);
-  assert.equal(adapted.items[1].conversation_id, 77);
+  assert.equal(adapted.conversationId, '77');
+  assert.equal(adapted.items[0].conversation_id, '77');
+  assert.equal(adapted.items[1].conversation_id, '77');
   assert.deepEqual(adapted.pageInfo, { page: 1, hasNextPage: false });
 });

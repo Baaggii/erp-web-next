@@ -891,7 +891,6 @@ export default function AccountingPeriodsPage() {
                         getDrilldownRowKey={(parentRowId, detailIndex) =>
                           buildPreviewDrilldownKey(result.name, parentRowId, detailIndex)}
                         excludeColumns={INTERNAL_COLS}
-                        autoFitColumns={true}
                         minHeight={REPORT_FRAME_MIN_HEIGHT}
                         maxHeight={REPORT_FRAME_MAX_HEIGHT}
                         showTotalRowCount
@@ -951,7 +950,6 @@ export default function AccountingPeriodsPage() {
               drilldownRowSelection={snapshotDrilldownSelection}
               onDrilldownRowSelectionChange={handleSnapshotDrilldownSelectionChange}
               excludeColumns={INTERNAL_COLS}
-              autoFitColumns={true}
               minHeight={REPORT_FRAME_MIN_HEIGHT}
               maxHeight={REPORT_FRAME_MAX_HEIGHT}
               showTotalRowCount
