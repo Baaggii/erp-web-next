@@ -163,6 +163,25 @@ function parseNotificationMessage(rawMessage) {
   }
 }
 
+async function getPendingRequestColumnSet(companyId) {
+  try {
+    const [rows] = await queryWithTenantScope(
+      pool,
+      'pending_request',
+      companyId,
+      'SHOW COLUMNS FROM {{table}}',
+      [],
+    );
+    return new Set(
+      (rows || [])
+        .map((row) => String(row?.Field || row?.field || '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 function isTransactionPayload(payload) {
   if (!payload || typeof payload !== 'object') return false;
   const kind = String(payload.kind || '').trim().toLowerCase();
@@ -231,6 +250,10 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
     const userEmpId = String(req.user.empid || '').trim().toUpperCase();
     const companyId = req.user.companyId;
     const session = req.session || {};
+
+    const pendingRequestColumns = await getPendingRequestColumnSet(companyId);
+    const hasRespondedAt = pendingRequestColumns.has('responded_at');
+    const hasResponseEmpid = pendingRequestColumns.has('response_empid');
 
     let redirectMapByName = new Map();
     let redirectMapByTable = new Map();
@@ -309,11 +332,13 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       pool,
       'pending_request',
       companyId,
-      `SELECT request_id, request_type, table_name, emp_id, status, created_at, responded_at, response_empid
+      `SELECT request_id, request_type, table_name, emp_id, status, created_at,
+              ${hasRespondedAt ? 'responded_at' : 'NULL AS responded_at'},
+              ${hasResponseEmpid ? 'response_empid' : 'NULL AS response_empid'}
          FROM {{table}}
         WHERE UPPER(TRIM(emp_id)) = ?
           AND LOWER(TRIM(status)) IN ('pending', 'accepted', 'declined')
-        ORDER BY COALESCE(responded_at, created_at) DESC
+        ORDER BY COALESCE(${hasRespondedAt ? 'responded_at' : 'created_at'}, created_at) DESC
         LIMIT ?`,
       [userEmpId, sourceLimit],
     );
