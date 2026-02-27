@@ -372,6 +372,14 @@ function normalizeVisibility(payload, session, user) {
   };
 }
 
+
+function sanitizeMessageText(value) {
+  return String(value ?? '')
+    .replace(/[ --]/g, '')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
 function parsePrivateParticipants(value) {
   if (!value) return [];
   return Array.from(new Set(String(value)
