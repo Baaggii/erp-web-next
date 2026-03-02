@@ -68,7 +68,14 @@ async function recordLoginSessionImpl(req, sessionPayload, user) {
     sessionPayload?.merchantTin ??
     null;
   const merchantTin =
-    sessionPayload?.merchant_tin ?? sessionPayload?.merchantTin ?? null;
+    sessionPayload?.merchant_tin ??
+    sessionPayload?.merchantTin ??
+    sessionPayload?.tax_registration_no ??
+    sessionPayload?.taxRegistrationNo ??
+    merchantId ??
+    req.body?.merchant_tin ??
+    req.body?.merchantTin ??
+    null;
   const posTerminalNo =
     sessionPayload?.pos_terminal_no ??
     sessionPayload?.posTerminalNo ??
