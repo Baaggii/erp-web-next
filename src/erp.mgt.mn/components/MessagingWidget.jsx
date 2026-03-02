@@ -830,6 +830,7 @@ export default function MessagingWidget() {
     const activeCompany = state.activeCompanyId || companyId;
     if (!state.isOpen || !activeCompany) return;
     let disposed = false;
+    const defaultCompany = normalizeId(companyId);
 
     const loadCompanies = async () => {
       try {
@@ -847,16 +848,34 @@ export default function MessagingWidget() {
     const loadMessages = async () => {
       try {
         setNetworkState('loading');
-        const params = new URLSearchParams({ companyId: activeCompany, limit: '100' });
-        const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-        const data = await res.json();
+        const fetchConversations = async (targetCompany) => {
+          const params = new URLSearchParams({ companyId: String(targetCompany), limit: '100' });
+          const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
+          if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+          return { data: await res.json(), company: targetCompany };
+        };
+
+        let conversationsResult;
+        try {
+          conversationsResult = await fetchConversations(activeCompany);
+        } catch (primaryErr) {
+          const shouldFallbackToDefaultCompany =
+            defaultCompany &&
+            defaultCompany !== String(activeCompany) &&
+            /\(500\)/.test(primaryErr?.message || '');
+          if (!shouldFallbackToDefaultCompany) throw primaryErr;
+          conversationsResult = await fetchConversations(defaultCompany);
+          dispatch({ type: 'company/setActive', payload: defaultCompany });
+          globalThis.sessionStorage?.setItem(sessionCompanyKey, String(defaultCompany));
+        }
+
+        const { data, company: resolvedCompany } = conversationsResult;
         if (disposed) return;
         const adaptedConversations = adaptConversationListResponse(data);
         dispatch({
           type: 'conversations/loadSuccess',
           payload: {
-            companyKey: getCompanyCacheKey(activeCompany),
+            companyKey: getCompanyCacheKey(resolvedCompany),
             items: adaptedConversations.items,
           },
         });
@@ -876,7 +895,7 @@ export default function MessagingWidget() {
 
         setMessagesByCompany((prev) => ({
           ...prev,
-          [getCompanyCacheKey(activeCompany)]: prev[getCompanyCacheKey(activeCompany)] || [],
+          [getCompanyCacheKey(resolvedCompany)]: prev[getCompanyCacheKey(resolvedCompany)] || [],
         }));
         setNetworkState('ready');
       } catch (err) {
