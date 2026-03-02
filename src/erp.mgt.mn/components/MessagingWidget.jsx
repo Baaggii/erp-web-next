@@ -5,6 +5,7 @@ import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import {
   PRESENCE,
   buildSessionStorageKey,
+  conversationIdFromSelection,
   createInitialWidgetState,
   getCompanyCacheKey,
   prioritizeConversationSummaries,
@@ -290,13 +291,6 @@ function createIdempotencyKey() {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
-
-function conversationIdFromSelection(conversationId) {
-  const raw = normalizeConversationId(conversationId);
-  if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
-  return raw;
-}
-
 
 function escapeRegexValue(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -682,9 +676,8 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
-      if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
-      return null;
+      if (rawConversationId === NEW_CONVERSATION_ID) return rawConversationId;
+      return normalizeConversationId(rawConversationId);
     })(),
     companyId: globalThis.sessionStorage?.getItem(sessionCompanyKey) || companyId,
   });
@@ -882,12 +875,7 @@ export default function MessagingWidget() {
 
         const visibleConversationIds = new Set(adaptedConversations.items.map((conversation) => conversation.id));
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
-        const normalizedStoredConversationId = normalizeConversationId(rawStoredConversationId);
-        const storedConversationId = rawStoredConversationId === 'general'
-          ? 'general'
-          : normalizedStoredConversationId
-            ? `conversation:${normalizedStoredConversationId}`
-            : null;
+        const storedConversationId = normalizeConversationId(rawStoredConversationId);
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
           dispatch({ type: 'widget/setConversation', payload: null });
           globalThis.sessionStorage?.removeItem(sessionConversationKey);
@@ -904,20 +892,7 @@ export default function MessagingWidget() {
           type: 'conversations/loadSuccess',
           payload: {
             companyKey: getCompanyCacheKey(activeCompany),
-            items: [{
-              id: 'general',
-              conversationId: 'general',
-              title: 'General',
-              type: 'general',
-              linkedType: null,
-              linkedId: null,
-              isGeneral: true,
-              participants: [],
-              lastMessageAt: null,
-              lastMessageId: null,
-              unread: 0,
-              raw: null,
-            }],
+            items: [],
           },
         });
         setNetworkState('ready');
@@ -1215,7 +1190,7 @@ export default function MessagingWidget() {
     const onConversationDeleted = (payload) => {
       const conversationId = normalizeConversationId(payload?.conversation_id || payload?.conversationId || payload?.id);
       if (!conversationId) return;
-      const conversationUiId = `conversation:${conversationId}`;
+      const conversationUiId = conversationId;
       const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
       setMessagesByCompany((prev) => {
         const nextMessages = (prev[companyKey] || []).filter((entry) => normalizeConversationId(entry.conversation_id || entry.conversationId) !== conversationId);
@@ -1348,7 +1323,7 @@ export default function MessagingWidget() {
     if (!hasInitializedPreferredConversationRef.current) {
       hasInitializedPreferredConversationRef.current = true;
       const preferredConversationId = lastUserConversationId
-        || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+        || conversations.find((conversation) => conversation.isGeneral)?.id
         || conversations[0]?.id
         || null;
       if (preferredConversationId && state.activeConversationId !== preferredConversationId) {
@@ -1359,7 +1334,7 @@ export default function MessagingWidget() {
 
     if (state.activeConversationId) return;
     const fallbackConversationId = lastUserConversationId
-      || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+      || conversations.find((conversation) => conversation.isGeneral)?.id
       || conversations[0]?.id
       || null;
     if (!fallbackConversationId) return;
@@ -1669,8 +1644,7 @@ export default function MessagingWidget() {
     const hasSelectedConversation = Boolean(
       isDraftConversation
       || activeConversation
-      || selectedConversationIdFromState
-      || state.activeConversationId === 'general',
+      || selectedConversationIdFromState,
     );
 
     if (!hasSelectedConversation) {
@@ -1715,7 +1689,7 @@ export default function MessagingWidget() {
         .map(normalizeId)
         .filter(Boolean),
     ));
-    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
+    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
@@ -1742,17 +1716,16 @@ export default function MessagingWidget() {
     };
 
     const explicitReplyTargetId = parseThreadMessageId(state.composer.replyToId);
-    const generalConversationRootId = selectedIsGeneral
-      ? normalizeId(
-        selectedConversation?.messages
-          ?.find((entry) => !normalizeId(entry?.parent_message_id || entry?.parentMessageId))
-          ?.id,
+    const generalConversationId = selectedIsGeneral
+      ? parseThreadMessageId(
+        selectedConversation?.conversationId
+        || conversations.find((conversation) => conversation?.isGeneral)?.conversationId,
       )
       : null;
     const targetConversationId = parseThreadMessageId(
       selectedConversation?.conversationId
       || selectedConversationIdFromState
-      || generalConversationRootId,
+      || generalConversationId,
     );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
     if ((shouldSendReply || hasThreadContext) && !targetConversationId && !explicitReplyTargetId) {
@@ -1761,6 +1734,10 @@ export default function MessagingWidget() {
     }
     if (explicitReplyTargetId && !hasThreadContext && !selectedIsGeneral) {
       setComposerAnnouncement('Select a conversation before sending a reply.');
+      return;
+    }
+    if (!isDraftConversation && selectedIsGeneral && !targetConversationId) {
+      setComposerAnnouncement('General conversation is unavailable. Refresh and try again.');
       return;
     }
     if (!isDraftConversation && !selectedIsGeneral && !shouldSendReply && !targetConversationId) {
@@ -1775,7 +1752,6 @@ export default function MessagingWidget() {
       clientTempId,
       body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
       topic: canEditTopic ? safeTopic : undefined,
-      messageClass: 'general',
       companyId: normalizedCompanyId,
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
@@ -1803,7 +1779,6 @@ export default function MessagingWidget() {
       company_id: normalizedCompanyId,
       body: payload.body,
       topic: payload.topic || null,
-      message_class: payload.messageClass,
       author_empid: selfEmpid,
       recipient_empids: !isGeneralChannel ? allParticipants : null,
       linked_type: linkedType,
@@ -1861,7 +1836,7 @@ export default function MessagingWidget() {
           });
         }
         if (isDraftConversation) {
-          dispatch({ type: 'widget/setConversation', payload: createdConversationId ? `conversation:${createdConversationId}` : null });
+          dispatch({ type: 'widget/setConversation', payload: createdConversationId || null });
         }
       }
       if (!threadRootIdToRefresh) {
@@ -1983,7 +1958,7 @@ export default function MessagingWidget() {
     }
     if (!id || state.composer.recipients.includes(id)) return;
     const selectedRootId = conversationIdFromSelection(state.activeConversationId);
-    const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
+    const isExistingPrivateConversation = !isDraftConversation && !activeConversation?.isGeneral && Boolean(selectedRootId);
     if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
       const label = resolveEmployeeLabel(id);
       const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);

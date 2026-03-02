@@ -1,7 +1,7 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
-function deriveConversationTitle(entry) {
-  if ((entry?.type || '').toLowerCase() === 'general') return 'General';
+function deriveConversationTitle(entry, isGeneral = false) {
+  if (isGeneral || (entry?.type || '').toLowerCase() === 'general') return 'General';
   return sanitizeMessageText(
     entry?.title
     || entry?.topic
@@ -13,21 +13,22 @@ function deriveConversationTitle(entry) {
 
 export function adaptConversationListResponse(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
-  let hasGeneralConversation = false;
 
   return {
     items: items
       .map((entry) => {
         const type = String(entry?.type || 'private').toLowerCase();
-        const isGeneral = type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true;
+        const visibilityScope = String(entry?.visibility_scope ?? entry?.visibilityScope ?? '').toLowerCase();
+        const isGeneral = type === 'general'
+          || (entry?.is_general ?? entry?.isGeneral) === true
+          || (visibilityScope === 'company' && !(entry?.linked_type ?? entry?.linkedType) && !(entry?.linked_id ?? entry?.linkedId));
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
-        if (!isGeneral && conversationId == null) return null;
+        if (conversationId == null) return null;
         const normalizedId = normalizeId(conversationId);
-        if (isGeneral) hasGeneralConversation = true;
         return {
-          id: isGeneral ? 'general' : `conversation:${normalizedId}`,
+          id: normalizedId,
           conversationId: conversationId ?? null,
-          title: deriveConversationTitle(entry),
+          title: deriveConversationTitle(entry, isGeneral),
           type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
@@ -40,22 +41,6 @@ export function adaptConversationListResponse(data) {
         };
       })
       .filter(Boolean)
-      .concat(hasGeneralConversation
-        ? []
-        : [{
-          id: 'general',
-          conversationId: 'general',
-          title: 'General',
-          type: 'general',
-          linkedType: null,
-          linkedId: null,
-          isGeneral: true,
-          participants: [],
-          lastMessageAt: null,
-          lastMessageId: null,
-          unread: 0,
-          raw: null,
-        }])
       .sort((a, b) => {
         if (a.isGeneral) return -1;
         if (b.isGeneral) return 1;
