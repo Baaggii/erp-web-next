@@ -881,8 +881,29 @@ export default function MessagingWidget() {
         setNetworkState('ready');
       } catch (err) {
         if (disposed) return;
-        setNetworkState('error');
-        setError(err.message || 'Messaging unavailable');
+        dispatch({
+          type: 'conversations/loadSuccess',
+          payload: {
+            companyKey: getCompanyCacheKey(activeCompany),
+            items: [{
+              id: 'general',
+              conversationId: 'general',
+              title: 'General',
+              type: 'general',
+              linkedType: null,
+              linkedId: null,
+              isGeneral: true,
+              participants: [],
+              lastMessageAt: null,
+              lastMessageId: null,
+              unread: 0,
+              raw: null,
+            }],
+          },
+        });
+        setNetworkState('ready');
+        setError('');
+        setComposerAnnouncement(err.message || 'Messaging unavailable');
       }
     };
 
