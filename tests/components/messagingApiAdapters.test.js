@@ -42,6 +42,17 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
   assert.deepEqual(adapted.pageInfo, { page: 1, limit: 20 });
 });
 
+
+test('adaptConversationListResponse prefers conversation_id over legacy id values', () => {
+  const adapted = adaptConversationListResponse({
+    items: [{ id: 'general', conversation_id: 24, type: 'general' }],
+  });
+
+  assert.equal(adapted.items[0].id, '24');
+  assert.equal(adapted.items[0].conversationId, '24');
+  assert.equal(adapted.items[0].isGeneral, true);
+});
+
 test('adaptThreadResponse normalizes thread items with guaranteed conversation_id', () => {
   const adapted = adaptThreadResponse({
     conversationId: '77',
