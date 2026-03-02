@@ -4,7 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import potrace from 'potrace';
 import { svgPathProperties } from 'svg-path-properties';
-import toolLibrary from '../data/toolLibrary.json' assert { type: 'json' };
+import toolLibrary from '../data/toolLibrary.json' with { type: 'json' };
 
 const OUTPUT_DIR = path.join(os.tmpdir(), 'erp-cnc');
 const outputRegistry = new Map();
