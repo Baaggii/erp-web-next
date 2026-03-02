@@ -2,9 +2,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import { createRequire } from 'module';
 import potrace from 'potrace';
 import { svgPathProperties } from 'svg-path-properties';
-import toolLibrary from '../data/toolLibrary.json' with { type: 'json' };
+
+const require = createRequire(import.meta.url);
+const toolLibrary = require('../data/toolLibrary.json');
 
 const OUTPUT_DIR = path.join(os.tmpdir(), 'erp-cnc');
 const outputRegistry = new Map();
