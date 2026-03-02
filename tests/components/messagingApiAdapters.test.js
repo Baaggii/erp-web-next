@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { adaptConversationListResponse, adaptThreadResponse } from '../../src/erp.mgt.mn/components/messagingApiAdapters.js';
 
-test('adaptConversationListResponse normalizes strict backend list payload', () => {
+test('adaptConversationListResponse normalizes strict backend list payload and keeps general visible', () => {
   const adapted = adaptConversationListResponse({
     items: [
       {
@@ -22,10 +22,11 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
     id: 'conversation:15',
     conversationId: '15',
     title: 'sales_order #44',
+    type: 'private',
     linkedType: 'sales_order',
     linkedId: '44',
-    visibilityScope: 'private',
     isGeneral: false,
+    participants: [],
     lastMessageAt: '2026-01-02T03:04:05.000Z',
     lastMessageId: '901',
     unread: 0,
@@ -38,6 +39,8 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
       last_message_id: 901,
     },
   });
+  assert.equal(adapted.items[1]?.id, 'general');
+  assert.equal(adapted.items[1]?.isGeneral, true);
   assert.deepEqual(adapted.pageInfo, { page: 1, limit: 20 });
 });
 
@@ -66,5 +69,15 @@ test('adaptConversationListResponse marks company-wide unlinked conversation as 
   });
 
   assert.equal(adapted.items[0].isGeneral, true);
+  assert.equal(adapted.items[0].id, 'general');
   assert.equal(adapted.items[0].title, 'General');
+});
+
+test('adaptConversationListResponse does not duplicate explicit general conversation', () => {
+  const adapted = adaptConversationListResponse({
+    items: [{ type: 'general', is_general: true, title: 'General' }],
+  });
+
+  const generalItems = adapted.items.filter((entry) => entry.id === 'general');
+  assert.equal(generalItems.length, 1);
 });
