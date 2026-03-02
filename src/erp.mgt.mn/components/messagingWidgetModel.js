@@ -53,7 +53,7 @@ export function normalizeConversationId(value) {
 
 export function conversationIdFromSelection(conversationId, { isDraft = false } = {}) {
   const raw = normalizeConversationId(conversationId);
-  if (!raw || raw === '__new__' || raw === 'general' || isDraft) return null;
+  if (!raw || raw === '__new__' || isDraft) return null;
   return raw;
 }
 

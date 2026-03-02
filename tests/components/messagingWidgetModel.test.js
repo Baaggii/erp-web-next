@@ -8,6 +8,7 @@ import {
   messagingWidgetReducer,
   prioritizeConversationSummaries,
   resolvePresenceStatus,
+  conversationIdFromSelection,
   normalizeConversationId,
   safePreviewableFile,
   sanitizeMessageText,
@@ -102,6 +103,14 @@ test('normalizeConversationId strips UI prefix', () => {
   assert.equal(normalizeConversationId(55), '55');
   assert.equal(normalizeConversationId(''), null);
 });
+
+test('conversationIdFromSelection preserves selected general conversation ids', () => {
+  assert.equal(conversationIdFromSelection('24'), '24');
+  assert.equal(conversationIdFromSelection('conversation:24'), '24');
+  assert.equal(conversationIdFromSelection('__new__'), null);
+  assert.equal(conversationIdFromSelection('24', { isDraft: true }), null);
+});
+
 test('excludeGeneralConversationSummaries hides general channel entries', () => {
   const filtered = excludeGeneralConversationSummaries([
     { id: 'general', isGeneral: true },

@@ -1532,8 +1532,13 @@ export default function MessagingWidget() {
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
   const requiresTopic = false;
-  const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
-  const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
+  const draftParticipants = useMemo(
+    () => Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean))),
+    [selfEmpid, state.composer.recipients],
+  );
+  const hasRecipients = draftParticipants.some((entry) => entry !== selfEmpid);
+  const selectedConversationId = conversationIdFromSelection(state.activeConversationId, { isDraft: isDraftConversation });
+  const hasConversationTarget = Boolean(isDraftConversation || selectedConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
 
   const handleOpenLinkedTransaction = (transactionId) => {
@@ -1679,7 +1684,8 @@ export default function MessagingWidget() {
       return;
     }
 
-    const payloadRecipients = Array.from(new Set((state.composer.recipients || []).map(normalizeId).filter(Boolean)));
+    const payloadParticipants = draftParticipants;
+    const payloadRecipients = payloadParticipants.filter((entry) => entry !== selfEmpid);
     if (isDraftConversation && payloadRecipients.length === 0) {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
@@ -1692,7 +1698,7 @@ export default function MessagingWidget() {
     const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
-      ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
+      ? payloadParticipants
       : Array.from(new Set([selfEmpid, ...existingThreadParticipants].map(normalizeId).filter(Boolean)));
     const allParticipants = Array.from(new Set([selfEmpid, ...finalRecipients].map(normalizeId).filter(Boolean)));
     if (!isGeneralChannel && allParticipants.length < 2) {
@@ -1760,7 +1766,7 @@ export default function MessagingWidget() {
 
     if (isDraftConversation) {
       payload.type = 'private';
-      payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
+      payload.participants = payloadRecipients;
     }
 
     const shouldCreateConversationRoot = isDraftConversation;
