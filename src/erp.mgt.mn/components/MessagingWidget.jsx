@@ -1991,6 +1991,17 @@ export default function MessagingWidget() {
     setComposerAnnouncement('Started a new conversation draft.');
   };
 
+  const onToggleNewConversationSelection = (empid) => {
+    if (!empid) return;
+    const nextSelections = newConversationSelections.includes(empid)
+      ? newConversationSelections.filter((id) => id !== empid)
+      : Array.from(new Set([...newConversationSelections, empid]));
+    setNewConversationSelections(nextSelections);
+    if (isDraftConversation) {
+      dispatch({ type: 'composer/setRecipients', payload: nextSelections });
+    }
+  };
+
   const onComposerInput = (event) => {
     const value = event.target.value;
     dispatch({ type: 'composer/setBody', payload: value });
@@ -2142,7 +2153,7 @@ export default function MessagingWidget() {
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
                 return (
-                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
+                  <button key={entry.id} type="button" onClick={() => onToggleNewConversationSelection(entry.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
                     <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
@@ -2165,7 +2176,12 @@ export default function MessagingWidget() {
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     dispatch({ type: 'composer/setTopic', payload: conversation.title });
-                    dispatch({ type: 'composer/setRecipients', payload: [] });
+                    dispatch({
+                      type: 'composer/setRecipients',
+                      payload: conversation.id === NEW_CONVERSATION_ID
+                        ? (state.composer.recipients.length > 0 ? state.composer.recipients : newConversationSelections)
+                        : [],
+                    });
                     dispatch({
                       type: 'composer/setLinkedContext',
                       payload: {
