@@ -73,6 +73,8 @@ const createConversationSchema = {
   additionalProperties: false,
   required: ['type', 'participants', 'body'],
   properties: {
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
+    clientTempId: { type: 'string', minLength: 1, maxLength: 255 },
     companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     type: { type: 'string', enum: ['private', 'linked'] },
     participants: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1, maxLength: 64 } },
@@ -89,10 +91,14 @@ const postConversationMessageSchema = {
   additionalProperties: false,
   required: ['body'],
   properties: {
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
+    clientTempId: { type: 'string', minLength: 1, maxLength: 255 },
     companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     body: { type: 'string', minLength: 1, maxLength: 4000 },
     topic: { type: 'string', maxLength: 255 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    linkedType: { type: 'string', maxLength: 64 },
+    linkedId: { type: 'string', maxLength: 128 },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
   },
 };
