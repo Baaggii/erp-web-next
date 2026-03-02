@@ -1556,7 +1556,7 @@ export default function MessagingWidget() {
   const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
-  const requiresTopic = canEditTopic;
+  const requiresTopic = false;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
@@ -1657,10 +1657,6 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (canEditTopic && !safeTopic) {
-      setComposerAnnouncement('Topic is required.');
-      return;
-    }
     if (!safeBody) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
@@ -1791,7 +1787,7 @@ export default function MessagingWidget() {
       payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
     }
 
-    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !targetConversationId && !shouldSendReply);
+    const shouldCreateConversationRoot = isDraftConversation;
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? `${API_BASE}/messaging/conversations/${targetConversationId}/messages`
       : (shouldCreateConversationRoot
