@@ -8701,6 +8701,17 @@ function normalizeDeviceMac(value) {
   return trimmed || "unknown";
 }
 
+function normalizeMerchantTin(value, merchantId = null) {
+  const trimmed =
+    value === undefined || value === null ? "" : String(value).trim();
+  if (trimmed) return trimmed;
+  if (merchantId !== undefined && merchantId !== null) {
+    const merchantIdText = String(merchantId).trim();
+    if (merchantIdText) return merchantIdText;
+  }
+  return "unknown";
+}
+
 export async function logPosSessionStart(
   {
     sessionUuid,
@@ -8743,7 +8754,7 @@ export async function logPosSessionStart(
   }
   if (info.hasMerchantTin) {
     cols.push("merchant_tin");
-    params.push(merchantTin ?? null);
+    params.push(normalizeMerchantTin(merchantTin, merchantId));
   }
   const normalizePosField = (value) =>
     value === undefined || value === null ? null : String(value).trim() || null;
