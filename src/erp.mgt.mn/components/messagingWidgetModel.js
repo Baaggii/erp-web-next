@@ -51,12 +51,6 @@ export function normalizeConversationId(value) {
   return normalized;
 }
 
-export function conversationIdFromSelection(conversationId, { isDraft = false } = {}) {
-  const raw = normalizeConversationId(conversationId);
-  if (!raw || raw === '__new__' || raw === 'general' || isDraft) return null;
-  return raw;
-}
-
 export function buildSessionStorageKey(sessionId, suffix) {
   return `messaging-widget:${normalizeId(sessionId) || 'anonymous'}:${suffix}`;
 }
