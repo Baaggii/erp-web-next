@@ -19,11 +19,7 @@ export function adaptConversationListResponse(data) {
     items: items
       .map((entry) => {
         const type = String(entry?.type || 'private').toLowerCase();
-        const linkedType = entry?.linked_type ?? entry?.linkedType ?? null;
-        const linkedId = normalizeId(entry?.linked_id ?? entry?.linkedId) || null;
-        const visibilityScope = String(entry?.visibility_scope ?? entry?.visibilityScope ?? '').toLowerCase();
-        const isCompanyWideUnlinked = visibilityScope === 'company' && !linkedType && !linkedId;
-        const isGeneral = type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true || isCompanyWideUnlinked;
+        const isGeneral = type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true;
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (!isGeneral && conversationId == null) return null;
         if (isGeneral) hasGeneralConversation = true;
@@ -31,10 +27,10 @@ export function adaptConversationListResponse(data) {
         return {
           id: isGeneral ? 'general' : `conversation:${normalizedId}`,
           conversationId: isGeneral ? 'general' : conversationId,
-          title: isGeneral ? 'General' : deriveConversationTitle(entry),
+          title: deriveConversationTitle(entry),
           type,
-          linkedType,
-          linkedId,
+          linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
+          linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
           isGeneral,
           participants: Array.isArray(entry?.participants) ? entry.participants : [],
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
