@@ -525,7 +525,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -533,11 +533,18 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
-  const isHighlighted = highlightedIds.has(message.id);
+  const isHighlighted = highlightedIds.has(normalizeId(message.id));
   const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
+  const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
+  const menuControlProps = typeof onMenuOpenChange === 'function'
+    ? {
+      open: isMenuOpen,
+      onToggle: (event) => onMenuOpenChange(event.currentTarget.open),
+    }
+    : {};
 
   return (
     <article
@@ -566,17 +573,19 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
             Mentioned you
           </span>
         )}
-        <span style={{ fontSize: 11, color: readerLabels.length > 0 ? '#0f766e' : '#64748b', borderRadius: 999, background: '#f1f5f9', padding: '1px 7px' }}>
+        <span title={readTooltip} style={{ fontSize: 11, color: readerLabels.length > 0 ? '#0f766e' : '#64748b', borderRadius: 999, background: '#f1f5f9', padding: '1px 7px' }}>
           {readStatus}
         </span>
-        <details style={{ marginLeft: 'auto', position: 'relative' }}>
+        <details
+          {...menuControlProps}
+          style={{ marginLeft: 'auto', position: 'relative' }}
+        >
           <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
           <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
             <button
               type="button"
               onClick={(event) => {
-                const dropdown = event.currentTarget.closest('details');
-                if (dropdown) dropdown.open = false;
+                if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                 if (typeof onAnyAction === 'function') onAnyAction();
                 onReply(message.id);
               }}
@@ -591,6 +600,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
                 onClick={() => {
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onOpenLinkedTransaction(linked.linkedId);
                 }}
@@ -604,6 +614,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               <button
                 type="button"
                 onClick={() => {
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
                 }}
@@ -614,12 +625,12 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {canDeleteMessage(message) && (
-              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
@@ -731,6 +742,7 @@ export default function MessagingWidget() {
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
+  const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -740,6 +752,8 @@ export default function MessagingWidget() {
   const threadPaneRef = useRef(null);
   const activeThreadInitialScrollRef = useRef(null);
   const hasInitializedPreferredConversationRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const notifiedMessageIdsRef = useRef(new Set());
 
   const draftStorageKey = useMemo(() => {
     const convKey = state.activeConversationId || 'new';
@@ -752,6 +766,34 @@ export default function MessagingWidget() {
 
   const cacheKey = getCompanyCacheKey(state.activeCompanyId || companyId);
   const messages = messagesByCompany[cacheKey] || [];
+
+  const playIncomingMessageSound = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+    try {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new AudioContextCtor();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.22);
+    } catch {
+      // Notification sound is best-effort only.
+    }
+  }, []);
 
   const rememberConversationParticipants = (rootMessageId, participantIds) => {
     const normalizedRootId = normalizeId(rootMessageId);
@@ -1158,6 +1200,17 @@ export default function MessagingWidget() {
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+
+      const normalizedMessageId = normalizeId(nextMessage?.id);
+      const authoredBySelf = normalizeId(nextMessage?.author_empid) === selfEmpid;
+      if (normalizedMessageId && !authoredBySelf) {
+        if (!notifiedMessageIdsRef.current.has(normalizedMessageId)) {
+          notifiedMessageIdsRef.current.add(normalizedMessageId);
+          playIncomingMessageSound();
+        }
+        setHighlightedIds((prev) => new Set([...prev, normalizedMessageId]));
+      }
+
       refreshConversationList(state.activeCompanyId || companyId);
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
       if (!parentId) {
@@ -1173,11 +1226,14 @@ export default function MessagingWidget() {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
         });
+
+        const selectedRootId = normalizeConversationId(state.activeConversationId);
+        const incomingConversationId = normalizeConversationId(getMessageConversationId(nextMessage));
+        if (incomingConversationId && selectedRootId && Number(selectedRootId) === Number(incomingConversationId)) {
+          fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
+        }
         return;
       }
-
-      const id = nextMessage.id;
-      setHighlightedIds((prev) => new Set([...prev, id]));
 
       let resolvedRootId = normalizeId(getMessageConversationId(nextMessage));
       let fallbackThreadRefreshId = null;
@@ -1330,7 +1386,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -1498,6 +1554,10 @@ export default function MessagingWidget() {
     const exists = conversations.some((conversation) => conversation.id === state.activeConversationId);
     if (!exists) dispatch({ type: 'widget/setConversation', payload: null });
   }, [conversations, state.activeConversationId]);
+
+  useEffect(() => {
+    setOpenMessageMenuId(null);
+  }, [state.activeConversationId]);
 
   useEffect(() => {
     const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
@@ -2328,7 +2388,14 @@ export default function MessagingWidget() {
           onClick={() => dispatch({ type: 'widget/open' })}
           style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', padding: '10px 14px', fontWeight: 600 }}
         >
-          💬 Messages {unreadCount > 0 ? `(${unreadCount})` : ''}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span>💬 Messages</span>
+            {unreadCount > 0 && (
+              <span style={{ minWidth: 20, height: 20, borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 12, lineHeight: '20px', textAlign: 'center', padding: '0 6px', fontWeight: 700 }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </span>
         </button>
       </section>
     );
@@ -2562,6 +2629,8 @@ export default function MessagingWidget() {
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
                 isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
                 onAnyAction={closeOpenMessageMenus}
+                isMenuOpen={openMessageMenuId === normalizeId(message.id)}
+                onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
               />
             ))}
           </main>
