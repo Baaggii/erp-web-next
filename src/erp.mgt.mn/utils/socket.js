@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { API_ROOT } from './apiBase.js';
 
 let socket;
 let refs = 0;
@@ -6,15 +7,17 @@ let wired = false;
 const listeners = new Set();
 
 function resolveSocketUrl() {
-  const socketUrl = import.meta.env.VITE_SOCKET_URL;
+  const socketUrl = String(import.meta.env.VITE_SOCKET_URL || '').trim();
+  if (socketUrl) return socketUrl.replace(/\/$/, '');
 
-  if (!socketUrl) {
-    throw new Error(
-      'VITE_SOCKET_URL is required for Socket.IO connection. Set it in your .env file.',
-    );
+  const apiRoot = String(API_ROOT || '').trim();
+  if (apiRoot) return apiRoot.replace(/\/$/, '');
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return String(window.location.origin).replace(/\/$/, '');
   }
 
-  return socketUrl.replace(/\/$/, '');
+  throw new Error('Unable to resolve Socket.IO URL. Configure VITE_SOCKET_URL.');
 }
 
 function notifyListeners(connected) {
@@ -41,6 +44,9 @@ function wireSocketEvents() {
     console.error('Socket connection error:', err.message);
     notifyListeners(false);
   });
+  socket.io.on('reconnect', () => {
+    notifyListeners(true);
+  });
   wired = true;
   notifyListeners(socket.connected);
 }
@@ -53,7 +59,7 @@ export function connectSocket() {
     socket = io(baseUrl, {
       path,
       withCredentials: true,
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
     });
   }
@@ -75,6 +81,7 @@ export function disconnectSocket() {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('connect_error');
+      socket.io.off('reconnect');
       wired = false;
     }
     socket.disconnect();

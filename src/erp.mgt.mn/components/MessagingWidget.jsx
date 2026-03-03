@@ -1098,7 +1098,8 @@ export default function MessagingWidget() {
   }, [companyId, employees, state.activeCompanyId, state.isOpen]);
 
   useEffect(() => {
-    if (!state.isOpen) return undefined;
+    // Keep realtime delivery active even while the panel is closed so new
+    // messages appear immediately when users reopen the widget.
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1120,10 +1121,6 @@ export default function MessagingWidget() {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
         });
-        const maybeConversationId = normalizeId(getMessageConversationId(nextMessage));
-        if (maybeConversationId && !conversations.some((entry) => normalizeId(entry?.conversationId) === maybeConversationId)) {
-          refreshConversationList(state.activeCompanyId || companyId);
-        }
         return;
       }
 
@@ -1169,7 +1166,7 @@ export default function MessagingWidget() {
         return;
       }
 
-      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
+      const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
       fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
     };
@@ -1267,7 +1264,7 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
 
-      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
+      const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
@@ -1288,7 +1285,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, state.isOpen, refreshConversationList]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
