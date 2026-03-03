@@ -731,6 +731,10 @@ export default function MessagingWidget() {
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
+  const closeOpenMessageMenus = useCallback(() => {
+    setAttachmentsOpen(false);
+    setMentionOpen(false);
+  }, []);
   const widgetRootRef = useRef(null);
   const composerRef = useRef(null);
   const threadPaneRef = useRef(null);
