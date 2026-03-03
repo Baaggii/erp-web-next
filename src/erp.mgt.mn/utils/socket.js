@@ -33,7 +33,9 @@ function wireSocketEvents() {
   const shouldDebugLog = typeof window !== 'undefined' && window.erpDebug;
 
   socket.on('connect', () => {
-    console.log('Socket connected:', socket.id);
+    if (shouldDebugLog) {
+      console.log('Socket connected:', socket.id);
+    }
     notifyListeners(true);
   });
   socket.on('disconnect', (reason) => {
@@ -49,7 +51,9 @@ function wireSocketEvents() {
     notifyListeners(false);
   });
   socket.io.on('reconnect', (attempt) => {
-    console.log('Socket reconnected:', attempt);
+    if (shouldDebugLog) {
+      console.log('Socket reconnected:', attempt);
+    }
     notifyListeners(true);
   });
   wired = true;
