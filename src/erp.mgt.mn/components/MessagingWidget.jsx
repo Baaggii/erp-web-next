@@ -155,6 +155,29 @@ function normalizeReadByEntries(value) {
     .filter(Boolean);
 }
 
+function hasExplicitReadProof(entry) {
+  if (!entry) return false;
+  if (typeof entry !== 'object') return true;
+  const flags = [
+    entry.read,
+    entry.seen,
+    entry.has_seen,
+    entry.hasSeen,
+    entry.opened,
+    entry.is_open,
+    entry.isOpen,
+    entry.conversation_open,
+    entry.conversationOpen,
+    entry.active,
+    entry.is_active,
+    entry.isActive,
+  ];
+  const hasTruthyFlag = flags.some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
+  const hasReadTimestamp = [entry.read_at, entry.readAt, entry.seen_at, entry.seenAt, entry.opened_at, entry.openedAt]
+    .some((value) => Number.isFinite(new Date(value).getTime()));
+  return hasTruthyFlag || hasReadTimestamp;
+}
+
 async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
   const bodyPayload = JSON.stringify({ emoji, messageId: Number(messageId) || messageId });
   const attempts = shouldAddReaction
@@ -637,7 +660,12 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isHighlighted = highlightedIds.has(normalizeId(message.id));
   const readers = normalizeReadByEntries(message.read_by)
     .filter((empid) => empid !== normalizeId(selfEmpid) && empid !== normalizeId(message.author_empid));
-  const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
+  const qualifiedReaderPool = Array.isArray(message.read_by)
+    ? message.read_by.filter((entry) => hasExplicitReadProof(entry)).map((entry) => normalizeId(entry?.empid || entry?.emp_id || entry?.empId || entry?.user_id || entry?.userId || entry?.id)).filter(Boolean)
+    : [];
+  const qualifiedReaderSet = new Set(qualifiedReaderPool);
+  const verifiedReaders = readers.filter((empid) => qualifiedReaderSet.has(empid));
+  const readerLabels = verifiedReaders.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
@@ -1327,6 +1355,7 @@ export default function MessagingWidget() {
     // Keep realtime delivery active even while the panel is closed so new
     // messages appear immediately when users reopen the widget.
     const socket = connectSocket();
+    const canRefreshActiveThread = () => state.isOpen && isDocumentActive();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
@@ -1350,7 +1379,9 @@ export default function MessagingWidget() {
         if (!hasDirectAccess) {
           const rootMessageId = normalizeId(getMessageConversationId(nextMessage));
           if (rootMessageId) {
-            fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
+            if (canRefreshActiveThread()) {
+              fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
+            }
           }
           return;
         }
@@ -1362,7 +1393,9 @@ export default function MessagingWidget() {
         const selectedRootId = normalizeConversationId(state.activeConversationId);
         const incomingConversationId = normalizeConversationId(getMessageConversationId(nextMessage));
         if (incomingConversationId && selectedRootId && Number(selectedRootId) === Number(incomingConversationId)) {
-          fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
+          if (canRefreshActiveThread()) {
+            fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
+          }
         }
         return;
       }
@@ -1395,13 +1428,17 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
       if (fallbackThreadRefreshId) {
-        fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
+        if (canRefreshActiveThread()) {
+          fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
+        }
         return;
       }
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
-      fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      if (canRefreshActiveThread()) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      }
     };
     const onPresence = (payload) => {
       const payloadCompanyId = normalizeId(payload?.companyId || payload?.company_id);
@@ -1499,7 +1536,9 @@ export default function MessagingWidget() {
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
-        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+        if (canRefreshActiveThread()) {
+          fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+        }
       }
       refreshConversationList(state.activeCompanyId || companyId);
     };
@@ -1518,7 +1557,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
+  }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -1617,8 +1656,26 @@ export default function MessagingWidget() {
     const normalizedConversationId = normalizeConversationId(conversationId);
     if (!normalizedConversationId || !activeCompany) return;
     const companyKey = getCompanyCacheKey(activeCompany);
+    const pane = threadPaneRef.current;
+    if (!pane) return;
+    const paneRect = pane.getBoundingClientRect();
+    const visibleMessageIds = new Set(
+      Array.from(pane.querySelectorAll('[aria-label^="Message "]'))
+        .map((node) => {
+          const element = node;
+          if (!(element instanceof HTMLElement)) return null;
+          const rect = element.getBoundingClientRect();
+          const intersectsViewport = rect.bottom > paneRect.top && rect.top < paneRect.bottom;
+          if (!intersectsViewport) return null;
+          const ariaLabel = String(element.getAttribute('aria-label') || '');
+          const messageId = normalizeId(ariaLabel.replace('Message ', ''));
+          return messageId || null;
+        })
+        .filter(Boolean),
+    );
     const candidateIds = (messagesByCompany[companyKey] || [])
       .filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === normalizedConversationId)
+      .filter((msg) => visibleMessageIds.has(normalizeId(msg.id)))
       .filter((msg) => normalizeId(msg.author_empid) !== selfEmpid)
       .map((msg) => numericMessageId(msg.id))
       .filter((id) => Number.isFinite(id));
@@ -1755,6 +1812,14 @@ export default function MessagingWidget() {
       document.removeEventListener('visibilitychange', handleActivityChange);
     };
   }, []);
+
+  useEffect(() => {
+    const pane = threadPaneRef.current;
+    if (!pane) return undefined;
+    const onScroll = () => setActivityTick((value) => value + 1);
+    pane.addEventListener('scroll', onScroll, { passive: true });
+    return () => pane.removeEventListener('scroll', onScroll);
+  }, [activeConversationNumericId, state.isOpen]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
