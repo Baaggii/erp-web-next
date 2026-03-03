@@ -1285,7 +1285,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid, refreshConversationList]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
