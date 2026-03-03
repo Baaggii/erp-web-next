@@ -293,20 +293,17 @@ function createIdempotencyKey() {
 
 function conversationIdFromSelection(conversationId) {
   const raw = normalizeConversationId(conversationId);
-  if (!raw || raw === 'general' || raw === NEW_CONVERSATION_ID) return null;
+  if (!raw || raw === NEW_CONVERSATION_ID) return null;
   return raw;
 }
 
 function resolveSelectedConversationRootId(conversationId, conversations = []) {
   if (!conversationId) return null;
   if (conversationId === NEW_CONVERSATION_ID) return null;
-  if (conversationId === 'general') {
-    const generalConversation = Array.isArray(conversations)
-      ? conversations.find((entry) => entry?.isGeneral || entry?.id === 'general')
-      : null;
-    return normalizeConversationId(generalConversation?.conversationId);
-  }
-  return conversationIdFromSelection(conversationId);
+  const selectedConversation = Array.isArray(conversations)
+    ? conversations.find((entry) => entry?.id === conversationId)
+    : null;
+  return conversationIdFromSelection(selectedConversation?.conversationId || conversationId);
 }
 
 
@@ -694,7 +691,7 @@ export default function MessagingWidget() {
     activeConversationId: (() => {
       const rawConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
       if (!rawConversationId) return null;
-      if (rawConversationId === 'general' || rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
+      if (rawConversationId === NEW_CONVERSATION_ID || rawConversationId.startsWith('conversation:')) return rawConversationId;
       if (/^\d+$/.test(rawConversationId)) return `conversation:${rawConversationId}`;
       return null;
     })(),
@@ -901,11 +898,9 @@ export default function MessagingWidget() {
         const visibleConversationIds = new Set(adaptedConversations.items.map((conversation) => conversation.id));
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
         const normalizedStoredConversationId = normalizeConversationId(rawStoredConversationId);
-        const storedConversationId = rawStoredConversationId === 'general'
-          ? 'general'
-          : normalizedStoredConversationId
-            ? `conversation:${normalizedStoredConversationId}`
-            : null;
+        const storedConversationId = normalizedStoredConversationId
+          ? `conversation:${normalizedStoredConversationId}`
+          : null;
         if (storedConversationId && storedConversationId !== NEW_CONVERSATION_ID && !visibleConversationIds.has(storedConversationId)) {
           dispatch({ type: 'widget/setConversation', payload: null });
           globalThis.sessionStorage?.removeItem(sessionConversationKey);
@@ -922,20 +917,7 @@ export default function MessagingWidget() {
           type: 'conversations/loadSuccess',
           payload: {
             companyKey: getCompanyCacheKey(activeCompany),
-            items: [{
-              id: 'general',
-              conversationId: 'general',
-              title: 'General',
-              type: 'general',
-              linkedType: null,
-              linkedId: null,
-              isGeneral: true,
-              participants: [],
-              lastMessageAt: null,
-              lastMessageId: null,
-              unread: 0,
-              raw: null,
-            }],
+            items: [],
           },
         });
         setNetworkState('ready');
@@ -1135,6 +1117,7 @@ export default function MessagingWidget() {
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      refreshConversationList(state.activeCompanyId || companyId);
       const parentId = nextMessage?.parent_message_id || nextMessage?.parentMessageId;
       if (!parentId) {
         const hasDirectAccess = canViewerAccessMessage(nextMessage, selfEmpid);
@@ -1287,14 +1270,9 @@ export default function MessagingWidget() {
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
-      const maybeConversationId = normalizeId(getMessageConversationId(nextMessage));
-      if (maybeConversationId && !conversations.some((entry) => normalizeId(entry?.conversationId) === maybeConversationId)) {
-        refreshConversationList(state.activeCompanyId || companyId);
-      }
+      refreshConversationList(state.activeCompanyId || companyId);
     };
-    socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
-    socket.on('thread.reply.created', onNew);
     socket.on('message.updated', onUpdated);
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
@@ -1302,9 +1280,7 @@ export default function MessagingWidget() {
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
     return () => {
-      socket.off('messages:new', onNew);
       socket.off('message.created', onNew);
-      socket.off('thread.reply.created', onNew);
       socket.off('message.updated', onUpdated);
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
@@ -1370,7 +1346,7 @@ export default function MessagingWidget() {
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
   const activeConversationNumericId = normalizeConversationId(
     activeConversation?.conversationId
-    || (activeConversationId === 'general' ? conversations.find((entry) => entry?.isGeneral || entry?.id === 'general')?.conversationId : activeConversationId),
+    || activeConversationId,
   );
   const threadMessagesRaw = useMemo(
     () => messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === activeConversationNumericId),
@@ -1386,7 +1362,7 @@ export default function MessagingWidget() {
     if (!hasInitializedPreferredConversationRef.current) {
       hasInitializedPreferredConversationRef.current = true;
       const preferredConversationId = lastUserConversationId
-        || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+        || conversations.find((conversation) => conversation.isGeneral)?.id
         || conversations[0]?.id
         || null;
       if (preferredConversationId && state.activeConversationId !== preferredConversationId) {
@@ -1397,7 +1373,7 @@ export default function MessagingWidget() {
 
     if (state.activeConversationId) return;
     const fallbackConversationId = lastUserConversationId
-      || (conversations.some((conversation) => conversation.id === 'general') ? 'general' : null)
+      || conversations.find((conversation) => conversation.isGeneral)?.id
       || conversations[0]?.id
       || null;
     if (!fallbackConversationId) return;
@@ -1770,8 +1746,7 @@ export default function MessagingWidget() {
     const hasSelectedConversation = Boolean(
       isDraftConversation
       || activeConversation
-      || selectedConversationIdFromState
-      || state.activeConversationId === 'general',
+      || selectedConversationIdFromState,
     );
 
     if (!hasSelectedConversation) {
@@ -1816,7 +1791,7 @@ export default function MessagingWidget() {
       ...(selectedConversation?.participants || []),
       ...(activeConversationParticipants || []),
     ].map(normalizeId).filter(Boolean)));
-    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
+    const selectedIsGeneral = Boolean(selectedConversation?.isGeneral);
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
       ? Array.from(new Set([selfEmpid, ...payloadRecipients].map(normalizeId).filter(Boolean)))
@@ -2073,7 +2048,7 @@ export default function MessagingWidget() {
     }
     if (!id || state.composer.recipients.includes(id)) return;
     const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
-    const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
+    const isExistingPrivateConversation = !isDraftConversation && Boolean(selectedRootId);
     if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
       const label = resolveEmployeeLabel(id);
       const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
