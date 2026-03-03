@@ -217,8 +217,10 @@ export function groupConversations(messages, viewerEmpid = null) {
     });
   });
 
-  map.set('general', {
-    id: 'general',
+  const generalConversationId = normalizeConversationId(generalMessages[0]?.conversation_id || generalMessages[0]?.conversationId);
+  map.set(generalConversationId ? `conversation:${generalConversationId}` : 'general', {
+    id: generalConversationId ? `conversation:${generalConversationId}` : 'general',
+    conversationId: generalConversationId,
     title: 'General',
     messages: generalMessages,
     linkedType: null,
@@ -850,7 +852,7 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!state.isOpen || !activeCompany) return;
+    if (!activeCompany) return;
     let disposed = false;
 
     const loadCompanies = async () => {
@@ -1031,11 +1033,11 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId, state.isOpen]);
+  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!state.isOpen || !activeCompany || !selfEmpid) return undefined;
+    if (!activeCompany || !selfEmpid) return undefined;
 
     const sendHeartbeat = async () => {
       try {
@@ -1059,13 +1061,13 @@ export default function MessagingWidget() {
     sendHeartbeat();
     const intervalId = globalThis.setInterval(sendHeartbeat, 45_000);
     return () => globalThis.clearInterval(intervalId);
-  }, [companyId, selfEmpid, state.activeCompanyId, state.isOpen]);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
     const employeeIds = Array.from(new Set((employees || []).map((entry) => normalizeId(entry.empid)).filter(Boolean)));
-    if (!state.isOpen || !activeCompany || employeeIds.length === 0) return undefined;
+    if (!activeCompany || employeeIds.length === 0) return undefined;
 
     let disposed = false;
     const refreshPresence = async () => {
@@ -1095,7 +1097,7 @@ export default function MessagingWidget() {
       disposed = true;
       globalThis.clearInterval(intervalId);
     };
-  }, [companyId, employees, state.activeCompanyId, state.isOpen]);
+  }, [companyId, employees, state.activeCompanyId]);
 
   useEffect(() => {
     // Keep realtime delivery active even while the panel is closed so new
@@ -1589,7 +1591,7 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText((isDraftConversation ? state.composer.topic : activeConversation?.topic) || '');
   const safeBody = sanitizeMessageText(state.composer.body);
-  const requiresRecipient = isDraftConversation;
+  const requiresRecipient = false;
   const requiresTopic = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
@@ -1882,7 +1884,7 @@ export default function MessagingWidget() {
     if (isDraftConversation) {
       payload.type = 'private';
       payload.topic = safeTopic;
-      payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
+      payload.participants = allParticipants;
     }
 
     if (selectedIsGeneral && !targetConversationId) {
