@@ -6,6 +6,7 @@ import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
+  addConversationParticipant,
   createConversationRoot,
   deleteConversation,
   deleteMessage,

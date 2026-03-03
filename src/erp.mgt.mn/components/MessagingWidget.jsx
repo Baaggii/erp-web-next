@@ -1767,7 +1767,7 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
-    if (canEditTopic && !safeTopic) {
+    if (isDraftConversation && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
     }
@@ -2077,21 +2077,38 @@ export default function MessagingWidget() {
     setComposerAnnouncement(`Linked transaction #${transactionId} to this message.`);
   };
 
-  const onChooseRecipient = (id) => {
-    if (!isDraftConversation) {
-      setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
+  const onChooseRecipient = async (id) => {
+    if (!id || state.composer.recipients.includes(id)) return;
+    if (isDraftConversation) {
+      dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
+      setComposerRecipientSearch('');
       return;
     }
-    if (!id || state.composer.recipients.includes(id)) return;
-    const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
-    const isExistingPrivateConversation = !isDraftConversation && Boolean(selectedRootId);
-    if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
-      const label = resolveEmployeeLabel(id);
-      const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
-      if (!confirmed) return;
+
+    const conversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!conversationId) {
+      setComposerAnnouncement('Select a conversation first.');
+      return;
     }
-    dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
+    const activeCompany = state.activeCompanyId || companyId;
+    const label = resolveEmployeeLabel(id);
+    const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
+    if (!confirmed) return;
+
+    const res = await fetch(`${API_BASE}/messaging/conversations/${conversationId}/participants`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany, empid: id }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to add participant.');
+      return;
+    }
     setComposerRecipientSearch('');
+    setComposerAnnouncement(`${label} was added to the conversation.`);
+    refreshConversationList(activeCompany);
   };
 
   const openNewMessage = () => {
@@ -2284,7 +2301,7 @@ export default function MessagingWidget() {
                   type="button"
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
-                    dispatch({ type: 'composer/setTopic', payload: conversation.title });
+                    dispatch({ type: 'composer/setTopic', payload: conversation.topic || '' });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
                     dispatch({
                       type: 'composer/setLinkedContext',
@@ -2332,6 +2349,18 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
+              {canEditConversationTopic && (
+                <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    value={state.composer.topic}
+                    onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                    onBlur={updateConversationTopic}
+                    placeholder="Edit conversation topic"
+                    aria-label="Edit conversation topic"
+                    style={{ width: '100%', maxWidth: 360, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
+                  />
+                </div>
+              )}
               {activeConversation?.conversationId && canDeleteConversation(activeConversation) && (
                 <button type="button" onClick={() => handleDeleteConversationFromList(activeConversation)} style={{ marginTop: 4 }}>
                   Delete thread
@@ -2385,7 +2414,7 @@ export default function MessagingWidget() {
           >
             <div style={{ overflowY: 'auto', minHeight: 0, paddingRight: 2 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
-              {canEditTopic && (
+              {isDraftConversation && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
                   <input
@@ -2402,6 +2431,7 @@ export default function MessagingWidget() {
               )}
               </div>
 
+              {isDraftConversation && (
               <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {state.composer.recipients.map((empid) => {
                   const found = employeeRecords.find((entry) => entry.id === empid);
@@ -2419,6 +2449,7 @@ export default function MessagingWidget() {
                   );
                 })}
               </div>
+              )}
 
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
