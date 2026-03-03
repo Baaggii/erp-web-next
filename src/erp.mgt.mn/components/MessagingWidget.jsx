@@ -1121,10 +1121,6 @@ export default function MessagingWidget() {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
         });
-        const maybeConversationId = normalizeId(getMessageConversationId(nextMessage));
-        if (maybeConversationId && !conversations.some((entry) => normalizeId(entry?.conversationId) === maybeConversationId)) {
-          refreshConversationList(state.activeCompanyId || companyId);
-        }
         return;
       }
 
@@ -1170,7 +1166,7 @@ export default function MessagingWidget() {
         return;
       }
 
-      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
+      const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
       fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
     };
@@ -1268,7 +1264,7 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
 
-      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
+      const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
