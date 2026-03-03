@@ -44,12 +44,11 @@ export function normalizeId(value) {
 export function normalizeConversationId(value) {
   const normalized = normalizeId(value);
   if (!normalized) return null;
-  if (normalized === '__new__') return normalized;
   if (normalized.startsWith('conversation:')) {
     const stripped = normalizeId(normalized.slice('conversation:'.length));
-    return /^\d+$/.test(stripped) ? stripped : null;
+    return stripped || null;
   }
-  return /^\d+$/.test(normalized) ? normalized : null;
+  return normalized;
 }
 
 export function conversationIdFromSelection(conversationId, { isDraft = false } = {}) {
