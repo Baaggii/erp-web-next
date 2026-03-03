@@ -1374,6 +1374,7 @@ export default function MessagingWidget() {
     // Keep realtime delivery active even while the panel is closed so new
     // messages appear immediately when users reopen the widget.
     const socket = connectSocket();
+    const canRefreshActiveThread = () => state.isOpen && isDocumentActive();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
@@ -1397,7 +1398,9 @@ export default function MessagingWidget() {
         if (!hasDirectAccess) {
           const rootMessageId = normalizeId(getMessageConversationId(nextMessage));
           if (rootMessageId) {
-            fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
+            if (canRefreshActiveThread()) {
+              fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
+            }
           }
           return;
         }
@@ -1409,7 +1412,9 @@ export default function MessagingWidget() {
         const selectedRootId = normalizeConversationId(state.activeConversationId);
         const incomingConversationId = normalizeConversationId(getMessageConversationId(nextMessage));
         if (incomingConversationId && selectedRootId && Number(selectedRootId) === Number(incomingConversationId)) {
-          fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
+          if (canRefreshActiveThread()) {
+            fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
+          }
         }
         return;
       }
@@ -1442,13 +1447,17 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
       if (fallbackThreadRefreshId) {
-        fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
+        if (canRefreshActiveThread()) {
+          fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
+        }
         return;
       }
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
-      fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      if (canRefreshActiveThread()) {
+        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+      }
     };
     const onPresence = (payload) => {
       const payloadCompanyId = normalizeId(payload?.companyId || payload?.company_id);
@@ -1546,7 +1555,9 @@ export default function MessagingWidget() {
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
-        fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+        if (canRefreshActiveThread()) {
+          fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
+        }
       }
       refreshConversationList(state.activeCompanyId || companyId);
     };
@@ -1565,7 +1576,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
+  }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
