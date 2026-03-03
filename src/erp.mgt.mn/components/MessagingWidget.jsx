@@ -1098,7 +1098,6 @@ export default function MessagingWidget() {
   }, [companyId, employees, state.activeCompanyId, state.isOpen]);
 
   useEffect(() => {
-    if (!state.isOpen) return undefined;
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1288,7 +1287,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, state.isOpen, refreshConversationList]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
