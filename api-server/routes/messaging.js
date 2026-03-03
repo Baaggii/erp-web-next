@@ -7,6 +7,8 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
   createConversationRoot,
+  addMessageReaction,
+  deleteMessageReaction,
   deleteConversation,
   deleteMessage,
   getConversationMessages,
@@ -278,6 +280,44 @@ router.delete('/messages/:id', (req, res) =>
       correlationId: req.correlationId,
     });
     emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'message.deleted', { id: Number(req.params.id), messageId: Number(req.params.id) });
+    return data;
+  }));
+
+router.post('/messages/:id/reactions', (req, res) =>
+  handle(res, req, async () => {
+    const data = await addMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'message.reaction.updated', {
+      message_id: data?.messageId,
+      messageId: data?.messageId,
+      emoji: data?.emoji,
+      action: 'added',
+      empid: req.user?.empid,
+    });
+    return data;
+  }, 201));
+
+router.delete('/messages/:id/reactions', (req, res) =>
+  handle(res, req, async () => {
+    const data = await deleteMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'message.reaction.updated', {
+      message_id: data?.messageId,
+      messageId: data?.messageId,
+      emoji: data?.emoji,
+      action: 'removed',
+      empid: req.user?.empid,
+    });
     return data;
   }));
 

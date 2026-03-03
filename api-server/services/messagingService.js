@@ -42,6 +42,13 @@ function sanitizeMessageClass(value) {
   return normalized;
 }
 
+function sanitizeReactionEmoji(value) {
+  const emoji = String(value ?? '').trim();
+  if (!emoji) throw createError(400, 'REACTION_EMOJI_REQUIRED', 'emoji is required');
+  if (emoji.length > 32) throw createError(400, 'REACTION_EMOJI_INVALID', 'emoji is too long');
+  return emoji;
+}
+
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
   const scopedCompanyId = toId(companyId ?? user?.companyId);
   if (!scopedCompanyId) throw createError(400, 'COMPANY_REQUIRED', 'companyId is required');
@@ -368,10 +375,39 @@ export async function getConversationMessages({ user, companyId, conversationId,
     });
   }
 
+  let reactionMap = new Map();
+  if (messageIds.length > 0) {
+    const reactionPlaceholders = messageIds.map(() => '?').join(', ');
+    const [reactionRows] = await db.query(
+      `SELECT r.message_id,
+              r.emoji,
+              COUNT(*) AS count,
+              MAX(CASE WHEN r.empid = ? THEN 1 ELSE 0 END) AS reacted_by_me
+         FROM erp_message_reactions r
+        WHERE r.company_id = ?
+          AND r.message_id IN (${reactionPlaceholders})
+        GROUP BY r.message_id, r.emoji`,
+      [viewerEmpid, scopedCompanyId, ...messageIds],
+    );
+    reactionMap = new Map();
+    (reactionRows || []).forEach((row) => {
+      const messageId = toId(row?.message_id);
+      const emoji = String(row?.emoji || '').trim();
+      if (!messageId || !emoji) return;
+      if (!reactionMap.has(messageId)) reactionMap.set(messageId, []);
+      reactionMap.get(messageId).push({
+        emoji,
+        count: Number(row?.count) || 0,
+        reactedByMe: Number(row?.reacted_by_me) > 0,
+      });
+    });
+  }
+
   const itemsWithReads = items.map((row) => {
     const messageId = toId(row?.id);
     const readBy = Array.from(readByMap.get(messageId) || []);
-    return { ...row, read_by: readBy };
+    const reactions = reactionMap.get(messageId) || [];
+    return { ...row, read_by: readBy, reactions };
   });
 
   return {
@@ -380,6 +416,47 @@ export async function getConversationMessages({ user, companyId, conversationId,
     items: itemsWithReads,
     pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
+}
+
+export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const id = toId(messageId);
+  if (!id) throw createError(400, 'MESSAGE_REQUIRED', 'messageId is required');
+  const [rows] = await db.query('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1', [id, scopedCompanyId]);
+  const message = rows[0];
+  if (!message) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const conversation = await getConversationById(db, scopedCompanyId, message.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  const emoji = sanitizeReactionEmoji(payload?.emoji);
+  await db.query(
+    `INSERT IGNORE INTO erp_message_reactions (company_id, message_id, empid, emoji)
+     VALUES (?, ?, ?, ?)`,
+    [scopedCompanyId, id, String(user?.empid || ''), emoji],
+  );
+  return { correlationId, ok: true, messageId: id, emoji };
+}
+
+export async function deleteMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const id = toId(messageId);
+  if (!id) throw createError(400, 'MESSAGE_REQUIRED', 'messageId is required');
+  const [rows] = await db.query('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1', [id, scopedCompanyId]);
+  const message = rows[0];
+  if (!message) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const conversation = await getConversationById(db, scopedCompanyId, message.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  const emoji = sanitizeReactionEmoji(payload?.emoji);
+  await db.query(
+    `DELETE FROM erp_message_reactions
+      WHERE company_id = ?
+        AND message_id = ?
+        AND empid = ?
+        AND emoji = ?`,
+    [scopedCompanyId, id, String(user?.empid || ''), emoji],
+  );
+  return { correlationId, ok: true, messageId: id, emoji };
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
