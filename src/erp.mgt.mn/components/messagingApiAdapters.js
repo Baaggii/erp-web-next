@@ -22,7 +22,7 @@ export function adaptConversationListResponse(data) {
         const isGeneral = type === 'general'
           || (entry?.is_general ?? entry?.isGeneral) === true
           || (visibilityScope === 'company' && !(entry?.linked_type ?? entry?.linkedType) && !(entry?.linked_id ?? entry?.linkedId));
-        const conversationId = normalizeConversationId(entry?.conversation_id ?? entry?.conversationId ?? entry?.id);
+        const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (conversationId == null) return null;
         const normalizedId = normalizeId(conversationId);
         return {
