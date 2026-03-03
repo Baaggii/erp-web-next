@@ -7,6 +7,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
   createConversationRoot,
+  deleteConversation,
   deleteMessage,
   getConversationMessages,
   listConversations,
@@ -132,17 +133,48 @@ async function handle(res, req, work, okStatus = 200) {
   }
 }
 
+function emitMessagingEvent(req, companyId, eventName, payload) {
+  const io = req.app.get('io');
+  if (!io) return;
+  const normalizedCompanyId = Number(companyId || req.user?.companyId);
+  if (!Number.isFinite(normalizedCompanyId) || normalizedCompanyId <= 0) return;
+  io.to(`company:${normalizedCompanyId}`).emit(eventName, { company_id: normalizedCompanyId, ...payload });
+}
+
 router.get('/conversations', (req, res) =>
   handle(res, req, () => listConversations({ user: req.user, companyId: req.query.companyId, cursor: req.query.cursor, limit: req.query.limit, correlationId: req.correlationId })));
 
 router.post('/conversations', validateBody(validateCreateConversation, 'Invalid conversation payload'), (req, res) =>
-  handle(res, req, () => createConversationRoot({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, payload: req.body, correlationId: req.correlationId }), 201));
+  handle(res, req, async () => {
+    const data = await createConversationRoot({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, payload: req.body, correlationId: req.correlationId });
+    emitMessagingEvent(req, data?.conversation?.company_id, 'message.created', { message: data?.message, conversation: data?.conversation });
+    return data;
+  }, 201));
+
+router.delete('/conversations/:conversationId', (req, res) =>
+  handle(res, req, async () => {
+    const data = await deleteConversation({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      conversationId: Number(req.params.conversationId),
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'conversation.deleted', {
+      conversation_id: data?.conversationId,
+      conversationId: data?.conversationId,
+    });
+    return data;
+  }));
 
 router.get('/conversations/:conversationId/messages', (req, res) =>
   handle(res, req, () => getConversationMessages({ user: req.user, companyId: req.query.companyId, conversationId: Number(req.params.conversationId), cursor: req.query.cursor, limit: req.query.limit, correlationId: req.correlationId })));
 
 router.post('/conversations/:conversationId/messages', validateBody(validatePostConversationMessage, 'Invalid message payload'), (req, res) =>
-  handle(res, req, () => postConversationMessage({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, conversationId: Number(req.params.conversationId), payload: req.body, correlationId: req.correlationId }), 201));
+  handle(res, req, async () => {
+    const data = await postConversationMessage({ user: req.user, companyId: req.body?.companyId ?? req.query.companyId, conversationId: Number(req.params.conversationId), payload: req.body, correlationId: req.correlationId });
+    emitMessagingEvent(req, data?.message?.company_id, 'message.created', { message: data?.message, conversation: data?.conversation });
+    return data;
+  }, 201));
 
 router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
   try {
@@ -198,23 +230,29 @@ router.get('/uploads/:companyId/:storedName', async (req, res) => {
 });
 
 router.patch('/messages/:id', (req, res) =>
-  handle(res, req, () =>
-    patchMessage({
+  handle(res, req, async () => {
+    const data = await patchMessage({
       user: req.user,
       companyId: req.body?.companyId ?? req.query.companyId,
       messageId: Number(req.params.id),
       payload: req.body,
       correlationId: req.correlationId,
-    })));
+    });
+    emitMessagingEvent(req, data?.message?.company_id, 'message.updated', { message: data?.message });
+    return data;
+  }));
 
 router.delete('/messages/:id', (req, res) =>
-  handle(res, req, () =>
-    deleteMessage({
+  handle(res, req, async () => {
+    const data = await deleteMessage({
       user: req.user,
       companyId: req.body?.companyId ?? req.query.companyId,
       messageId: Number(req.params.id),
       correlationId: req.correlationId,
-    })));
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'message.deleted', { id: Number(req.params.id), messageId: Number(req.params.id) });
+    return data;
+  }));
 
 router.post('/presence/heartbeat', (req, res) =>
   handle(res, req, () =>

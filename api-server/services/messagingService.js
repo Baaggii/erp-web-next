@@ -201,6 +201,33 @@ export async function postConversationMessage({ user, companyId, conversationId,
   return { correlationId, conversation: { id: normalizedConversationId }, message };
 }
 
+export async function deleteConversation({ user, companyId, conversationId, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  if (String(conversation?.type) === 'general') {
+    throw createError(400, 'GENERAL_CONVERSATION_PROTECTED', 'General conversation cannot be deleted');
+  }
+
+  const actorEmpid = String(user?.empid || '');
+  const isCreator = String(conversation?.created_by_empid || '') === actorEmpid;
+  if (!isCreator) throw createError(403, 'FORBIDDEN', 'Only the conversation creator can delete this conversation');
+
+  await db.query(
+    'UPDATE erp_conversations SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ? AND deleted_at IS NULL',
+    [normalizedConversationId, scopedCompanyId],
+  );
+  await db.query(
+    'UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE conversation_id = ? AND company_id = ? AND deleted_at IS NULL',
+    [normalizedConversationId, scopedCompanyId],
+  );
+  return { correlationId, ok: true, conversationId: normalizedConversationId };
+}
+
 export async function listConversations({ user, companyId, cursor, limit = CURSOR_PAGE_SIZE, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
@@ -218,8 +245,14 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
 
   const [rows] = await db.query(
     `SELECT c.*,
+            lm.topic AS last_message_topic,
+            lm.body AS last_message_body,
             (c.type = 'general') AS is_general
        FROM erp_conversations c
+       LEFT JOIN erp_messages lm
+         ON lm.id = c.last_message_id
+        AND lm.company_id = c.company_id
+        AND lm.deleted_at IS NULL
       WHERE c.company_id = ?
         AND c.deleted_at IS NULL
         AND (

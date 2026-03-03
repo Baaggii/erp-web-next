@@ -6,6 +6,14 @@ function deriveConversationTitle(entry, isGeneral = false) {
     entry?.title
     || entry?.topic
     || entry?.subject
+    || entry?.last_message_topic
+    || entry?.lastMessageTopic
+    || entry?.last_message_body
+    || entry?.lastMessageBody
+    || entry?.root_message_topic
+    || entry?.rootMessageTopic
+    || entry?.root_message_body
+    || entry?.rootMessageBody
     || (entry?.linked_type && entry?.linked_id ? `${entry.linked_type} #${entry.linked_id}` : '')
     || 'Untitled conversation',
   ).slice(0, 120) || 'Untitled conversation';
