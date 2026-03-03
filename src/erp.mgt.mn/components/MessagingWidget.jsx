@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
@@ -749,6 +749,26 @@ export default function MessagingWidget() {
     }));
   };
 
+  const refreshConversationList = useCallback(async (activeCompany) => {
+    if (!activeCompany) return;
+    try {
+      const params = new URLSearchParams({ companyId: String(activeCompany), limit: '100' });
+      const listRes = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
+      if (!listRes.ok) return;
+      const listData = await listRes.json();
+      const adaptedConversations = adaptConversationListResponse(listData);
+      dispatch({
+        type: 'conversations/loadSuccess',
+        payload: {
+          companyKey: getCompanyCacheKey(activeCompany),
+          items: adaptedConversations.items,
+        },
+      });
+    } catch {
+      // Non-blocking refresh only.
+    }
+  }, []);
+
   const fetchThreadMessages = async (rootMessageId, activeCompany) => {
     if (!rootMessageId || !activeCompany) return;
     try {
@@ -1124,6 +1144,10 @@ export default function MessagingWidget() {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
         });
+        const maybeConversationId = normalizeId(getMessageConversationId(nextMessage));
+        if (maybeConversationId && !conversations.some((entry) => normalizeId(entry?.conversationId) === maybeConversationId)) {
+          refreshConversationList(state.activeCompanyId || companyId);
+        }
         return;
       }
 
@@ -1258,6 +1282,10 @@ export default function MessagingWidget() {
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
+      const maybeConversationId = normalizeId(getMessageConversationId(nextMessage));
+      if (maybeConversationId && !conversations.some((entry) => normalizeId(entry?.conversationId) === maybeConversationId)) {
+        refreshConversationList(state.activeCompanyId || companyId);
+      }
     };
     socket.on('messages:new', onNew);
     socket.on('message.created', onNew);
@@ -1280,7 +1308,7 @@ export default function MessagingWidget() {
       socket.off('conversation.deleted', onConversationDeleted);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, selfEmpid, state.isOpen]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, state.isOpen, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
@@ -1535,8 +1563,25 @@ export default function MessagingWidget() {
   };
 
   const activeConversationParticipants = useMemo(
-    () => Array.isArray(activeConversation?.participants) ? activeConversation.participants : [],
-    [activeConversation?.participants],
+    () => {
+      if (isDraftConversation) return Array.from(new Set([selfEmpid, ...(state.composer.recipients || [])].map(normalizeId).filter(Boolean)));
+      const selectedConversationRootId = normalizeId(activeConversation?.conversationId);
+      const participantsFromConversation = Array.isArray(activeConversation?.participants) ? activeConversation.participants : [];
+      const participantsFromMessages = selectedConversationRootId
+        ? messages
+          .filter((entry) => normalizeId(getMessageConversationId(entry)) === selectedConversationRootId)
+          .flatMap((entry) => collectMessageParticipantEmpids(entry))
+        : [];
+      const participantsFromCache = selectedConversationRootId
+        ? (readParticipantCache(participantCacheKey)[selectedConversationRootId] || [])
+        : [];
+      return Array.from(new Set([
+        ...participantsFromConversation,
+        ...participantsFromMessages,
+        ...participantsFromCache,
+      ].map(normalizeId).filter(Boolean)));
+    },
+    [activeConversation?.conversationId, activeConversation?.participants, isDraftConversation, messages, participantCacheKey, selfEmpid, state.composer.recipients],
   );
 
   const activeConversationParticipantLabels = useMemo(() => {
@@ -1931,23 +1976,7 @@ export default function MessagingWidget() {
       if (!isGeneralChannel) {
         rememberConversationParticipants(threadRootIdToRefresh || createdMessage?.id, allParticipants);
       }
-      try {
-        const params = new URLSearchParams({ companyId: String(activeCompany), limit: '100' });
-        const listRes = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const adaptedConversations = adaptConversationListResponse(listData);
-          dispatch({
-            type: 'conversations/loadSuccess',
-            payload: {
-              companyKey: getCompanyCacheKey(activeCompany),
-              items: adaptedConversations.items,
-            },
-          });
-        }
-      } catch {
-        // Non-blocking refresh; optimistic list still keeps conversation accessible.
-      }
+      await refreshConversationList(activeCompany);
       dispatch({ type: 'composer/reset' });
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
