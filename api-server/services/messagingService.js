@@ -331,7 +331,55 @@ export async function getConversationMessages({ user, companyId, conversationId,
 
   const hasMore = rows.length > parsedLimit;
   const items = hasMore ? rows.slice(0, parsedLimit) : rows;
-  return { correlationId, conversationId: normalizedConversationId, items, pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore } };
+
+  const viewerEmpid = String(user?.empid || '').trim();
+  const readableMessageIds = items
+    .filter((row) => String(row?.author_empid || '') !== viewerEmpid)
+    .map((row) => toId(row?.id))
+    .filter(Boolean);
+
+  if (viewerEmpid && readableMessageIds.length > 0) {
+    const valuesPlaceholders = readableMessageIds.map(() => '(?, ?, CURRENT_TIMESTAMP)').join(', ');
+    const params = readableMessageIds.flatMap((messageId) => [messageId, viewerEmpid]);
+    await db.query(
+      `INSERT IGNORE INTO erp_message_reads (message_id, empid, read_at)
+       VALUES ${valuesPlaceholders}`,
+      params,
+    );
+  }
+
+  const messageIds = items.map((row) => toId(row?.id)).filter(Boolean);
+  let readByMap = new Map();
+  if (messageIds.length > 0) {
+    const readPlaceholders = messageIds.map(() => '?').join(', ');
+    const [readRows] = await db.query(
+      `SELECT message_id, empid
+         FROM erp_message_reads
+        WHERE message_id IN (${readPlaceholders})`,
+      messageIds,
+    );
+    readByMap = new Map();
+    (readRows || []).forEach((row) => {
+      const messageId = toId(row?.message_id);
+      const empid = String(row?.empid || '').trim();
+      if (!messageId || !empid) return;
+      if (!readByMap.has(messageId)) readByMap.set(messageId, new Set());
+      readByMap.get(messageId).add(empid);
+    });
+  }
+
+  const itemsWithReads = items.map((row) => {
+    const messageId = toId(row?.id);
+    const readBy = Array.from(readByMap.get(messageId) || []);
+    return { ...row, read_by: readBy };
+  });
+
+  return {
+    correlationId,
+    conversationId: normalizedConversationId,
+    items: itemsWithReads,
+    pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
+  };
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
@@ -390,7 +438,12 @@ export async function switchCompanyContext({ user, companyId, getSession = getEm
 
 export async function getMessagingSocketAccess({ user, companyId, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  return { allowed: canMessage(session), companyId: scopedCompanyId };
+  return {
+    allowed: canMessage(session),
+    companyId: scopedCompanyId,
+    scopedCompanyId,
+    session,
+  };
 }
 
 export function setMessagingIo(io) { ioRef = io; }

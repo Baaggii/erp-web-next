@@ -519,7 +519,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -544,8 +544,11 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
         padding: '6px 8px',
         marginBottom: 6,
-        marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
-        width: '100%',
+        marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
+        marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
+        maxWidth: '92%',
+        width: 'fit-content',
+        minWidth: 'min(70%, 520px)',
         boxSizing: 'border-box',
       }}
     >
@@ -568,6 +571,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               onClick={(event) => {
                 const dropdown = event.currentTarget.closest('details');
                 if (dropdown) dropdown.open = false;
+                if (typeof onAnyAction === 'function') onAnyAction();
                 onReply(message.id);
               }}
               aria-label={`Reply to message ${message.id}`}
@@ -580,7 +584,10 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
                 type="button"
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
-                onClick={() => onOpenLinkedTransaction(linked.linkedId)}
+                onClick={() => {
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onOpenLinkedTransaction(linked.linkedId);
+                }}
                 style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
               >
                 Open txn:{linked.linkedId}
@@ -590,7 +597,10 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               && parentMap.has(normalizeId(message.parent_message_id || message.parentMessageId)) && (
               <button
                 type="button"
-                onClick={() => onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId))}
+                onClick={() => {
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
+                }}
                 aria-label="Jump to parent message"
                 style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
               >
@@ -598,12 +608,12 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => onToggleReplies(message.id)} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {canDeleteMessage(message) && (
-              <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
@@ -660,6 +670,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           canDeleteMessage={canDeleteMessage}
           onDeleteMessage={onDeleteMessage}
           onPreviewAttachment={onPreviewAttachment}
+          isOwnMessage={isOwnMessage}
+          onAnyAction={onAnyAction}
         />
       ))}
     </article>
@@ -711,7 +723,11 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const composerRef = useRef(null);
+  const threadPaneRef = useRef(null);
+  const widgetRootRef = useRef(null);
+  const activeThreadInitialScrollRef = useRef(null);
   const hasInitializedPreferredConversationRef = useRef(false);
 
   const draftStorageKey = useMemo(() => {
@@ -756,21 +772,38 @@ export default function MessagingWidget() {
     }
   }, []);
 
-  const fetchThreadMessages = async (rootMessageId, activeCompany) => {
+  const fetchThreadMessages = async (rootMessageId, activeCompany, { cursor = null, limit = 60 } = {}) => {
     if (!rootMessageId || !activeCompany) return;
+    const companyKey = getCompanyCacheKey(activeCompany);
+    const normalizedConversationId = normalizeConversationId(rootMessageId);
+    const pagingKey = `${companyKey}:${normalizedConversationId || normalizeId(rootMessageId)}`;
+    setThreadPagingByCompany((prev) => ({
+      ...prev,
+      [pagingKey]: { ...(prev[pagingKey] || {}), isLoading: true },
+    }));
     try {
-      const params = new URLSearchParams({ companyId: String(activeCompany) });
+      const params = new URLSearchParams({ companyId: String(activeCompany), limit: String(limit) });
+      if (cursor) params.set('cursor', String(cursor));
       const threadRes = await fetch(`${API_BASE}/messaging/conversations/${rootMessageId}/messages?${params.toString()}`, { credentials: 'include' });
       if (!threadRes.ok) return;
       const threadData = await threadRes.json();
       const adaptedThread = adaptThreadResponse(threadData);
       const threadItems = adaptedThread.items;
-      if (threadItems.length === 0) return;
+      const pageInfo = adaptedThread.pageInfo || null;
+      setThreadPagingByCompany((prev) => ({
+        ...prev,
+        [pagingKey]: {
+          ...(prev[pagingKey] || {}),
+          isLoading: false,
+          hasMore: Boolean(pageInfo?.hasMore),
+          nextCursor: pageInfo?.nextCursor || null,
+        },
+      }));
+      if (threadItems.length === 0) return adaptedThread;
       const rememberedThreadParticipants = Array.from(new Set(threadItems.flatMap((entry) => collectMessageParticipantEmpids(entry))));
       rememberConversationParticipants(rootMessageId, rememberedThreadParticipants);
       setMessagesByCompany((prev) => {
-        const key = getCompanyCacheKey(activeCompany);
-        const byId = new Map((prev[key] || []).map((entry) => [String(entry.id), entry]));
+        const byId = new Map((prev[companyKey] || []).map((entry) => [String(entry.id), entry]));
         threadItems.forEach((entry) => {
           const existing = byId.get(String(entry.id));
           byId.set(String(entry.id), mergeMessageParticipantFields(existing, entry));
@@ -779,10 +812,16 @@ export default function MessagingWidget() {
           Array.from(byId.values()).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()),
           selfEmpid,
         );
-        return { ...prev, [key]: merged };
+        return { ...prev, [companyKey]: merged };
       });
+      return adaptedThread;
     } catch {
       // Keep widget usable when thread fetch fails.
+    } finally {
+      setThreadPagingByCompany((prev) => ({
+        ...prev,
+        [pagingKey]: { ...(prev[pagingKey] || {}), isLoading: false },
+      }));
     }
   };
 
@@ -1128,13 +1167,6 @@ export default function MessagingWidget() {
 
       const id = nextMessage.id;
       setHighlightedIds((prev) => new Set([...prev, id]));
-      globalThis.setTimeout(() => {
-        setHighlightedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }, 2400);
 
       let resolvedRootId = normalizeId(getMessageConversationId(nextMessage));
       let fallbackThreadRefreshId = null;
@@ -1290,6 +1322,28 @@ export default function MessagingWidget() {
   }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany || !selfEmpid) return undefined;
+
+    let disposed = false;
+    const refreshDeliveryFallback = async () => {
+      if (disposed) return;
+      await refreshConversationList(activeCompany);
+      if (disposed) return;
+      const selectedConversationId = normalizeConversationId(state.activeConversationId);
+      if (!selectedConversationId) return;
+      await fetchThreadMessages(selectedConversationId, activeCompany);
+    };
+
+    refreshDeliveryFallback();
+    const intervalId = globalThis.setInterval(refreshDeliveryFallback, 12_000);
+    return () => {
+      disposed = true;
+      globalThis.clearInterval(intervalId);
+    };
+  }, [companyId, selfEmpid, state.activeCompanyId, state.activeConversationId, refreshConversationList]);
+
+  useEffect(() => {
     const onStartMessage = (event) => {
       const detail = event?.detail || {};
       dispatch({
@@ -1350,9 +1404,40 @@ export default function MessagingWidget() {
     () => messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === activeConversationNumericId),
     [activeConversationNumericId, messages],
   );
+  const activeThreadPageState = useMemo(() => {
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    const key = `${companyKey}:${activeConversationNumericId || ''}`;
+    return threadPagingByCompany?.[key] || { hasMore: false, nextCursor: null, isLoading: false };
+  }, [activeConversationNumericId, companyId, state.activeCompanyId, threadPagingByCompany]);
+
+  const markConversationRead = useCallback((conversationId, activeCompany) => {
+    const normalizedConversationId = normalizeConversationId(conversationId);
+    if (!normalizedConversationId || !activeCompany) return;
+    setHighlightedIds((prev) => {
+      const next = new Set(prev);
+      (messagesByCompany[getCompanyCacheKey(activeCompany)] || []).forEach((msg) => {
+        if (normalizeConversationId(msg?.conversation_id || msg?.conversationId) !== normalizedConversationId) return;
+        const id = normalizeId(msg.id);
+        if (id) next.delete(id);
+      });
+      return next;
+    });
+  }, [messagesByCompany]);
+
+  const closeOpenMessageMenus = useCallback(() => {
+    const root = widgetRootRef.current;
+    if (!root) return;
+    root.querySelectorAll('details[open]').forEach((node) => {
+      node.open = false;
+    });
+  }, []);
+
   const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
-  const unreadCount = messages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length;
+  const unreadCount = useMemo(
+    () => messages.filter((msg) => normalizeId(msg.author_empid) !== selfEmpid && !msg.read_by?.includes?.(selfEmpid)).length,
+    [messages, selfEmpid],
+  );
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -1388,8 +1473,46 @@ export default function MessagingWidget() {
     const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
     const activeCompany = state.activeCompanyId || companyId;
     if (!selectedRootId || !activeCompany) return;
+    activeThreadInitialScrollRef.current = selectedRootId;
     fetchThreadMessages(selectedRootId, activeCompany);
   }, [state.activeCompanyId, state.activeConversationId, companyId]);
+
+  useEffect(() => {
+    if (!activeConversationNumericId || threadMessagesRaw.length === 0) return;
+    if (activeThreadInitialScrollRef.current !== activeConversationNumericId) return;
+    const pane = threadPaneRef.current;
+    if (!pane) return;
+    requestAnimationFrame(() => {
+      pane.scrollTop = pane.scrollHeight;
+      activeThreadInitialScrollRef.current = null;
+    });
+  }, [activeConversationNumericId, threadMessagesRaw.length]);
+
+  useEffect(() => {
+    if (!state.isOpen || !activeConversationNumericId) return;
+    const pane = threadPaneRef.current;
+    if (!pane) return;
+    const highlightedInThread = threadMessagesRaw
+      .map((msg) => normalizeId(msg.id))
+      .filter((id) => id && highlightedIds.has(id));
+    if (highlightedInThread.length === 0) return;
+    const latestHighlightedId = highlightedInThread[highlightedInThread.length - 1];
+    const target = pane.querySelector(`[aria-label='Message ${latestHighlightedId}']`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activeConversationNumericId, highlightedIds, state.isOpen, threadMessagesRaw]);
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      const root = widgetRootRef.current;
+      if (!root) return;
+      if (!root.contains(event.target)) {
+        closeOpenMessageMenus();
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [closeOpenMessageMenus]);
 
 
   useEffect(() => {
@@ -1487,7 +1610,7 @@ export default function MessagingWidget() {
     return {
       ...conversation,
       messages: conversationMessages,
-      unread: conversationMessages.filter((msg) => !msg.read_by?.includes?.(selfEmpid)).length,
+      unread: conversationMessages.filter((msg) => normalizeId(msg.author_empid) !== selfEmpid && !msg.read_by?.includes?.(selfEmpid)).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
       groupName: conversation.isGeneral
         ? 'Company-wide'
@@ -2160,8 +2283,9 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!activeCompany || !activeConversation?.conversationId) return;
-    fetchThreadMessages(activeConversation.rootMessageId, activeCompany);
+    const activeConversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!activeCompany || !activeConversationId) return;
+    fetchThreadMessages(activeConversationId, activeCompany);
   }, [activeConversation?.conversationId, state.activeCompanyId, companyId]);
 
   if (!state.isOpen) {
@@ -2181,6 +2305,7 @@ export default function MessagingWidget() {
 
   return (
     <section
+      ref={widgetRootRef}
       style={{
         position: 'fixed',
         right: 16,
@@ -2287,7 +2412,9 @@ export default function MessagingWidget() {
                 <button
                   type="button"
                   onClick={() => {
+                    closeOpenMessageMenus();
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
+                    markConversationRead(conversation.conversationId || conversation.id, state.activeCompanyId || companyId);
                     dispatch({ type: 'composer/setTopic', payload: conversation.topic || '' });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
                     dispatch({
@@ -2328,7 +2455,27 @@ export default function MessagingWidget() {
         </aside>
 
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-          <main style={{ padding: '8px 10px 6px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }} aria-live="polite">
+          <main
+            ref={threadPaneRef}
+            style={{ padding: '8px 10px 6px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }}
+            aria-live="polite"
+            onScroll={async (event) => {
+              const container = event.currentTarget;
+              if (container.scrollTop > 120) return;
+              if (!activeConversationNumericId) return;
+              if (!activeThreadPageState?.hasMore || activeThreadPageState?.isLoading || !activeThreadPageState?.nextCursor) return;
+              const activeCompany = state.activeCompanyId || companyId;
+              const beforeHeight = container.scrollHeight;
+              await fetchThreadMessages(activeConversationNumericId, activeCompany, {
+                cursor: activeThreadPageState.nextCursor
+              });
+              requestAnimationFrame(() => {
+                const afterHeight = container.scrollHeight;
+                const delta = Math.max(0, afterHeight - beforeHeight);
+                container.scrollTop = container.scrollTop + delta;
+              });
+            }}
+          >
             <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
               <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
                 {activeTopic} — {activeConversation?.isGeneral ? 'Everybody' : (activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'No participants yet')}
@@ -2382,6 +2529,8 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
+                isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
+                onAnyAction={closeOpenMessageMenus}
               />
             ))}
           </main>
