@@ -661,7 +661,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -738,6 +738,20 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
             >
               Reply
             </button>
+            {isOwnMessage && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onEdit(message);
+                }}
+                aria-label={`Edit message ${message.id}`}
+                style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
+              >
+                Edit message
+              </button>
+            )}
             {linked.linkedType === 'transaction' && linked.linkedId && (
               <button
                 type="button"
@@ -850,6 +864,7 @@ ${hoverUsers}`
           message={child}
           depth={depth + 1}
           onReply={onReply}
+          onEdit={onEdit}
           onJumpToParent={onJumpToParent}
           onToggleReplies={onToggleReplies}
           collapsedMessageIds={collapsedMessageIds}
@@ -920,6 +935,7 @@ export default function MessagingWidget() {
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
   const [activityTick, setActivityTick] = useState(0);
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
@@ -1088,6 +1104,31 @@ export default function MessagingWidget() {
     setNetworkState('loading');
     hasInitializedPreferredConversationRef.current = false;
   }, [companyId, selfEmpid, state.activeCompanyId]);
+
+  const persistEditedMessage = useCallback(async ({ messageId, conversationId, body, companyId: targetCompanyId }) => {
+    const payload = JSON.stringify({ body, companyId: Number(targetCompanyId) || targetCompanyId });
+    const attempts = [
+      { method: 'PATCH', path: `${API_BASE}/messaging/messages/${messageId}` },
+      { method: 'PUT', path: `${API_BASE}/messaging/messages/${messageId}` },
+      conversationId ? { method: 'PATCH', path: `${API_BASE}/messaging/conversations/${conversationId}/messages/${messageId}` } : null,
+      conversationId ? { method: 'PUT', path: `${API_BASE}/messaging/conversations/${conversationId}/messages/${messageId}` } : null,
+    ].filter(Boolean);
+
+    let lastResponse = null;
+    for (const attempt of attempts) {
+      const response = await fetch(attempt.path, {
+        method: attempt.method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+      if (response.ok) return response;
+      lastResponse = response;
+      if (response.status === 404 || response.status === 405) continue;
+      return response;
+    }
+    return lastResponse;
+  }, []);
 
   useEffect(() => {
     const raw = globalThis.localStorage?.getItem(draftStorageKey);
@@ -1765,6 +1806,7 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     setOpenMessageMenuId(null);
+    setEditingMessage(null);
   }, [state.activeConversationId]);
 
   useEffect(() => {
@@ -2135,6 +2177,28 @@ export default function MessagingWidget() {
     return messages.some((entry) => Number(entry.parent_message_id || entry.parentMessageId) === Number(messageId));
   };
 
+  const startEditingMessage = (message) => {
+    const targetId = normalizeId(message?.id);
+    if (!targetId) return;
+    const decoded = extractMessageAttachments(message);
+    dispatch({ type: 'composer/setReplyTo', payload: null });
+    dispatch({ type: 'composer/setBody', payload: sanitizeMessageText(decoded.text || '') });
+    dispatch({ type: 'composer/setAttachments', payload: [] });
+    setEditingMessage({
+      id: targetId,
+      conversationId: normalizeConversationId(message?.conversation_id || message?.conversationId),
+      attachmentPayload: encodeAttachmentPayload(decoded.attachments || []),
+    });
+    composerRef.current?.focus();
+    setComposerAnnouncement(`Editing message #${targetId}.`);
+  };
+
+  const cancelEditingMessage = () => {
+    setEditingMessage(null);
+    dispatch({ type: 'composer/setBody', payload: '' });
+    setComposerAnnouncement('Stopped editing message.');
+  };
+
   const handleDeleteMessage = async (messageId) => {
     if (messageHasReplies(messageId)) {
       setComposerAnnouncement('Cannot delete this message because it has replies.');
@@ -2271,6 +2335,51 @@ export default function MessagingWidget() {
   };
 
   const sendMessage = async () => {
+    if (editingMessage?.id) {
+      const activeCompany = state.activeCompanyId || companyId;
+      const normalizedCompanyId = Number(activeCompany);
+      if (!Number.isFinite(normalizedCompanyId)) {
+        setComposerAnnouncement('Invalid company context. Refresh and try again.');
+        return;
+      }
+      if (!safeBody) {
+        setComposerAnnouncement('Cannot save an empty message.');
+        return;
+      }
+      const editedBody = `${safeBody}${editingMessage.attachmentPayload || ''}`;
+      const response = await persistEditedMessage({
+        messageId: editingMessage.id,
+        conversationId: editingMessage.conversationId,
+        body: editedBody,
+        companyId: normalizedCompanyId,
+      });
+      if (!response?.ok) {
+        const payload = await response?.json?.().catch(() => null);
+        setComposerAnnouncement(payload?.error?.message || payload?.message || 'Failed to update message.');
+        return;
+      }
+      const successPayload = await response.json().catch(() => null);
+      const updatedMessage = successPayload?.message || null;
+      setMessagesByCompany((prev) => {
+        const key = getCompanyCacheKey(activeCompany);
+        const current = prev[key] || [];
+        const nextMessages = current.map((entry) => {
+          if (normalizeId(entry?.id) !== editingMessage.id) return entry;
+          return {
+            ...entry,
+            body: updatedMessage?.body || editedBody,
+            updated_at: updatedMessage?.updated_at || new Date().toISOString(),
+          };
+        });
+        return { ...prev, [key]: nextMessages };
+      });
+      setEditingMessage(null);
+      dispatch({ type: 'composer/setBody', payload: '' });
+      dispatch({ type: 'composer/setAttachments', payload: [] });
+      setComposerAnnouncement('Message updated.');
+      return;
+    }
+
     if (isDraftConversation && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
@@ -2874,6 +2983,7 @@ export default function MessagingWidget() {
               </strong>
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
+                {editingMessage?.id && <span style={{ color: '#2563eb', fontWeight: 600 }}>Editing #{editingMessage.id}</span>}
               </div>
               {canEditTopic && (
                 <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -2911,6 +3021,7 @@ export default function MessagingWidget() {
                   document.querySelector(`[aria-label='Message ${id}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   setComposerAnnouncement(`Reply target set to #${id}.`);
                 }}
+                onEdit={startEditingMessage}
                 onJumpToParent={(parentId) => document.querySelector(`[aria-label='Message ${parentId}']`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 onToggleReplies={toggleMessageReplies}
                 collapsedMessageIds={collapsedMessageIds}
@@ -3058,8 +3169,17 @@ export default function MessagingWidget() {
                   disabled={!canSendMessage}
                   style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '6px 10px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}
                 >
-                  Send
+                  {editingMessage?.id ? 'Save edit' : 'Send'}
                 </button>
+                {editingMessage?.id && (
+                  <button
+                    type="button"
+                    onClick={cancelEditingMessage}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', padding: '6px 10px', fontWeight: 600 }}
+                  >
+                    Cancel edit
+                  </button>
+                )}
               </div>
               <button
                 type="button"
