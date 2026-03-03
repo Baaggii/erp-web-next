@@ -282,6 +282,12 @@ function createIdempotencyKey() {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function numericMessageId(value) {
+  const normalized = normalizeId(value);
+  if (!/^\d+$/.test(normalized)) return null;
+  return Number(normalized);
+}
+
 function conversationIdFromSelection(conversationId) {
   const raw = normalizeConversationId(conversationId);
   if (!raw || raw === NEW_CONVERSATION_ID) return null;
@@ -723,10 +729,10 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const composerRef = useRef(null);
   const threadPaneRef = useRef(null);
-  const widgetRootRef = useRef(null);
   const activeThreadInitialScrollRef = useRef(null);
   const hasInitializedPreferredConversationRef = useRef(false);
 
@@ -1404,6 +1410,10 @@ export default function MessagingWidget() {
     () => messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === activeConversationNumericId),
     [activeConversationNumericId, messages],
   );
+  const activeThreadReadState = useMemo(() => {
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    return lastReadByCompany?.[companyKey] || {};
+  }, [companyId, lastReadByCompany, state.activeCompanyId]);
   const activeThreadPageState = useMemo(() => {
     const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
     const key = `${companyKey}:${activeConversationNumericId || ''}`;
@@ -1413,31 +1423,46 @@ export default function MessagingWidget() {
   const markConversationRead = useCallback((conversationId, activeCompany) => {
     const normalizedConversationId = normalizeConversationId(conversationId);
     if (!normalizedConversationId || !activeCompany) return;
+    const companyKey = getCompanyCacheKey(activeCompany);
+    const candidateIds = (messagesByCompany[companyKey] || [])
+      .filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === normalizedConversationId)
+      .filter((msg) => normalizeId(msg.author_empid) !== selfEmpid)
+      .map((msg) => numericMessageId(msg.id))
+      .filter((id) => Number.isFinite(id));
+    if (candidateIds.length === 0) return;
+    const highestSeenId = Math.max(...candidateIds);
+    setLastReadByCompany((prev) => ({
+      ...prev,
+      [companyKey]: {
+        ...(prev[companyKey] || {}),
+        [normalizedConversationId]: Math.max(Number(prev?.[companyKey]?.[normalizedConversationId] || 0), highestSeenId),
+      },
+    }));
     setHighlightedIds((prev) => {
       const next = new Set(prev);
-      (messagesByCompany[getCompanyCacheKey(activeCompany)] || []).forEach((msg) => {
+      (messagesByCompany[companyKey] || []).forEach((msg) => {
         if (normalizeConversationId(msg?.conversation_id || msg?.conversationId) !== normalizedConversationId) return;
         const id = normalizeId(msg.id);
         if (id) next.delete(id);
       });
       return next;
     });
-  }, [messagesByCompany]);
-
-  const closeOpenMessageMenus = useCallback(() => {
-    const root = widgetRootRef.current;
-    if (!root) return;
-    root.querySelectorAll('details[open]').forEach((node) => {
-      node.open = false;
-    });
-  }, []);
+  }, [companyId, messagesByCompany, selfEmpid, state.activeCompanyId]);
 
   const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
-  const unreadCount = useMemo(
-    () => messages.filter((msg) => normalizeId(msg.author_empid) !== selfEmpid && !msg.read_by?.includes?.(selfEmpid)).length,
-    [messages, selfEmpid],
-  );
+  const unreadCount = useMemo(() => {
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    const readState = lastReadByCompany?.[companyKey] || {};
+    return messages.filter((msg) => {
+      const conversationId = normalizeConversationId(msg?.conversation_id || msg?.conversationId);
+      const messageId = numericMessageId(msg.id);
+      if (!conversationId || !messageId) return false;
+      if (normalizeId(msg.author_empid) === selfEmpid) return false;
+      const lastReadId = Number(readState[conversationId] || 0);
+      return messageId > lastReadId;
+    }).length;
+  }, [companyId, lastReadByCompany, messages, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -1478,6 +1503,13 @@ export default function MessagingWidget() {
   }, [state.activeCompanyId, state.activeConversationId, companyId]);
 
   useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!state.isOpen || !activeConversationNumericId || !activeCompany) return;
+    if (threadMessagesRaw.length === 0) return;
+    markConversationRead(activeConversationNumericId, activeCompany);
+  }, [activeConversationNumericId, companyId, markConversationRead, state.activeCompanyId, state.isOpen, threadMessagesRaw.length]);
+
+  useEffect(() => {
     if (!activeConversationNumericId || threadMessagesRaw.length === 0) return;
     if (activeThreadInitialScrollRef.current !== activeConversationNumericId) return;
     const pane = threadPaneRef.current;
@@ -1501,18 +1533,6 @@ export default function MessagingWidget() {
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [activeConversationNumericId, highlightedIds, state.isOpen, threadMessagesRaw]);
-
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      const root = widgetRootRef.current;
-      if (!root) return;
-      if (!root.contains(event.target)) {
-        closeOpenMessageMenus();
-      }
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [closeOpenMessageMenus]);
 
 
   useEffect(() => {
@@ -1605,12 +1625,18 @@ export default function MessagingWidget() {
   const conversationSummaries = useMemo(() => conversationSummariesSource.map((conversation) => {
     const convId = normalizeConversationId(conversation.conversationId || conversation.id);
     const conversationMessages = messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === convId);
+    const lastReadId = Number(activeThreadReadState[convId] || 0);
     const previewMessage = conversationMessages.at(-1);
     const previewDecoded = decodeMessageContent(previewMessage?.body || '');
     return {
       ...conversation,
       messages: conversationMessages,
-      unread: conversationMessages.filter((msg) => normalizeId(msg.author_empid) !== selfEmpid && !msg.read_by?.includes?.(selfEmpid)).length,
+      unread: conversationMessages.filter((msg) => {
+        const messageId = numericMessageId(msg.id);
+        if (!messageId) return false;
+        if (normalizeId(msg.author_empid) === selfEmpid) return false;
+        return messageId > lastReadId;
+      }).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
       groupName: conversation.isGeneral
         ? 'Company-wide'
@@ -1619,7 +1645,7 @@ export default function MessagingWidget() {
           : `Conversation #${conversation.conversationId || normalizeConversationId(conversation.id)}`,
       lastActivity: previewMessage?.created_at || conversation.lastMessageAt || null,
     };
-  }), [conversationSummariesSource, messages, selfEmpid]);
+  }), [activeThreadReadState, conversationSummariesSource, messages, selfEmpid]);
 
   const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
