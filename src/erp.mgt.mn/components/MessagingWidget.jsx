@@ -1851,17 +1851,9 @@ export default function MessagingWidget() {
     };
 
     const explicitReplyTargetId = parseThreadMessageId(state.composer.replyToId);
-    const generalConversationRootId = selectedIsGeneral
-      ? normalizeId(
-        selectedConversation?.messages
-          ?.find((entry) => !normalizeId(entry?.parent_message_id || entry?.parentMessageId))
-          ?.id,
-      )
-      : null;
     const targetConversationId = parseThreadMessageId(
       selectedConversation?.conversationId
-      || selectedConversationIdFromState
-      || generalConversationRootId,
+      || selectedConversationIdFromState,
     );
     const shouldSendReply = !isDraftConversation && Boolean(explicitReplyTargetId);
     if ((shouldSendReply || hasThreadContext) && !targetConversationId && !explicitReplyTargetId) {
