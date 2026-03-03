@@ -1275,8 +1275,6 @@ export default function MessagingWidget() {
     };
     socket.on('message.created', onNew);
     socket.on('message.updated', onUpdated);
-    socket.on('messages:presence', onPresence);
-    socket.on('presence.changed', onPresence);
     socket.on('presence.updated', onPresence);
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
@@ -1284,8 +1282,6 @@ export default function MessagingWidget() {
     return () => {
       socket.off('message.created', onNew);
       socket.off('message.updated', onUpdated);
-      socket.off('messages:presence', onPresence);
-      socket.off('presence.changed', onPresence);
       socket.off('presence.updated', onPresence);
       socket.off('message.deleted', onDeleted);
       socket.off('conversation.deleted', onConversationDeleted);

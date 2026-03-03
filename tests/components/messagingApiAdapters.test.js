@@ -21,6 +21,7 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
   assert.deepEqual(adapted.items[0], {
     id: 'conversation:15',
     conversationId: '15',
+    topic: 'sales_order #44',
     title: 'sales_order #44',
     type: 'private',
     linkedType: 'sales_order',
@@ -31,6 +32,7 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
     lastMessageAt: '2026-01-02T03:04:05.000Z',
     lastMessageId: '901',
     unread: 0,
+    createdByEmpid: null,
     raw: {
       id: 15,
       linked_type: 'sales_order',
@@ -74,6 +76,14 @@ test('adaptConversationListResponse marks company-wide unlinked conversation as 
 });
 
 test('adaptConversationListResponse does not synthesize non-numeric general conversation ids', () => {
-  const adapted = adaptConversationListResponse({ items: [] });
-  assert.deepEqual(adapted.items, []);
+  const adapted = adaptConversationListResponse({
+    items: [
+      { id: 'general', type: 'general', visibility_scope: 'company' },
+      { id: 9, type: 'general', visibility_scope: 'company' },
+    ],
+  });
+
+  assert.equal(adapted.items.length, 1);
+  assert.equal(adapted.items[0].conversationId, '9');
+  assert.equal(adapted.items[0].id, 'conversation:9');
 });

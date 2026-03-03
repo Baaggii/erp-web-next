@@ -97,9 +97,11 @@ test('resolvePresenceStatus marks stale online users as away or offline', () => 
 
 
 
-test('normalizeConversationId strips UI prefix', () => {
+test('normalizeConversationId strips UI prefix and rejects non-numeric ids', () => {
   assert.equal(normalizeConversationId('conversation:44'), '44');
   assert.equal(normalizeConversationId(55), '55');
+  assert.equal(normalizeConversationId('general'), null);
+  assert.equal(normalizeConversationId('conversation:general'), null);
   assert.equal(normalizeConversationId(''), null);
 });
 test('excludeGeneralConversationSummaries hides general channel entries', () => {
