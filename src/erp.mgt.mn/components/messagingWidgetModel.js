@@ -14,6 +14,7 @@ function toTimestamp(value) {
 }
 
 export function resolvePresenceStatus(record, now = Date.now()) {
+  const onlineFlag = record?.online;
   const rawStatus = String(record?.presence || record?.status || '').toLowerCase();
   const heartbeatAt = toTimestamp(
     record?.heartbeat_at
@@ -24,7 +25,7 @@ export function resolvePresenceStatus(record, now = Date.now()) {
   const lastSeenAt = toTimestamp(record?.last_seen_at || record?.lastSeenAt);
   const activityAt = heartbeatAt ?? lastSeenAt;
 
-  if (rawStatus === PRESENCE.OFFLINE) return PRESENCE.OFFLINE;
+  if (rawStatus === PRESENCE.OFFLINE || onlineFlag === false) return PRESENCE.OFFLINE;
 
   if (activityAt != null) {
     const age = Math.max(0, now - activityAt);
@@ -33,6 +34,7 @@ export function resolvePresenceStatus(record, now = Date.now()) {
   }
 
   if (rawStatus === PRESENCE.ONLINE || rawStatus === PRESENCE.AWAY) return rawStatus;
+  if (onlineFlag === true) return PRESENCE.ONLINE;
   if (lastSeenAt != null) return PRESENCE.OFFLINE;
   return activityAt != null ? PRESENCE.AWAY : PRESENCE.OFFLINE;
 }
@@ -84,7 +86,11 @@ export function prioritizeConversationSummaries(conversations = [], draftConvers
     ? conversations.find((conversation) => conversation?.isGeneral)
     : null;
   const nonGeneralConversations = Array.isArray(conversations)
-    ? conversations.filter((conversation) => !conversation?.isGeneral && Array.isArray(conversation?.messages) && conversation.messages.length > 0)
+    ? conversations.filter((conversation) => {
+      if (conversation?.isGeneral) return false;
+      if (Array.isArray(conversation?.messages) && conversation.messages.length > 0) return true;
+      return Boolean(conversation?.lastMessageAt || conversation?.lastMessageId);
+    })
     : [];
   const summaries = [];
   if (generalConversation) summaries.push(generalConversation);

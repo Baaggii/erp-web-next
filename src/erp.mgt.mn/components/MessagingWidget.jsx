@@ -1006,7 +1006,11 @@ export default function MessagingWidget() {
         const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
         if (presenceRes.ok) {
           const presenceData = await presenceRes.json();
-          const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
+          const onlineUsers = Array.isArray(presenceData?.users)
+            ? presenceData.users
+            : Array.isArray(presenceData?.items)
+              ? presenceData.items
+              : [];
           setPresence(mergePresenceEntries(onlineUsers));
         }
       } catch {
@@ -1067,7 +1071,11 @@ export default function MessagingWidget() {
         if (!presenceRes.ok || disposed) return;
         const presenceData = await presenceRes.json();
         if (disposed) return;
-        const onlineUsers = Array.isArray(presenceData?.users) ? presenceData.users : [];
+        const onlineUsers = Array.isArray(presenceData?.users)
+          ? presenceData.users
+          : Array.isArray(presenceData?.items)
+            ? presenceData.items
+            : [];
         setPresence(mergePresenceEntries(onlineUsers));
       } catch {
         // Polling is best effort only.
@@ -1158,16 +1166,19 @@ export default function MessagingWidget() {
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
 
-      if (Array.isArray(payload?.onlineUsers)) {
-        setPresence(mergePresenceEntries(payload.onlineUsers));
+      const payloadPresenceItems = Array.isArray(payload?.onlineUsers)
+        ? payload.onlineUsers
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
+      if (payloadPresenceItems.length > 0) {
+        setPresence(mergePresenceEntries(payloadPresenceItems));
         return;
       }
 
-      const incoming = Array.isArray(payload?.onlineUsers)
-        ? payload.onlineUsers
-        : payload?.empid
-          ? [payload]
-          : [];
+      const incoming = payload?.empid
+        ? [payload]
+        : [];
       if (incoming.length === 0) return;
       setPresence((prev) => {
         const next = new Map((prev || []).map((entry) => [normalizeId(entry.empid || entry.id), entry]));
@@ -1242,6 +1253,7 @@ export default function MessagingWidget() {
     socket.on('message.updated', onUpdated);
     socket.on('messages:presence', onPresence);
     socket.on('presence.changed', onPresence);
+    socket.on('presence.updated', onPresence);
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
     return () => {
@@ -1251,6 +1263,7 @@ export default function MessagingWidget() {
       socket.off('message.updated', onUpdated);
       socket.off('messages:presence', onPresence);
       socket.off('presence.changed', onPresence);
+      socket.off('presence.updated', onPresence);
       socket.off('message.deleted', onDeleted);
       socket.off('conversation.deleted', onConversationDeleted);
       disconnectSocket();
@@ -1772,7 +1785,12 @@ export default function MessagingWidget() {
       payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
     }
 
-    const shouldCreateConversationRoot = isDraftConversation || (selectedIsGeneral && !targetConversationId && !shouldSendReply);
+    if (selectedIsGeneral && !targetConversationId) {
+      setComposerAnnouncement('General conversation is unavailable. Refresh and try again.');
+      return;
+    }
+
+    const shouldCreateConversationRoot = isDraftConversation;
     const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
       ? `${API_BASE}/messaging/conversations/${targetConversationId}/messages`
       : (shouldCreateConversationRoot
