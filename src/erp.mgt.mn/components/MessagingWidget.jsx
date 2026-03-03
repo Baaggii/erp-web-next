@@ -731,6 +731,7 @@ export default function MessagingWidget() {
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
+  const widgetRootRef = useRef(null);
   const composerRef = useRef(null);
   const threadPaneRef = useRef(null);
   const activeThreadInitialScrollRef = useRef(null);
