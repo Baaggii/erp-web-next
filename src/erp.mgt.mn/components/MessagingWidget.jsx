@@ -473,6 +473,19 @@ function formatEmployeeOption(entry) {
   return `${entry.label}`;
 }
 
+function formatReactionHoverUsers(users = [], resolveEmployeeLabel) {
+  const labels = users
+    .map((empid) => {
+      const normalized = normalizeId(empid);
+      if (!normalized) return null;
+      const resolved = typeof resolveEmployeeLabel === 'function' ? resolveEmployeeLabel(normalized) : normalized;
+      return String(resolved || normalized).trim();
+    })
+    .filter(Boolean);
+  if (labels.length === 0) return '';
+  return labels.join(', ');
+}
+
 function mergePresenceEntries(entries = []) {
   return Array.from(new Map((entries || []).map((entry) => {
     const empid = normalizeId(entry?.empid || entry?.id);
@@ -801,10 +814,17 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
         {reactions.map((entry) => {
           const reactedBySelf = entry.users.includes(normalizeId(selfEmpid));
+          const hoverUsers = formatReactionHoverUsers(entry.users, resolveEmployeeLabel);
+          const reactionTitle = hoverUsers
+            ? `${entry.emoji} · ${entry.count} reaction${entry.count === 1 ? '' : 's'}
+${hoverUsers}`
+            : `${entry.emoji} · ${entry.count} reaction${entry.count === 1 ? '' : 's'}`;
           return (
             <button
               key={entry.emoji}
               type="button"
+              title={reactionTitle}
+              aria-label={reactionTitle.replace(/\n/g, ', ')}
               onClick={() => onToggleReaction(message.id, entry.emoji)}
               style={{ border: `1px solid ${reactedBySelf ? '#c7d2fe' : '#cbd5e1'}`, background: reactedBySelf ? '#eef2ff' : '#fff', borderRadius: 999, padding: '1px 7px', fontSize: 12 }}
             >
