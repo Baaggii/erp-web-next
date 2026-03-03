@@ -22,11 +22,11 @@ export function adaptConversationListResponse(data) {
         const isGeneral = type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true;
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (!isGeneral && conversationId == null) return null;
-        const normalizedId = normalizeId(conversationId);
+        const normalizedId = isGeneral ? 'general' : normalizeId(conversationId);
         if (isGeneral) hasGeneralConversation = true;
         return {
           id: isGeneral ? 'general' : `conversation:${normalizedId}`,
-          conversationId: conversationId ?? null,
+          conversationId: isGeneral ? 'general' : conversationId,
           title: deriveConversationTitle(entry),
           type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
