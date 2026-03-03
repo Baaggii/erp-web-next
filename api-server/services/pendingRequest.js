@@ -1099,80 +1099,82 @@ export async function listRequests(filters) {
     }
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const [countRows] = await queryWithTenantScope(
-    pool,
-    'pending_request',
-    companyId,
-    `SELECT COUNT(*) as count FROM {{table}} ${where}`,
-    params,
-  );
-  const total = countRows[0]?.count || 0;
+  const conn = await pool.getConnection();
+  try {
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [countRows] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      `SELECT COUNT(*) as count FROM {{table}} ${where}`,
+      params,
+    );
+    const total = countRows[0]?.count || 0;
 
-  if (countOnly) {
-    return { rows: [], total };
-  }
+    if (countOnly) {
+      return { rows: [], total };
+    }
 
-  const limit = Number(per_page) > 0 ? Number(per_page) : 2;
-  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
+    const limit = Number(per_page) > 0 ? Number(per_page) : 2;
+    const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
 
-  const [orderedIds] = await queryWithTenantScope(
-    pool,
-    'pending_request',
-    companyId,
-    `SELECT request_id,
+    const [orderedIds] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      `SELECT request_id,
             ${dateColumn} AS sort_value
        FROM {{table}}
        ${where}
       ORDER BY ${dateColumn} DESC, request_id DESC
       LIMIT ? OFFSET ?`,
-    [...params, limit, offset],
-  );
+      [...params, limit, offset],
+    );
 
-  if (!orderedIds.length) {
-    return { rows: [], total };
-  }
+    if (!orderedIds.length) {
+      return { rows: [], total };
+    }
 
-  const idOrder = orderedIds
-    .map((row) => row.request_id)
-    .filter((id) => id !== null && id !== undefined);
+    const idOrder = orderedIds
+      .map((row) => row.request_id)
+      .filter((id) => id !== null && id !== undefined);
 
-  if (!idOrder.length) {
-    return { rows: [], total };
-  }
+    if (!idOrder.length) {
+      return { rows: [], total };
+    }
 
-  const placeholders = idOrder.map(() => '?').join(', ');
-  const [rowsRaw] = await queryWithTenantScope(
-    pool,
-    'pending_request',
-    companyId,
-    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, ${
+    const placeholders = idOrder.map(() => '?').join(', ');
+    const [rowsRaw] = await queryWithTenantScope(
+      conn,
+      'pending_request',
+      companyId,
+      `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, ${
       hasRespondedAt
         ? "DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s')"
         : 'NULL'
     } AS responded_at_fmt
        FROM {{table}} pr
       WHERE pr.request_id IN (${placeholders})`,
-    idOrder,
-  );
+      idOrder,
+    );
 
-  const rowsById = new Map(rowsRaw.map((row) => [row.request_id, row]));
-  const rows = idOrder
-    .map((id) => rowsById.get(id))
-    .filter((row) => row);
+    const rowsById = new Map(rowsRaw.map((row) => [row.request_id, row]));
+    const rows = idOrder
+      .map((id) => rowsById.get(id))
+      .filter((row) => row);
 
-  const approvalRequestIds = rows
-    .filter((row) => row.request_type === 'report_approval')
-    .map((row) => row.request_id)
-    .filter((id) => id !== null && id !== undefined);
-  const approvalMap = new Map();
-  if (approvalRequestIds.length) {
-    const placeholders = approvalRequestIds.map(() => '?').join(', ');
-    const [approvalRows] = await queryWithTenantScope(
-      pool,
-      'report_approvals',
-      companyId,
-      `SELECT request_id,
+    const approvalRequestIds = rows
+      .filter((row) => row.request_type === 'report_approval')
+      .map((row) => row.request_id)
+      .filter((id) => id !== null && id !== undefined);
+    const approvalMap = new Map();
+    if (approvalRequestIds.length) {
+      const placeholders = approvalRequestIds.map(() => '?').join(', ');
+      const [approvalRows] = await queryWithTenantScope(
+        conn,
+        'report_approvals',
+        companyId,
+        `SELECT request_id,
               approved_by,
               snapshot_file_name,
               snapshot_file_mime,
@@ -1181,103 +1183,106 @@ export async function listRequests(filters) {
               snapshot_file_path
          FROM {{table}}
         WHERE request_id IN (${placeholders})`,
-      approvalRequestIds,
-    );
-    approvalRows.forEach((row) => {
-      approvalMap.set(row.request_id, row);
-    });
-  }
+        approvalRequestIds,
+      );
+      approvalRows.forEach((row) => {
+        approvalMap.set(row.request_id, row);
+      });
+    }
 
-  const result = await Promise.all(
-    rows.map(async (row) => {
-      const parsed = parseProposedData(row.proposed_data);
-      let original = parseProposedData(row.original_data);
-      if (row.request_type === 'report_approval') {
-        original = null;
-      } else if (!original) {
-        try {
-          const pkCols = await getPrimaryKeyColumns(row.table_name);
-          if (pkCols.length === 1) {
-            const col = pkCols[0];
-            const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-            const [r] = await queryWithTenantScope(
-              pool,
-              row.table_name,
-              row.company_id,
-              `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
-              [row.record_id],
-            );
-            original = r[0] || null;
-          } else if (pkCols.length > 1) {
-            const parts = String(row.record_id).split('-');
-            const whereClause = pkCols
-              .map((c) => `\`${c}\` = ?`)
-              .join(' AND ');
-            const [r] = await queryWithTenantScope(
-              pool,
-              row.table_name,
-              row.company_id,
-              `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
-              parts,
-            );
-            original = r[0] || null;
-          }
-        } catch {
+    const result = await Promise.all(
+      rows.map(async (row) => {
+        const parsed = parseProposedData(row.proposed_data);
+        let original = parseProposedData(row.original_data);
+        if (row.request_type === 'report_approval') {
           original = null;
-        }
-      }
-
-      const normalizedReport =
-        row.request_type === 'report_approval' && parsed
-          ? normalizeReportApprovalPayload(parsed)
-          : null;
-
-      const approvalRecord =
-        normalizedReport && approvalMap.size
-          ? approvalMap.get(row.request_id)
-          : null;
-
-      const { created_at_fmt, responded_at_fmt, ...rest } = row;
-      return {
-        ...rest,
-        created_at: created_at_fmt || null,
-        responded_at: responded_at_fmt || null,
-        proposed_data: parsed,
-        original,
-        report_metadata: normalizedReport
-          ? {
-              procedure: normalizedReport.procedure,
-              parameters: normalizedReport.parameters,
-              transactions: normalizedReport.transactions,
-              snapshot: normalizedReport.snapshot || null,
-              executed_at: normalizedReport.executed_at || null,
-              requester_empid: rest.emp_id ?? null,
-              approver_empid: rest.senior_empid ?? null,
-              response_empid: rest.response_empid ?? null,
-              archive:
-                approvalRecord && approvalRecord.snapshot_file_path
-                  ? {
-                      fileName: approvalRecord.snapshot_file_name || null,
-                      mimeType:
-                        approvalRecord.snapshot_file_mime || 'application/json',
-                      byteSize:
-                        approvalRecord.snapshot_file_size === null ||
-                        approvalRecord.snapshot_file_size === undefined
-                          ? null
-                          : Number(approvalRecord.snapshot_file_size),
-                      archivedAt: approvalRecord.snapshot_archived_at
-                        ? new Date(approvalRecord.snapshot_archived_at).toISOString()
-                        : null,
-                      requestId: row.request_id,
-                    }
-                  : null,
+        } else if (!original) {
+          try {
+            const pkCols = await getPrimaryKeyColumns(row.table_name);
+            if (pkCols.length === 1) {
+              const col = pkCols[0];
+              const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+              const [r] = await queryWithTenantScope(
+                conn,
+                row.table_name,
+                row.company_id,
+                `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
+                [row.record_id],
+              );
+              original = r[0] || null;
+            } else if (pkCols.length > 1) {
+              const parts = String(row.record_id).split('-');
+              const whereClause = pkCols
+                .map((c) => `\`${c}\` = ?`)
+                .join(' AND ');
+              const [r] = await queryWithTenantScope(
+                conn,
+                row.table_name,
+                row.company_id,
+                `SELECT * FROM {{table}} WHERE ${whereClause} LIMIT 1`,
+                parts,
+              );
+              original = r[0] || null;
             }
-          : null,
-      };
-    }),
-  );
+          } catch {
+            original = null;
+          }
+        }
+  
+        const normalizedReport =
+          row.request_type === 'report_approval' && parsed
+            ? normalizeReportApprovalPayload(parsed)
+            : null;
+  
+        const approvalRecord =
+          normalizedReport && approvalMap.size
+            ? approvalMap.get(row.request_id)
+            : null;
+  
+        const { created_at_fmt, responded_at_fmt, ...rest } = row;
+        return {
+          ...rest,
+          created_at: created_at_fmt || null,
+          responded_at: responded_at_fmt || null,
+          proposed_data: parsed,
+          original,
+          report_metadata: normalizedReport
+            ? {
+                procedure: normalizedReport.procedure,
+                parameters: normalizedReport.parameters,
+                transactions: normalizedReport.transactions,
+                snapshot: normalizedReport.snapshot || null,
+                executed_at: normalizedReport.executed_at || null,
+                requester_empid: rest.emp_id ?? null,
+                approver_empid: rest.senior_empid ?? null,
+                response_empid: rest.response_empid ?? null,
+                archive:
+                  approvalRecord && approvalRecord.snapshot_file_path
+                    ? {
+                        fileName: approvalRecord.snapshot_file_name || null,
+                        mimeType:
+                          approvalRecord.snapshot_file_mime || 'application/json',
+                        byteSize:
+                          approvalRecord.snapshot_file_size === null ||
+                          approvalRecord.snapshot_file_size === undefined
+                            ? null
+                            : Number(approvalRecord.snapshot_file_size),
+                        archivedAt: approvalRecord.snapshot_archived_at
+                          ? new Date(approvalRecord.snapshot_archived_at).toISOString()
+                          : null,
+                        requestId: row.request_id,
+                      }
+                    : null,
+              }
+            : null,
+        };
+      }),
+    );
 
-  return { rows: result, total };
+    return { rows: result, total };
+  } finally {
+    conn.release();
+  }
 }
 
 export async function listRequestsByEmp(
