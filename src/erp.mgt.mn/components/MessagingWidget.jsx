@@ -690,7 +690,6 @@ export default function MessagingWidget() {
   const [companyRecords, setCompanyRecords] = useState([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [composerRecipientSearch, setComposerRecipientSearch] = useState('');
-  const [newConversationSelections, setNewConversationSelections] = useState([]);
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
@@ -1894,7 +1893,6 @@ export default function MessagingWidget() {
         // Non-blocking refresh; optimistic list still keeps conversation accessible.
       }
       dispatch({ type: 'composer/reset' });
-      if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
       setComposerAnnouncement('Message sent.');
@@ -1999,7 +1997,7 @@ export default function MessagingWidget() {
   };
 
   const openNewMessage = () => {
-    if (newConversationSelections.length === 0) {
+    if (state.composer.recipients.length === 0) {
       setComposerAnnouncement('Select at least one recipient first.');
       return;
     }
@@ -2008,7 +2006,7 @@ export default function MessagingWidget() {
       payload: {
         conversationId: NEW_CONVERSATION_ID,
         topic: '',
-        recipients: newConversationSelections,
+        recipients: state.composer.recipients,
       },
     });
     setComposerRecipientSearch('');
@@ -2017,13 +2015,10 @@ export default function MessagingWidget() {
 
   const onToggleNewConversationSelection = (empid) => {
     if (!empid) return;
-    const nextSelections = newConversationSelections.includes(empid)
-      ? newConversationSelections.filter((id) => id !== empid)
-      : Array.from(new Set([...newConversationSelections, empid]));
-    setNewConversationSelections(nextSelections);
-    if (isDraftConversation) {
-      dispatch({ type: 'composer/setRecipients', payload: nextSelections });
-    }
+    const nextSelections = state.composer.recipients.includes(empid)
+      ? state.composer.recipients.filter((id) => id !== empid)
+      : Array.from(new Set([...state.composer.recipients, empid]));
+    dispatch({ type: 'composer/setRecipients', payload: nextSelections });
   };
 
   const onComposerInput = (event) => {
@@ -2175,7 +2170,7 @@ export default function MessagingWidget() {
             </div>
             <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1 }}>
               {presenceEmployees.slice(0, 40).map((entry) => {
-                const selected = newConversationSelections.includes(entry.id);
+                const selected = state.composer.recipients.includes(entry.id);
                 return (
                   <button key={entry.id} type="button" onClick={() => onToggleNewConversationSelection(entry.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
@@ -2185,7 +2180,7 @@ export default function MessagingWidget() {
                 );
               })}
             </div>
-            <button type="button" disabled={newConversationSelections.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: newConversationSelections.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
+            <button type="button" disabled={state.composer.recipients.length === 0} onClick={openNewMessage} style={{ marginTop: 8, border: 0, borderRadius: 8, background: state.composer.recipients.length ? '#2563eb' : '#94a3b8', color: '#fff', padding: '8px 10px', width: '100%' }}>
               New conversation
             </button>
           </div>
@@ -2203,7 +2198,7 @@ export default function MessagingWidget() {
                     dispatch({
                       type: 'composer/setRecipients',
                       payload: conversation.id === NEW_CONVERSATION_ID
-                        ? (state.composer.recipients.length > 0 ? state.composer.recipients : newConversationSelections)
+                        ? state.composer.recipients
                         : [],
                     });
                     dispatch({
