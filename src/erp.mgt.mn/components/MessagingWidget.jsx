@@ -127,6 +127,68 @@ function countNestedReplies(message) {
   const replies = Array.isArray(message?.replies) ? message.replies : [];
   return replies.reduce((sum, child) => sum + 1 + countNestedReplies(child), 0);
 }
+
+function isDocumentActive() {
+  if (typeof document === 'undefined') return true;
+  if (document.visibilityState && document.visibilityState !== 'visible') return false;
+  if (typeof document.hasFocus === 'function') return document.hasFocus();
+  return true;
+}
+
+function normalizeReadByEntries(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry) return null;
+      if (typeof entry === 'object') {
+        return normalizeId(
+          entry.empid
+          || entry.emp_id
+          || entry.empId
+          || entry.user_id
+          || entry.userId
+          || entry.id,
+        ) || null;
+      }
+      return normalizeId(entry) || null;
+    })
+    .filter(Boolean);
+}
+
+async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
+  const bodyPayload = JSON.stringify({ emoji, messageId: Number(messageId) || messageId });
+  const attempts = shouldAddReaction
+    ? [
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reaction`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/reactions`, body: bodyPayload },
+      { method: 'PUT', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
+    ]
+    : [
+      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
+      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reaction`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reactions/toggle`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reaction/toggle`, body: JSON.stringify({ emoji }) },
+      { method: 'DELETE', path: `${API_BASE}/messaging/reactions`, body: bodyPayload },
+    ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    const response = await fetch(attempt.path, {
+      method: attempt.method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: attempt.body,
+    });
+    if (response.ok) return;
+    if (response.status === 404 || response.status === 405) {
+      lastError = new Error(`Reaction route unavailable (${response.status})`);
+      continue;
+    }
+    throw new Error(`Reaction request failed (${response.status})`);
+  }
+  throw lastError || new Error('Reaction request failed');
+}
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -573,7 +635,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isCollapsed = collapsedMessageIds.has(message.id);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(normalizeId(message.id));
-  const readers = Array.isArray(message.read_by) ? message.read_by.filter(Boolean) : [];
+  const readers = normalizeReadByEntries(message.read_by)
+    .filter((empid) => empid !== normalizeId(selfEmpid) && empid !== normalizeId(message.author_empid));
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
@@ -810,6 +873,7 @@ export default function MessagingWidget() {
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
+  const [activityTick, setActivityTick] = useState(0);
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -1663,13 +1727,11 @@ export default function MessagingWidget() {
     });
 
     try {
-      const res = await fetch(`${API_BASE}/messaging/messages/${normalizedMessageId}/reactions`, {
-        method: shouldAddReaction ? 'POST' : 'DELETE',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emoji }),
+      await requestReactionUpdate({
+        messageId: normalizedMessageId,
+        emoji,
+        shouldAddReaction,
       });
-      if (!res.ok) throw new Error('reaction failed');
     } catch {
       setMessagesByCompany((prev) => {
         const current = prev[companyKey] || [];
@@ -1683,11 +1745,23 @@ export default function MessagingWidget() {
   }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
+    const handleActivityChange = () => setActivityTick((value) => value + 1);
+    window.addEventListener('focus', handleActivityChange);
+    window.addEventListener('blur', handleActivityChange);
+    document.addEventListener('visibilitychange', handleActivityChange);
+    return () => {
+      window.removeEventListener('focus', handleActivityChange);
+      window.removeEventListener('blur', handleActivityChange);
+      document.removeEventListener('visibilitychange', handleActivityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!state.isOpen || !activeConversationNumericId || !activeCompany) return;
+    if (!state.isOpen || !isDocumentActive() || !activeConversationNumericId || !activeCompany) return;
     if (threadMessagesRaw.length === 0) return;
     markConversationRead(activeConversationNumericId, activeCompany);
-  }, [activeConversationNumericId, companyId, markConversationRead, state.activeCompanyId, state.isOpen, threadMessagesRaw.length]);
+  }, [activityTick, activeConversationNumericId, companyId, markConversationRead, state.activeCompanyId, state.isOpen, threadMessagesRaw.length]);
 
   useEffect(() => {
     if (!activeConversationNumericId || threadMessagesRaw.length === 0) return;
