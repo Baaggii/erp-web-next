@@ -1,5 +1,28 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
+function normalizeParticipantIds(value) {
+  const ids = [];
+  const pushValue = (entry) => {
+    if (!entry) return;
+    if (Array.isArray(entry)) {
+      entry.forEach((item) => pushValue(item));
+      return;
+    }
+    if (typeof entry === 'object') {
+      ids.push(entry?.empid, entry?.emp_id, entry?.empId, entry?.id, entry?.user_id, entry?.userId);
+      return;
+    }
+    if (typeof entry === 'string') {
+      entry.split(',').forEach((item) => ids.push(item));
+      return;
+    }
+    ids.push(entry);
+  };
+
+  pushValue(value);
+  return Array.from(new Set(ids.map(normalizeId).filter(Boolean)));
+}
+
 function deriveConversationTitle(entry, isGeneral = false) {
   if (isGeneral || (entry?.type || '').toLowerCase() === 'general') return 'General';
   return sanitizeMessageText(
@@ -34,11 +57,17 @@ export function adaptConversationListResponse(data) {
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (!isGeneral && conversationId == null) return null;
         const normalizedId = isGeneral ? 'general' : normalizeId(conversationId);
-        const participants = Array.isArray(entry?.participants)
-          ? entry.participants
-          : Array.isArray(entry?.participant_empids)
-            ? entry.participant_empids
-            : [];
+        const participants = normalizeParticipantIds(
+          entry?.participants
+          ?? entry?.participant_empids
+          ?? entry?.participantEmpids
+          ?? entry?.participant_ids
+          ?? entry?.participantIds
+          ?? entry?.recipient_empids
+          ?? entry?.recipientEmpids
+          ?? entry?.recipient_ids
+          ?? entry?.recipientIds,
+        );
         if (isGeneral) hasGeneralConversation = true;
         return {
           id: isGeneral ? 'general' : `conversation:${normalizedId}`,
