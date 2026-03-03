@@ -134,6 +134,16 @@ class MockDb {
       return [rows, undefined];
     }
 
+    if (text.startsWith('INSERT IGNORE INTO erp_message_reads')) {
+      return [{ affectedRows: 0 }, undefined];
+    }
+    if (text.startsWith('SELECT message_id, empid FROM erp_message_reads')) {
+      return [[], undefined];
+    }
+    if (text.startsWith('SELECT message_id, emoji, empid FROM erp_message_reactions')) {
+      return [[], undefined];
+    }
+
     throw new Error(`Unhandled SQL: ${text}`);
   }
 }

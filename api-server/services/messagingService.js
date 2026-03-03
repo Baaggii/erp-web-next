@@ -42,6 +42,13 @@ function sanitizeMessageClass(value) {
   return normalized;
 }
 
+function sanitizeEmoji(value) {
+  const emoji = String(value ?? '').trim();
+  if (!emoji) throw createError(400, 'EMOJI_REQUIRED', 'emoji is required');
+  if (emoji.length > 32) throw createError(400, 'EMOJI_INVALID', 'emoji is invalid');
+  return emoji;
+}
+
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
   const scopedCompanyId = toId(companyId ?? user?.companyId);
   if (!scopedCompanyId) throw createError(400, 'COMPANY_REQUIRED', 'companyId is required');
@@ -368,10 +375,38 @@ export async function getConversationMessages({ user, companyId, conversationId,
     });
   }
 
+  let reactionsByMessage = new Map();
+  if (messageIds.length > 0) {
+    const reactionPlaceholders = messageIds.map(() => '?').join(', ');
+    const [reactionRows] = await db.query(
+      `SELECT message_id, emoji, empid
+         FROM erp_message_reactions
+        WHERE company_id = ?
+          AND message_id IN (${reactionPlaceholders})
+          AND deleted_at IS NULL
+        ORDER BY message_id ASC, emoji ASC, reacted_at ASC`,
+      [scopedCompanyId, ...messageIds],
+    );
+
+    reactionsByMessage = new Map();
+    for (const row of reactionRows || []) {
+      const messageId = toId(row?.message_id);
+      const emoji = String(row?.emoji || '').trim();
+      const empid = String(row?.empid || '').trim();
+      if (!messageId || !emoji || !empid) continue;
+      if (!reactionsByMessage.has(messageId)) reactionsByMessage.set(messageId, new Map());
+      const byEmoji = reactionsByMessage.get(messageId);
+      if (!byEmoji.has(emoji)) byEmoji.set(emoji, new Set());
+      byEmoji.get(emoji).add(empid);
+    }
+  }
+
   const itemsWithReads = items.map((row) => {
     const messageId = toId(row?.id);
     const readBy = Array.from(readByMap.get(messageId) || []);
-    return { ...row, read_by: readBy };
+    const byEmoji = reactionsByMessage.get(messageId) || new Map();
+    const reactions = Array.from(byEmoji.entries()).map(([emoji, users]) => ({ emoji, count: users.size, users: Array.from(users) }));
+    return { ...row, read_by: readBy, reactions };
   });
 
   return {
@@ -380,6 +415,87 @@ export async function getConversationMessages({ user, companyId, conversationId,
     items: itemsWithReads,
     pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
+}
+
+async function getAccessibleMessageForReaction({ user, companyId, messageId, db }) {
+  const id = toId(messageId);
+  if (!id) throw createError(400, 'MESSAGE_REQUIRED', 'messageId is required');
+
+  const [rows] = await db.query('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1', [id, companyId]);
+  const message = rows[0];
+  if (!message) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const conversation = await getConversationById(db, companyId, message.conversation_id);
+  await assertConversationAccess(db, companyId, conversation, user?.empid);
+  return { id, message };
+}
+
+export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const emoji = sanitizeEmoji(payload?.emoji);
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+
+  await db.query(
+    `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
+    [id, scopedCompanyId, actorEmpid, emoji],
+  );
+  return { correlationId, ok: true, messageId: id, emoji, reacted: true };
+}
+
+export async function removeMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const emoji = sanitizeEmoji(payload?.emoji);
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+
+  await db.query(
+    `UPDATE erp_message_reactions
+        SET deleted_at = CURRENT_TIMESTAMP
+      WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
+    [id, scopedCompanyId, actorEmpid, emoji],
+  );
+  return { correlationId, ok: true, messageId: id, emoji, reacted: false };
+}
+
+export async function toggleMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const emoji = sanitizeEmoji(payload?.emoji);
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+
+  const [rows] = await db.query(
+    `SELECT deleted_at
+       FROM erp_message_reactions
+      WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ?
+      LIMIT 1`,
+    [id, scopedCompanyId, actorEmpid, emoji],
+  );
+  const existing = rows[0];
+  const reacted = !existing || existing.deleted_at != null;
+  if (reacted) {
+    await db.query(
+      `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
+      [id, scopedCompanyId, actorEmpid, emoji],
+    );
+  } else {
+    await db.query(
+      `UPDATE erp_message_reactions
+          SET deleted_at = CURRENT_TIMESTAMP
+        WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
+      [id, scopedCompanyId, actorEmpid, emoji],
+    );
+  }
+  return { correlationId, ok: true, messageId: id, emoji, reacted };
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
