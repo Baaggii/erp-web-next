@@ -850,7 +850,7 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!state.isOpen || !activeCompany) return;
+    if (!activeCompany) return;
     let disposed = false;
 
     const loadCompanies = async () => {
@@ -1031,11 +1031,11 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId, state.isOpen]);
+  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!state.isOpen || !activeCompany || !selfEmpid) return undefined;
+    if (!activeCompany || !selfEmpid) return undefined;
 
     const sendHeartbeat = async () => {
       try {
@@ -1059,13 +1059,13 @@ export default function MessagingWidget() {
     sendHeartbeat();
     const intervalId = globalThis.setInterval(sendHeartbeat, 45_000);
     return () => globalThis.clearInterval(intervalId);
-  }, [companyId, selfEmpid, state.activeCompanyId, state.isOpen]);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
     const employeeIds = Array.from(new Set((employees || []).map((entry) => normalizeId(entry.empid)).filter(Boolean)));
-    if (!state.isOpen || !activeCompany || employeeIds.length === 0) return undefined;
+    if (!activeCompany || employeeIds.length === 0) return undefined;
 
     let disposed = false;
     const refreshPresence = async () => {
@@ -1095,10 +1095,9 @@ export default function MessagingWidget() {
       disposed = true;
       globalThis.clearInterval(intervalId);
     };
-  }, [companyId, employees, state.activeCompanyId, state.isOpen]);
+  }, [companyId, employees, state.activeCompanyId]);
 
   useEffect(() => {
-    if (!state.isOpen) return undefined;
     const socket = connectSocket();
     const onNew = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1288,7 +1287,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, state.isOpen, refreshConversationList]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
