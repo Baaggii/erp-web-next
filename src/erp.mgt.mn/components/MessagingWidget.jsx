@@ -2349,7 +2349,7 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
-              {canEditConversationTopic && (
+              {canEditTopic && (
                 <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
                   <input
                     value={state.composer.topic}
