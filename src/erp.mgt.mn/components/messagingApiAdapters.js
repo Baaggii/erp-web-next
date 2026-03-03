@@ -44,7 +44,6 @@ function deriveConversationTitle(entry, isGeneral = false) {
 
 export function adaptConversationListResponse(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
-  let hasGeneralConversation = false;
 
   return {
     items: items
@@ -55,8 +54,8 @@ export function adaptConversationListResponse(data) {
           || (entry?.is_general ?? entry?.isGeneral) === true
           || (visibilityScope === 'company' && !(entry?.linked_type ?? entry?.linkedType) && !(entry?.linked_id ?? entry?.linkedId));
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
-        if (!isGeneral && conversationId == null) return null;
-        const normalizedId = isGeneral ? 'general' : normalizeId(conversationId);
+        if (conversationId == null) return null;
+        const normalizedId = normalizeId(conversationId);
         const participants = normalizeParticipantIds(
           entry?.participants
           ?? entry?.participant_empids
@@ -68,12 +67,9 @@ export function adaptConversationListResponse(data) {
           ?? entry?.recipient_ids
           ?? entry?.recipientIds,
         );
-        if (isGeneral) hasGeneralConversation = true;
         return {
-          id: isGeneral ? 'general' : `conversation:${normalizedId}`,
-          conversationId: isGeneral
-            ? normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId ?? entry?.root_message_id ?? entry?.rootMessageId) || 'general'
-            : conversationId,
+          id: `conversation:${normalizedId}`,
+          conversationId,
           title: deriveConversationTitle(entry, isGeneral),
           type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
@@ -88,22 +84,6 @@ export function adaptConversationListResponse(data) {
         };
       })
       .filter(Boolean)
-      .concat(hasGeneralConversation || items.length > 0
-        ? []
-        : [{
-          id: 'general',
-          conversationId: 'general',
-          title: 'General',
-          type: 'general',
-          linkedType: null,
-          linkedId: null,
-          isGeneral: true,
-          participants: [],
-          lastMessageAt: null,
-          lastMessageId: null,
-          unread: 0,
-          raw: null,
-        }])
       .sort((a, b) => {
         if (a.isGeneral) return -1;
         if (b.isGeneral) return 1;

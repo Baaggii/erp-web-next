@@ -68,5 +68,12 @@ test('adaptConversationListResponse marks company-wide unlinked conversation as 
   });
 
   assert.equal(adapted.items[0].isGeneral, true);
+  assert.equal(adapted.items[0].conversationId, '5');
+  assert.equal(adapted.items[0].id, 'conversation:5');
   assert.equal(adapted.items[0].title, 'General');
+});
+
+test('adaptConversationListResponse does not synthesize non-numeric general conversation ids', () => {
+  const adapted = adaptConversationListResponse({ items: [] });
+  assert.deepEqual(adapted.items, []);
 });
