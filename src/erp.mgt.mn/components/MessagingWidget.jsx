@@ -1290,6 +1290,28 @@ export default function MessagingWidget() {
   }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList]);
 
   useEffect(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (!activeCompany || !selfEmpid) return undefined;
+
+    let disposed = false;
+    const refreshDeliveryFallback = async () => {
+      if (disposed) return;
+      await refreshConversationList(activeCompany);
+      if (disposed) return;
+      const selectedConversationId = normalizeConversationId(state.activeConversationId);
+      if (!selectedConversationId) return;
+      await fetchThreadMessages(selectedConversationId, activeCompany);
+    };
+
+    refreshDeliveryFallback();
+    const intervalId = globalThis.setInterval(refreshDeliveryFallback, 12_000);
+    return () => {
+      disposed = true;
+      globalThis.clearInterval(intervalId);
+    };
+  }, [companyId, selfEmpid, state.activeCompanyId, state.activeConversationId, refreshConversationList]);
+
+  useEffect(() => {
     const onStartMessage = (event) => {
       const detail = event?.detail || {};
       dispatch({
