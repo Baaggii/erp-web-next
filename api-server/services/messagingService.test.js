@@ -12,6 +12,7 @@ const {
   postConversationMessage,
   getConversationMessages,
   deleteConversation,
+  patchConversationTopic,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -37,9 +38,9 @@ class MockDb {
       this.conversations.push(row);
       return [{ insertId: row.id }, undefined];
     }
-    if (text.startsWith('INSERT INTO erp_conversations (company_id, type, linked_type, linked_id, created_by_empid)')) {
-      const [companyId, type, linkedType, linkedId, empid] = params;
-      const row = { id: this.nextConversationId++, company_id: Number(companyId), type, linked_type: linkedType, linked_id: linkedId, created_by_empid: empid, deleted_at: null, last_message_id: null, last_message_at: null };
+    if (text.startsWith('INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)')) {
+      const [companyId, type, topic, linkedType, linkedId, empid] = params;
+      const row = { id: this.nextConversationId++, company_id: Number(companyId), type, topic, linked_type: linkedType, linked_id: linkedId, created_by_empid: empid, deleted_at: null, last_message_id: null, last_message_at: null };
       this.conversations.push(row);
       return [{ insertId: row.id }, undefined];
     }
@@ -64,8 +65,8 @@ class MockDb {
       return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
     }
     if (text.startsWith('INSERT INTO erp_messages')) {
-      const [companyId, conversationId, authorEmpid, parentMessageId, body, topic, messageClass] = params;
-      const row = { id: this.nextMessageId++, company_id: Number(companyId), conversation_id: Number(conversationId), author_empid: authorEmpid, parent_message_id: parentMessageId ? Number(parentMessageId) : null, body, topic, message_class: messageClass, created_at: new Date().toISOString(), deleted_at: null };
+      const [companyId, conversationId, authorEmpid, parentMessageId, body, messageClass] = params;
+      const row = { id: this.nextMessageId++, company_id: Number(companyId), conversation_id: Number(conversationId), author_empid: authorEmpid, parent_message_id: parentMessageId ? Number(parentMessageId) : null, body, message_class: messageClass, created_at: new Date().toISOString(), deleted_at: null };
       this.messages.push(row);
       return [{ insertId: row.id }, undefined];
     }
@@ -80,6 +81,12 @@ class MockDb {
         row.last_message_id = Number(lastId);
         row.last_message_at = at || new Date().toISOString();
       }
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+    if (text.startsWith('UPDATE erp_conversations SET topic = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL')) {
+      const [topic, conversationId, companyId] = params;
+      const row = this.conversations.find((c) => c.id === Number(conversationId) && c.company_id === Number(companyId) && !c.deleted_at);
+      if (row) row.topic = topic;
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
     if (text.startsWith('SELECT c.*,')) {
@@ -146,7 +153,7 @@ test('general conversation is auto-created and visible to all users in company',
   assert.equal(listForB.items[0].type, 'general');
 });
 
-test('private conversation visibility is participant-only and topic stored separately', async () => {
+test('private conversation stores topic on conversation only and preserves message body', async () => {
   const db = new MockDb();
   const creator = { empid: 'E1', companyId: 1 };
 
@@ -164,7 +171,8 @@ test('private conversation visibility is participant-only and topic stored separ
     },
   });
 
-  assert.equal(created.message.topic, 'Finance');
+  assert.equal(created.conversation.topic, 'Finance');
+  assert.equal(created.message.topic, undefined);
   assert.equal(created.message.body, 'First message');
 
   const visibleToE2 = await listConversations({ user: { empid: 'E2', companyId: 1 }, companyId: 1, db, getSession });
@@ -176,7 +184,7 @@ test('private conversation visibility is participant-only and topic stored separ
 test('sending message requires participant access and validates message_class enum', async () => {
   const db = new MockDb();
   const creator = { empid: 'E1', companyId: 1 };
-  const created = await createConversationRoot({ user: creator, companyId: 1, db, getSession, payload: { type: 'private', participants: ['E2'], body: 'First message' } });
+  const created = await createConversationRoot({ user: creator, companyId: 1, db, getSession, payload: { type: 'private', participants: ['E2'], topic: 'Start', body: 'First message' } });
 
   await assert.rejects(
     () => postConversationMessage({ user: { empid: 'E3', companyId: 1 }, companyId: 1, conversationId: created.conversation.id, db, getSession, payload: { body: 'No access' } }),
@@ -198,7 +206,7 @@ test('sending message requires participant access and validates message_class en
 test('conversation creator can delete conversation and others cannot', async () => {
   const db = new MockDb();
   const creator = { empid: 'E1', companyId: 2 };
-  const created = await createConversationRoot({ user: creator, companyId: 2, db, getSession, payload: { type: 'private', participants: ['E2'], body: 'Root message' } });
+  const created = await createConversationRoot({ user: creator, companyId: 2, db, getSession, payload: { type: 'private', participants: ['E2'], topic: 'Root topic', body: 'Root message' } });
 
   await assert.rejects(
     () => deleteConversation({ user: { empid: 'E2', companyId: 2 }, companyId: 2, conversationId: created.conversation.id, db, getSession }),
@@ -210,4 +218,90 @@ test('conversation creator can delete conversation and others cannot', async () 
 
   const list = await listConversations({ user: creator, companyId: 2, db, getSession });
   assert.equal(list.items.some((entry) => Number(entry.id) === Number(created.conversation.id)), false);
+});
+
+
+test('conversation creator/admin can update topic, non-creator cannot', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 3 };
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 3,
+    db,
+    getSession,
+    payload: { type: 'private', participants: ['E2'], topic: 'Original', body: 'Root message' },
+  });
+
+  await assert.rejects(
+    () => patchConversationTopic({
+      user: { empid: 'E2', companyId: 3 },
+      companyId: 3,
+      conversationId: created.conversation.id,
+      payload: { topic: 'No access' },
+      db,
+      getSession,
+    }),
+    /Only creator may edit topic/,
+  );
+
+  const updated = await patchConversationTopic({
+    user: creator,
+    companyId: 3,
+    conversationId: created.conversation.id,
+    payload: { topic: 'Updated by creator' },
+    db,
+    getSession,
+  });
+  assert.equal(updated.conversation.topic, 'Updated by creator');
+
+  const adminUpdated = await patchConversationTopic({
+    user: { empid: 'E9', companyId: 3, isAdmin: true },
+    companyId: 3,
+    conversationId: created.conversation.id,
+    payload: { topic: 'Updated by admin' },
+    db,
+    getSession,
+  });
+  assert.equal(adminUpdated.conversation.topic, 'Updated by admin');
+});
+
+
+test('patchConversationTopic emits conversation.updated socket event', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 4 };
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 4,
+    db,
+    getSession,
+    payload: { type: 'private', participants: ['E2'], topic: 'Initial', body: 'Root' },
+  });
+
+  const emitted = [];
+  const io = {
+    to(room) {
+      return {
+        emit(event, payload) {
+          emitted.push({ room, event, payload });
+        },
+      };
+    },
+  };
+  const { setMessagingIo } = await import('./messagingService.js');
+  setMessagingIo(io);
+
+  await patchConversationTopic({
+    user: creator,
+    companyId: 4,
+    conversationId: created.conversation.id,
+    payload: { topic: 'Socket topic' },
+    db,
+    getSession,
+  });
+
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].room, 'company:4');
+  assert.equal(emitted[0].event, 'conversation.updated');
+  assert.equal(emitted[0].payload.topic, 'Socket topic');
+  setMessagingIo(null);
 });

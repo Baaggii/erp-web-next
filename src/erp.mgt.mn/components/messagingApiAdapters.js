@@ -70,7 +70,8 @@ export function adaptConversationListResponse(data) {
         return {
           id: `conversation:${normalizedId}`,
           conversationId,
-          title: deriveConversationTitle(entry, isGeneral),
+          topic: sanitizeMessageText(entry?.topic || '').slice(0, 120) || deriveConversationTitle(entry, isGeneral),
+          title: sanitizeMessageText(entry?.topic || '').slice(0, 120) || deriveConversationTitle(entry, isGeneral),
           type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
@@ -80,6 +81,7 @@ export function adaptConversationListResponse(data) {
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
           visibilityScope: visibilityScope || null,
           unread: 0,
+          createdByEmpid: normalizeId(entry?.created_by_empid ?? entry?.createdByEmpid) || null,
           raw: entry,
         };
       })
