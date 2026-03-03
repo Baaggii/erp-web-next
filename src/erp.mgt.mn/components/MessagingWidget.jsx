@@ -799,6 +799,11 @@ export default function MessagingWidget() {
     }
   };
 
+  const conversations = useMemo(() => {
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    return state.conversationsByCompany[companyKey] || [];
+  }, [companyId, state.activeCompanyId, state.conversationsByCompany]);
+
   useEffect(() => {
     globalThis.sessionStorage?.setItem(sessionOpenKey, state.isOpen ? '1' : '0');
   }, [state.isOpen, sessionOpenKey]);
@@ -1331,10 +1336,6 @@ export default function MessagingWidget() {
     return () => window.removeEventListener('messaging:start', onStartMessage);
   }, []);
 
-  const conversations = useMemo(() => {
-    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
-    return state.conversationsByCompany[companyKey] || [];
-  }, [companyId, state.activeCompanyId, state.conversationsByCompany]);
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
