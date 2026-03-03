@@ -108,18 +108,29 @@ export async function createTmpBusinessTable(connection, tableName, companyId, o
  * @returns {Promise<[any, any]>}
  */
 export async function queryWithTenantScope(
-  connection,
+  connectionOrPool,
   tableName,
   companyId,
   originalQuery,
   params = [],
 ) {
-  const scope = await createTmpBusinessTable(connection, tableName, companyId);
-  const escapedSource = scope.sourceTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const sourceRegex = new RegExp(`\\b${escapedSource}\\b`, 'g');
-  const scopedQuery = originalQuery.includes('{{table}}')
-    ? originalQuery.replaceAll('{{table}}', scope.tempTableName)
-    : originalQuery.replace(sourceRegex, scope.tempTableName);
+  const usesPool = typeof connectionOrPool?.getConnection === 'function';
+  const connection = usesPool
+    ? await connectionOrPool.getConnection()
+    : connectionOrPool;
 
-  return connection.query(scopedQuery, params);
+  try {
+    const scope = await createTmpBusinessTable(connection, tableName, companyId);
+    const escapedSource = scope.sourceTable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sourceRegex = new RegExp(`\\b${escapedSource}\\b`, 'g');
+    const scopedQuery = originalQuery.includes('{{table}}')
+      ? originalQuery.replaceAll('{{table}}', scope.tempTableName)
+      : originalQuery.replace(sourceRegex, scope.tempTableName);
+
+    return connection.query(scopedQuery, params);
+  } finally {
+    if (usesPool) {
+      connection.release();
+    }
+  }
 }

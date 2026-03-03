@@ -24,7 +24,14 @@ export function createTmpBusinessTable(
 ): Promise<TenantScopeResult>;
 
 export function queryWithTenantScope(
-  connection: { query: (sql: string, params?: unknown[]) => Promise<any> },
+  connectionOrPool:
+    | { query: (sql: string, params?: unknown[]) => Promise<any> }
+    | {
+        getConnection: () => Promise<{
+          query: (sql: string, params?: unknown[]) => Promise<any>;
+          release: () => void;
+        }>;
+      },
   tableName: string,
   companyId: number | string,
   originalQuery: string,
