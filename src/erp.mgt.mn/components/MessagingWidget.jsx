@@ -288,6 +288,45 @@ function numericMessageId(value) {
   return Number(normalized);
 }
 
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
+
+function normalizeReactionList(message) {
+  const raw = message?.reactions ?? message?.reaction_summary ?? message?.reactionSummary;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (!entry) return null;
+      const emoji = String(entry.emoji || entry.reaction || entry.symbol || '').trim();
+      if (!emoji) return null;
+      const users = Array.isArray(entry.users)
+        ? entry.users.map((empid) => normalizeId(empid)).filter(Boolean)
+        : [];
+      const count = Number(entry.count);
+      return {
+        emoji,
+        count: Number.isFinite(count) && count > 0 ? count : users.length,
+        users,
+      };
+    })
+    .filter(Boolean);
+}
+
+function withToggledReaction(message, emoji, viewerEmpid) {
+  const normalizedViewer = normalizeId(viewerEmpid);
+  if (!message?.id || !emoji || !normalizedViewer) return message;
+  const current = normalizeReactionList(message);
+  const byEmoji = new Map(current.map((entry) => [entry.emoji, { ...entry, users: [...entry.users] }]));
+  const existing = byEmoji.get(emoji) || { emoji, count: 0, users: [] };
+  const hasReacted = existing.users.includes(normalizedViewer);
+  const nextUsers = hasReacted
+    ? existing.users.filter((empid) => empid !== normalizedViewer)
+    : Array.from(new Set([...existing.users, normalizedViewer]));
+  const nextCount = Math.max(0, (Number(existing.count) || 0) + (hasReacted ? -1 : 1));
+  if (nextCount <= 0 && nextUsers.length === 0) byEmoji.delete(emoji);
+  else byEmoji.set(emoji, { ...existing, users: nextUsers, count: Math.max(nextCount, nextUsers.length) });
+  return { ...message, reactions: Array.from(byEmoji.values()) };
+}
+
 function conversationIdFromSelection(conversationId) {
   const raw = normalizeConversationId(conversationId);
   if (!raw || raw === NEW_CONVERSATION_ID) return null;
@@ -525,7 +564,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -539,6 +578,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
+  const reactions = normalizeReactionList(message);
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
       open: isMenuOpen,
@@ -578,6 +618,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         </span>
         <details
           {...menuControlProps}
+          data-message-menu-root="true"
           style={{ marginLeft: 'auto', position: 'relative' }}
         >
           <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
@@ -668,6 +709,30 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
       )}
       <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
+        {reactions.map((entry) => {
+          const reactedBySelf = entry.users.includes(normalizeId(selfEmpid));
+          return (
+            <button
+              key={entry.emoji}
+              type="button"
+              onClick={() => onToggleReaction(message.id, entry.emoji)}
+              style={{ border: `1px solid ${reactedBySelf ? '#c7d2fe' : '#cbd5e1'}`, background: reactedBySelf ? '#eef2ff' : '#fff', borderRadius: 999, padding: '1px 7px', fontSize: 12 }}
+            >
+              {entry.emoji} {entry.count}
+            </button>
+          );
+        })}
+        {QUICK_REACTIONS.map((emoji) => (
+          <button
+            key={`${message.id}-${emoji}`}
+            type="button"
+            onClick={() => onToggleReaction(message.id, emoji)}
+            aria-label={`React with ${emoji}`}
+            style={{ border: '1px dashed #cbd5e1', background: '#fff', borderRadius: 999, padding: '1px 6px', fontSize: 12 }}
+          >
+            {emoji}
+          </button>
+        ))}
       </div>
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
@@ -687,6 +752,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           canDeleteMessage={canDeleteMessage}
           onDeleteMessage={onDeleteMessage}
           onPreviewAttachment={onPreviewAttachment}
+          onToggleReaction={onToggleReaction}
+          selfEmpid={selfEmpid}
           isOwnMessage={isOwnMessage}
           onAnyAction={onAnyAction}
         />
@@ -746,6 +813,7 @@ export default function MessagingWidget() {
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
+    setOpenMessageMenuId(null);
   }, []);
   const widgetRootRef = useRef(null);
   const composerRef = useRef(null);
@@ -1560,12 +1628,59 @@ export default function MessagingWidget() {
   }, [state.activeConversationId]);
 
   useEffect(() => {
+    const handlePointerDownOutsideMenu = (event) => {
+      if (!openMessageMenuId) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-message-menu-root="true"]')) return;
+      setOpenMessageMenuId(null);
+    };
+    document.addEventListener('pointerdown', handlePointerDownOutsideMenu);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutsideMenu);
+  }, [openMessageMenuId]);
+
+  useEffect(() => {
     const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
     const activeCompany = state.activeCompanyId || companyId;
-    if (!selectedRootId || !activeCompany) return;
+    if (!state.isOpen || !selectedRootId || !activeCompany) return;
     activeThreadInitialScrollRef.current = selectedRootId;
     fetchThreadMessages(selectedRootId, activeCompany);
-  }, [state.activeCompanyId, state.activeConversationId, companyId]);
+  }, [state.activeCompanyId, state.activeConversationId, companyId, state.isOpen]);
+
+  const onToggleReaction = useCallback(async (messageId, emoji) => {
+    const normalizedMessageId = normalizeId(messageId);
+    if (!normalizedMessageId || !emoji) return;
+    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
+    let shouldAddReaction = true;
+    setMessagesByCompany((prev) => {
+      const current = prev[companyKey] || [];
+      const target = current.find((entry) => normalizeId(entry.id) === normalizedMessageId);
+      if (!target) return prev;
+      shouldAddReaction = !normalizeReactionList(target).some((entry) => entry.emoji === emoji && entry.users.includes(selfEmpid));
+      return {
+        ...prev,
+        [companyKey]: current.map((entry) => (normalizeId(entry.id) === normalizedMessageId ? withToggledReaction(entry, emoji, selfEmpid) : entry)),
+      };
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/messaging/messages/${normalizedMessageId}/reactions`, {
+        method: shouldAddReaction ? 'POST' : 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      });
+      if (!res.ok) throw new Error('reaction failed');
+    } catch {
+      setMessagesByCompany((prev) => {
+        const current = prev[companyKey] || [];
+        return {
+          ...prev,
+          [companyKey]: current.map((entry) => (normalizeId(entry.id) === normalizedMessageId ? withToggledReaction(entry, emoji, selfEmpid) : entry)),
+        };
+      });
+      setComposerAnnouncement('Unable to update reaction. Please try again.');
+    }
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -2626,6 +2741,8 @@ export default function MessagingWidget() {
                 canDeleteMessage={canDeleteMessage}
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
+                onToggleReaction={onToggleReaction}
+                selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
                 isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
                 onAnyAction={closeOpenMessageMenus}
