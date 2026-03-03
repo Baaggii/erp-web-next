@@ -29,17 +29,32 @@ function notifyListeners(connected) {
 
 function wireSocketEvents() {
   if (!socket || wired) return;
+
+  const shouldDebugLog = typeof window !== 'undefined' && window.erpDebug;
+
   socket.on('connect', () => {
-    console.log('Socket connected:', socket.id);
+    if (shouldDebugLog) {
+      console.log('Socket connected:', socket.id);
+    }
     notifyListeners(true);
   });
   socket.on('disconnect', (reason) => {
-    console.warn('Socket disconnected:', reason);
+    if (shouldDebugLog) {
+      console.warn('Socket disconnected:', reason);
+    }
     notifyListeners(false);
   });
   socket.on('connect_error', (err) => {
-    console.error('Socket connection error:', err.message);
+    if (shouldDebugLog) {
+      console.error('Socket connection error:', err.message);
+    }
     notifyListeners(false);
+  });
+  socket.io.on('reconnect', (attempt) => {
+    if (shouldDebugLog) {
+      console.log('Socket reconnected:', attempt);
+    }
+    notifyListeners(true);
   });
   wired = true;
   notifyListeners(socket.connected);
@@ -53,7 +68,7 @@ export function connectSocket() {
     socket = io(baseUrl, {
       path,
       withCredentials: true,
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
     });
   }
@@ -75,6 +90,7 @@ export function disconnectSocket() {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('connect_error');
+      socket.io.off('reconnect');
       wired = false;
     }
     socket.disconnect();
