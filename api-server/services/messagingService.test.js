@@ -279,10 +279,15 @@ test('patchConversationTopic emits conversation.updated socket event', async () 
 
   const emitted = [];
   const io = {
-    to(room) {
+    to(initialRoom) {
+      const rooms = [initialRoom];
       return {
+        to(nextRoom) {
+          rooms.push(nextRoom);
+          return this;
+        },
         emit(event, payload) {
-          emitted.push({ room, event, payload });
+          emitted.push({ rooms: [...rooms], event, payload });
         },
       };
     },
@@ -300,7 +305,7 @@ test('patchConversationTopic emits conversation.updated socket event', async () 
   });
 
   assert.equal(emitted.length, 1);
-  assert.equal(emitted[0].room, 'company:4');
+  assert.deepEqual(emitted[0].rooms.sort(), ['company:4', 'messaging:4']);
   assert.equal(emitted[0].event, 'conversation.updated');
   assert.equal(emitted[0].payload.topic, 'Socket topic');
   setMessagingIo(null);

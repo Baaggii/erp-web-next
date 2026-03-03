@@ -178,6 +178,7 @@ function joinSocketScopes(socket, user, session) {
   }
   socket.join(`emp:${user.empid}`);
   socket.join(`company:${user.companyId}`);
+  socket.join(`messaging:${user.companyId}`);
   if (session?.branch_id) {
     socket.join(`branch:${session.branch_id}`);
   }
@@ -240,6 +241,7 @@ io.on("connection", (socket) => {
     socket.join(`user:${empid}`);
     socket.join(`emp:${empid}`);
   }
+  socket.join(`messaging:${user.companyId}`);
 
   markOnline(user.companyId, user.empid);
   incWebsocketConnections({ company_id: String(user.companyId) }, 1);
