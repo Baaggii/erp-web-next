@@ -41,6 +41,9 @@ function wireSocketEvents() {
     console.error('Socket connection error:', err.message);
     notifyListeners(false);
   });
+  socket.io.on('reconnect', () => {
+    notifyListeners(true);
+  });
   wired = true;
   notifyListeners(socket.connected);
 }
@@ -53,7 +56,7 @@ export function connectSocket() {
     socket = io(baseUrl, {
       path,
       withCredentials: true,
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
     });
   }
@@ -75,6 +78,7 @@ export function disconnectSocket() {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('connect_error');
+      socket.io.off('reconnect');
       wired = false;
     }
     socket.disconnect();
