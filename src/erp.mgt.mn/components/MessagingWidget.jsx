@@ -1811,11 +1811,11 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Select at least one recipient before sending a new conversation.');
       return;
     }
-    const existingThreadParticipants = Array.from(new Set(
-      (activeConversation?.participants || activeConversationParticipants || [])
-        .map(normalizeId)
-        .filter(Boolean),
-    ));
+    const existingThreadParticipants = Array.from(new Set([
+      ...(activeConversation?.participants || []),
+      ...(selectedConversation?.participants || []),
+      ...(activeConversationParticipants || []),
+    ].map(normalizeId).filter(Boolean)));
     const selectedIsGeneral = Boolean(selectedConversation?.isGeneral || state.activeConversationId === 'general');
     const isGeneralChannel = !isDraftConversation && selectedIsGeneral;
     const finalRecipients = isDraftConversation
