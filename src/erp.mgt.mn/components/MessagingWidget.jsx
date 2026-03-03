@@ -760,26 +760,6 @@ export default function MessagingWidget() {
     }
   };
 
-  const refreshConversationList = async (activeCompany) => {
-    if (!activeCompany) return;
-    try {
-      const params = new URLSearchParams({ companyId: String(activeCompany), limit: '100' });
-      const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const adaptedConversations = adaptConversationListResponse(data);
-      dispatch({
-        type: 'conversations/loadSuccess',
-        payload: {
-          companyKey: getCompanyCacheKey(activeCompany),
-          items: adaptedConversations.items,
-        },
-      });
-    } catch {
-      // Non-blocking refresh; keep real-time handling resilient.
-    }
-  };
-
   useEffect(() => {
     globalThis.sessionStorage?.setItem(sessionOpenKey, state.isOpen ? '1' : '0');
   }, [state.isOpen, sessionOpenKey]);
@@ -1111,17 +1091,13 @@ export default function MessagingWidget() {
           const rootMessageId = normalizeId(getMessageConversationId(nextMessage));
           if (rootMessageId) {
             fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
-            refreshConversationList(state.activeCompanyId || companyId);
-            return;
           }
-          refreshConversationList(state.activeCompanyId || companyId);
           return;
         }
         setMessagesByCompany((prev) => {
           const key = getCompanyCacheKey(state.activeCompanyId || companyId);
           return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
         });
-        refreshConversationList(state.activeCompanyId || companyId);
         return;
       }
 
