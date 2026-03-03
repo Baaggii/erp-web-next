@@ -390,7 +390,12 @@ export async function switchCompanyContext({ user, companyId, getSession = getEm
 
 export async function getMessagingSocketAccess({ user, companyId, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  return { allowed: canMessage(session), companyId: scopedCompanyId };
+  return {
+    allowed: canMessage(session),
+    companyId: scopedCompanyId,
+    scopedCompanyId,
+    session,
+  };
 }
 
 export function setMessagingIo(io) { ioRef = io; }
