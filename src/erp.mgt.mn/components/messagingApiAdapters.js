@@ -1,7 +1,7 @@
 import { normalizeConversationId, normalizeId, sanitizeMessageText } from './messagingWidgetModel.js';
 
-function deriveConversationTitle(entry) {
-  if ((entry?.type || '').toLowerCase() === 'general') return 'General';
+function deriveConversationTitle(entry, isGeneral = false) {
+  if (isGeneral || (entry?.type || '').toLowerCase() === 'general') return 'General';
   return sanitizeMessageText(
     entry?.title
     || entry?.topic
@@ -19,28 +19,39 @@ export function adaptConversationListResponse(data) {
     items: items
       .map((entry) => {
         const type = String(entry?.type || 'private').toLowerCase();
-        const isGeneral = type === 'general' || (entry?.is_general ?? entry?.isGeneral) === true;
+        const visibilityScope = String(entry?.visibility_scope ?? entry?.visibilityScope ?? '').toLowerCase();
+        const isGeneral = type === 'general'
+          || (entry?.is_general ?? entry?.isGeneral) === true
+          || (visibilityScope === 'company' && !(entry?.linked_type ?? entry?.linkedType) && !(entry?.linked_id ?? entry?.linkedId));
         const conversationId = normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId);
         if (!isGeneral && conversationId == null) return null;
         const normalizedId = isGeneral ? 'general' : normalizeId(conversationId);
+        const participants = Array.isArray(entry?.participants)
+          ? entry.participants
+          : Array.isArray(entry?.participant_empids)
+            ? entry.participant_empids
+            : [];
         if (isGeneral) hasGeneralConversation = true;
         return {
           id: isGeneral ? 'general' : `conversation:${normalizedId}`,
-          conversationId: isGeneral ? 'general' : conversationId,
-          title: deriveConversationTitle(entry),
+          conversationId: isGeneral
+            ? normalizeConversationId(entry?.id ?? entry?.conversation_id ?? entry?.conversationId ?? entry?.root_message_id ?? entry?.rootMessageId) || 'general'
+            : conversationId,
+          title: deriveConversationTitle(entry, isGeneral),
           type,
           linkedType: entry?.linked_type ?? entry?.linkedType ?? null,
           linkedId: normalizeId(entry?.linked_id ?? entry?.linkedId) || null,
           isGeneral,
-          participants: Array.isArray(entry?.participants) ? entry.participants : [],
+          participants,
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
+          visibilityScope: visibilityScope || null,
           unread: 0,
           raw: entry,
         };
       })
       .filter(Boolean)
-      .concat(hasGeneralConversation
+      .concat(hasGeneralConversation || items.length > 0
         ? []
         : [{
           id: 'general',
