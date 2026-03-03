@@ -1663,8 +1663,6 @@ export default function MessagingWidget() {
       };
     });
 
-    if (!reactionApiAvailable) return;
-
     try {
       const res = await fetch(`${API_BASE}/messaging/messages/${normalizedMessageId}/reactions`, {
         method: shouldAddReaction ? 'POST' : 'DELETE',
@@ -1672,11 +1670,6 @@ export default function MessagingWidget() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emoji }),
       });
-      if (res.status === 404) {
-        setReactionApiAvailable(false);
-        setComposerAnnouncement('Reaction sync API is unavailable, so reactions are currently local in this session.');
-        return;
-      }
       if (!res.ok) throw new Error('reaction failed');
     } catch {
       setMessagesByCompany((prev) => {
@@ -1688,7 +1681,7 @@ export default function MessagingWidget() {
       });
       setComposerAnnouncement('Unable to update reaction. Please try again.');
     }
-  }, [companyId, reactionApiAvailable, selfEmpid, state.activeCompanyId]);
+  }, [companyId, selfEmpid, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
