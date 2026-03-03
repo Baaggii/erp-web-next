@@ -163,6 +163,30 @@ export function messagingWidgetReducer(state, action) {
         },
       };
     }
+
+    case 'conversation/updateTopic': {
+      const companyKey = action.payload?.companyKey;
+      const conversationId = normalizeConversationId(action.payload?.conversationId);
+      const topic = sanitizeMessageText(action.payload?.topic || '').slice(0, 120);
+      if (!companyKey || !conversationId || !topic) return state;
+      const existing = Array.isArray(state.conversationsByCompany[companyKey]) ? state.conversationsByCompany[companyKey] : [];
+      return {
+        ...state,
+        conversationsByCompany: {
+          ...state.conversationsByCompany,
+          [companyKey]: existing.map((entry) => (
+            normalizeConversationId(entry?.conversationId || entry?.id) === conversationId
+              ? { ...entry, topic, title: topic, raw: { ...(entry?.raw || {}), topic } }
+              : entry
+          )),
+        },
+        composer: {
+          ...state.composer,
+          topic: state.activeConversationId === `conversation:${conversationId}` ? topic : state.composer.topic,
+        },
+      };
+    }
+
     case 'conversations/loadError': {
       const companyKey = action.payload?.companyKey;
       if (!companyKey) return state;

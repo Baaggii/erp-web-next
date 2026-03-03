@@ -118,12 +118,12 @@ async function insertParticipants(db, companyId, conversationId, participants) {
   return unique;
 }
 
-async function createMessage(db, { companyId, conversationId, authorEmpid, parentMessageId = null, body, topic, messageClass }) {
+async function createMessage(db, { companyId, conversationId, authorEmpid, parentMessageId = null, body, messageClass }) {
   const [inserted] = await db.query(
     `INSERT INTO erp_messages
-      (company_id, conversation_id, author_empid, parent_message_id, body, topic, message_class)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [companyId, conversationId, authorEmpid, parentMessageId, body, topic, messageClass],
+      (company_id, conversation_id, author_empid, parent_message_id, body, message_class)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [companyId, conversationId, authorEmpid, parentMessageId, body, messageClass],
   );
   const [rows] = await db.query('SELECT * FROM erp_messages WHERE id = ? LIMIT 1', [inserted.insertId]);
   await db.query(
@@ -152,10 +152,12 @@ export async function createConversationRoot({ user, companyId, payload, correla
   }
   const linkedType = type === 'linked' ? String(payload?.linkedType || '').trim().slice(0, 64) || null : null;
   const linkedId = type === 'linked' ? String(payload?.linkedId || '').trim().slice(0, 128) || null : null;
+  const topic = sanitizeTopic(payload?.topic);
+  if (!topic) throw createError(400, 'TOPIC_REQUIRED', 'topic is required');
   const [conversationInsert] = await db.query(
-    `INSERT INTO erp_conversations (company_id, type, linked_type, linked_id, created_by_empid)
-     VALUES (?, ?, ?, ?, ?)`,
-    [scopedCompanyId, type, linkedType, linkedId, sender],
+    `INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [scopedCompanyId, type, topic, linkedType, linkedId, sender],
   );
   const conversationId = conversationInsert.insertId;
   await insertParticipants(db, scopedCompanyId, conversationId, participants);
@@ -164,10 +166,9 @@ export async function createConversationRoot({ user, companyId, payload, correla
     conversationId,
     authorEmpid: sender,
     body: sanitizeBody(payload?.body),
-    topic: sanitizeTopic(payload?.topic),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
   });
-  return { correlationId, conversation: { id: conversationId, company_id: scopedCompanyId, type, linked_type: linkedType, linked_id: linkedId }, message };
+  return { correlationId, conversation: { id: conversationId, company_id: scopedCompanyId, type, topic, linked_type: linkedType, linked_id: linkedId }, message };
 }
 
 export async function postConversationMessage({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
@@ -195,10 +196,54 @@ export async function postConversationMessage({ user, companyId, conversationId,
     authorEmpid: String(user?.empid || ''),
     parentMessageId,
     body: sanitizeBody(payload?.body),
-    topic: sanitizeTopic(payload?.topic),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
   });
   return { correlationId, conversation: { id: normalizedConversationId }, message };
+}
+
+export async function patchConversationTopic({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  const isAdmin = user?.isAdmin === true || session?.isAdmin === true || session?.permissions?.isAdmin === true;
+  if (!isAdmin) await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  if (String(conversation?.created_by_empid || '') !== String(user?.empid || '') && !isAdmin) {
+    throw createError(403, 'FORBIDDEN', 'Only creator may edit topic');
+  }
+
+  const topic = sanitizeTopic(payload?.topic);
+  if (!topic) throw createError(400, 'TOPIC_REQUIRED', 'topic is required');
+  await db.query('UPDATE erp_conversations SET topic = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL', [topic, normalizedConversationId, scopedCompanyId]);
+
+  if (ioRef) {
+    ioRef.to(`company:${scopedCompanyId}`).emit('conversation.updated', {
+      conversation_id: normalizedConversationId,
+      topic,
+    });
+  }
+  return { correlationId, conversation: { id: normalizedConversationId, company_id: scopedCompanyId, topic } };
+}
+
+
+export async function addConversationParticipant({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+  const empid = String(payload?.empid || '').trim();
+  if (!empid) throw createError(400, 'EMPID_REQUIRED', 'empid is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  if (String(conversation?.type) === 'general') {
+    throw createError(400, 'GENERAL_CONVERSATION_PROTECTED', 'General conversation does not support participants');
+  }
+
+  await insertParticipants(db, scopedCompanyId, normalizedConversationId, [empid]);
+  return { correlationId, ok: true, conversationId: normalizedConversationId, empid };
 }
 
 export async function deleteConversation({ user, companyId, conversationId, correlationId, db = pool, getSession = getEmploymentSession }) {
@@ -245,7 +290,6 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
 
   const [rows] = await db.query(
     `SELECT c.*,
-            lm.topic AS last_message_topic,
             lm.body AS last_message_body,
             (c.type = 'general') AS is_general
        FROM erp_conversations c
@@ -318,11 +362,10 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
   if (String(message.author_empid) !== String(user?.empid)) throw createError(403, 'FORBIDDEN', 'Only the author can edit this message');
 
   const body = payload?.body != null ? sanitizeBody(payload.body) : message.body;
-  const topic = payload?.topic !== undefined ? sanitizeTopic(payload.topic) : message.topic;
   const messageClass = payload?.messageClass || payload?.message_class
     ? sanitizeMessageClass(payload?.messageClass ?? payload?.message_class)
     : message.message_class;
-  await db.query('UPDATE erp_messages SET body = ?, topic = ?, message_class = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?', [body, topic, messageClass, id, scopedCompanyId]);
+  await db.query('UPDATE erp_messages SET body = ?, message_class = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?', [body, messageClass, id, scopedCompanyId]);
   const [updated] = await db.query('SELECT * FROM erp_messages WHERE id = ? LIMIT 1', [id]);
   return { correlationId, message: updated[0] || null };
 }

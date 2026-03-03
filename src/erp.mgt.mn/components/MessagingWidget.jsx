@@ -127,16 +127,6 @@ function countNestedReplies(message) {
   const replies = Array.isArray(message?.replies) ? message.replies : [];
   return replies.reduce((sum, child) => sum + 1 + countNestedReplies(child), 0);
 }
-
-function extractMessageTopic(message) {
-  const directTopic = sanitizeMessageText(message?.topic || '').slice(0, 120);
-  if (directTopic) return directTopic;
-  const decoded = decodeMessageContent(message?.body || '');
-  const inlineTopicMatch = decoded.text.match(/^\[([^\]]{1,120})\]\s+/);
-  if (!inlineTopicMatch) return '';
-  return sanitizeMessageText(inlineTopicMatch[1] || '').slice(0, 120);
-}
-
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -201,14 +191,13 @@ export function groupConversations(messages, viewerEmpid = null) {
     const conversationId = getMessageConversationId(msg);
     if (!conversationId) return;
 
-    const topic = extractMessageTopic(msg);
     const rootLink = extractContextLink(msg);
     const key = `conversation:${conversationId}`;
     if (!map.has(key)) {
       map.set(key, {
         id: key,
         conversationId,
-        title: topic || (rootLink.linkedType === 'transaction' && rootLink.linkedId
+        title: (rootLink.linkedType === 'transaction' && rootLink.linkedId
           ? `Transaction #${rootLink.linkedId}`
           : sanitizeMessageText(decodeMessageContent(msg?.body || '').text).slice(0, 72) || 'Conversation'),
         messages: [],
@@ -649,7 +638,6 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         </div>
       )}
       <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-        {extractMessageTopic(message) && <span style={{ fontSize: 12, color: '#334155' }}>topic:{extractMessageTopic(message)}</span>}
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
       </div>
       {!isCollapsed && message.replies.map((child) => (
@@ -1249,6 +1237,19 @@ export default function MessagingWidget() {
         dispatch({ type: 'widget/setConversation', payload: null });
       }
     };
+    const onConversationUpdated = (payload) => {
+      const conversationId = normalizeConversationId(payload?.conversation_id || payload?.conversationId || payload?.id);
+      const nextTopic = sanitizeMessageText(payload?.topic || '');
+      if (!conversationId || !nextTopic) return;
+      dispatch({
+        type: 'conversation/updateTopic',
+        payload: {
+          companyKey: getCompanyCacheKey(state.activeCompanyId || companyId),
+          conversationId,
+          topic: nextTopic,
+        },
+      });
+    };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
@@ -1279,6 +1280,7 @@ export default function MessagingWidget() {
     socket.on('presence.updated', onPresence);
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
+    socket.on('conversation.updated', onConversationUpdated);
     return () => {
       socket.off('message.created', onNew);
       socket.off('message.updated', onUpdated);
@@ -1287,6 +1289,7 @@ export default function MessagingWidget() {
       socket.off('presence.updated', onPresence);
       socket.off('message.deleted', onDeleted);
       socket.off('conversation.deleted', onConversationDeleted);
+      socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, state.isOpen, refreshConversationList]);
@@ -1500,7 +1503,7 @@ export default function MessagingWidget() {
     };
   }), [conversationSummariesSource, messages, selfEmpid]);
 
-  const activeTopic = state.composer.topic || activeConversation?.title || 'Untitled topic';
+  const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
     user?.emp_name || user?.employee_name || user?.name || user?.full_name || user?.username || user?.empid,
   );
@@ -1581,13 +1584,18 @@ export default function MessagingWidget() {
   );
 
   const isReplyMode = Boolean(state.composer.replyToId);
-  const canEditTopic = !activeConversation?.isGeneral && !isReplyMode && (!activeRootMessage || normalizeId(activeRootMessage.author_empid) === selfEmpid);
+  const creatorEmpid = normalizeId(activeConversation?.createdByEmpid || activeConversation?.raw?.created_by_empid || activeConversation?.raw?.createdByEmpid);
+  const canEditConversationTopic = Boolean(
+    !isDraftConversation
+    && !activeConversation?.isGeneral
+    && !isReplyMode
+    && (creatorEmpid === selfEmpid || permissions?.isAdmin === true),
+  );
 
-
-  const safeTopic = sanitizeMessageText(state.composer.topic || activeConversation?.title || '');
+  const safeTopic = sanitizeMessageText((isDraftConversation ? state.composer.topic : activeConversation?.topic) || '');
   const safeBody = sanitizeMessageText(state.composer.body);
   const requiresRecipient = isDraftConversation;
-  const requiresTopic = canEditTopic;
+  const requiresTopic = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
@@ -1729,8 +1737,35 @@ export default function MessagingWidget() {
     });
   };
 
+  const updateConversationTopic = async () => {
+    if (!canEditConversationTopic || !activeConversation?.conversationId) return;
+    const activeCompany = state.activeCompanyId || companyId;
+    const nextTopic = sanitizeMessageText(state.composer.topic || '');
+    if (!nextTopic || nextTopic === sanitizeMessageText(activeConversation?.topic || '')) return;
+    const res = await fetch(`${API_BASE}/messaging/conversations/${activeConversation.conversationId}/topic`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany, topic: nextTopic }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to update topic.');
+      return;
+    }
+    dispatch({
+      type: 'conversation/updateTopic',
+      payload: {
+        companyKey: getCompanyCacheKey(activeCompany),
+        conversationId: normalizeConversationId(activeConversation.conversationId),
+        topic: nextTopic,
+      },
+    });
+    setComposerAnnouncement('Topic updated.');
+  };
+
   const sendMessage = async () => {
-    if (canEditTopic && !safeTopic) {
+    if (isDraftConversation && !safeTopic) {
       setComposerAnnouncement('Topic is required.');
       return;
     }
@@ -1850,7 +1885,6 @@ export default function MessagingWidget() {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
       body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
-      topic: canEditTopic ? safeTopic : undefined,
       messageClass: 'general',
       companyId: normalizedCompanyId,
       ...(linkedType ? { linkedType } : {}),
@@ -1860,6 +1894,7 @@ export default function MessagingWidget() {
 
     if (isDraftConversation) {
       payload.type = 'private';
+      payload.topic = safeTopic;
       payload.participants = allParticipants.filter((entry) => entry !== selfEmpid);
     }
 
@@ -1883,7 +1918,6 @@ export default function MessagingWidget() {
       id: clientTempId,
       company_id: normalizedCompanyId,
       body: payload.body,
-      topic: payload.topic || null,
       message_class: payload.messageClass,
       author_empid: selfEmpid,
       recipient_empids: !isGeneralChannel ? allParticipants : null,
@@ -2041,21 +2075,38 @@ export default function MessagingWidget() {
     setComposerAnnouncement(`Linked transaction #${transactionId} to this message.`);
   };
 
-  const onChooseRecipient = (id) => {
-    if (!isDraftConversation) {
-      setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
+  const onChooseRecipient = async (id) => {
+    if (!id || state.composer.recipients.includes(id)) return;
+    if (isDraftConversation) {
+      dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
+      setComposerRecipientSearch('');
       return;
     }
-    if (!id || state.composer.recipients.includes(id)) return;
-    const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
-    const isExistingPrivateConversation = !isDraftConversation && Boolean(selectedRootId);
-    if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
-      const label = resolveEmployeeLabel(id);
-      const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
-      if (!confirmed) return;
+
+    const conversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!conversationId) {
+      setComposerAnnouncement('Select a conversation first.');
+      return;
     }
-    dispatch({ type: 'composer/setRecipients', payload: [...state.composer.recipients, id] });
+    const activeCompany = state.activeCompanyId || companyId;
+    const label = resolveEmployeeLabel(id);
+    const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
+    if (!confirmed) return;
+
+    const res = await fetch(`${API_BASE}/messaging/conversations/${conversationId}/participants`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany, empid: id }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to add participant.');
+      return;
+    }
     setComposerRecipientSearch('');
+    setComposerAnnouncement(`${label} was added to the conversation.`);
+    refreshConversationList(activeCompany);
   };
 
   const openNewMessage = () => {
@@ -2248,7 +2299,7 @@ export default function MessagingWidget() {
                   type="button"
                   onClick={() => {
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
-                    dispatch({ type: 'composer/setTopic', payload: conversation.title });
+                    dispatch({ type: 'composer/setTopic', payload: conversation.topic || '' });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
                     dispatch({
                       type: 'composer/setLinkedContext',
@@ -2296,6 +2347,18 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
+              {canEditConversationTopic && (
+                <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    value={state.composer.topic}
+                    onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                    onBlur={updateConversationTopic}
+                    placeholder="Edit conversation topic"
+                    aria-label="Edit conversation topic"
+                    style={{ width: '100%', maxWidth: 360, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
+                  />
+                </div>
+              )}
               {activeConversation?.conversationId && canDeleteConversation(activeConversation) && (
                 <button type="button" onClick={() => handleDeleteConversationFromList(activeConversation)} style={{ marginTop: 4 }}>
                   Delete thread
@@ -2349,7 +2412,7 @@ export default function MessagingWidget() {
           >
             <div style={{ overflowY: 'auto', minHeight: 0, paddingRight: 2 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
-              {canEditTopic && (
+              {isDraftConversation && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
                   <input
@@ -2365,6 +2428,7 @@ export default function MessagingWidget() {
               )}
               </div>
 
+              {isDraftConversation && (
               <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {state.composer.recipients.map((empid) => {
                   const found = employeeRecords.find((entry) => entry.id === empid);
@@ -2382,6 +2446,7 @@ export default function MessagingWidget() {
                   );
                 })}
               </div>
+              )}
 
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
