@@ -1585,11 +1585,13 @@ export default function MessagingWidget() {
 
   const isReplyMode = Boolean(state.composer.replyToId);
   const creatorEmpid = normalizeId(activeConversation?.createdByEmpid || activeConversation?.raw?.created_by_empid || activeConversation?.raw?.createdByEmpid);
-  const canEditConversationTopic = Boolean(
-    !isDraftConversation
-    && !activeConversation?.isGeneral
-    && !isReplyMode
-    && (creatorEmpid === selfEmpid || permissions?.isAdmin === true),
+  const canEditTopic = Boolean(
+    isDraftConversation
+    || (
+      !activeConversation?.isGeneral
+      && !isReplyMode
+      && (creatorEmpid === selfEmpid || permissions?.isAdmin === true)
+    ),
   );
 
   const safeTopic = sanitizeMessageText((isDraftConversation ? state.composer.topic : activeConversation?.topic) || '');
@@ -1738,9 +1740,9 @@ export default function MessagingWidget() {
   };
 
   const updateConversationTopic = async () => {
-    if (!canEditConversationTopic || !activeConversation?.conversationId) return;
+    if (!canEditTopic || !activeConversation?.conversationId) return;
     const activeCompany = state.activeCompanyId || companyId;
-    const nextTopic = sanitizeMessageText(state.composer.topic || '');
+    const nextTopic = sanitizeMessageText(state.composer.topic || activeConversation?.topic || '');
     if (!nextTopic || nextTopic === sanitizeMessageText(activeConversation?.topic || '')) return;
     const res = await fetch(`${API_BASE}/messaging/conversations/${activeConversation.conversationId}/topic`, {
       method: 'PATCH',
@@ -2417,10 +2419,11 @@ export default function MessagingWidget() {
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
                   <input
                     id="messaging-topic"
-                    value={state.composer.topic}
+                    value={isDraftConversation ? state.composer.topic : (state.composer.topic || activeConversation?.topic || '')}
                     onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                    required
-                    placeholder="Enter a topic"
+                    onBlur={updateConversationTopic}
+                    required={isDraftConversation}
+                    placeholder={isDraftConversation ? 'Enter a topic' : 'Edit conversation topic'}
                     aria-label="Topic"
                     style={{ width: '100%', marginTop: 2, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
                   />

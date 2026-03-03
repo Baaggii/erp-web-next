@@ -227,25 +227,6 @@ export async function patchConversationTopic({ user, companyId, conversationId, 
   return { correlationId, conversation: { id: normalizedConversationId, company_id: scopedCompanyId, topic } };
 }
 
-
-export async function addConversationParticipant({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
-  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
-  assertCanMessage(session);
-  const normalizedConversationId = toId(conversationId);
-  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
-  const empid = String(payload?.empid || '').trim();
-  if (!empid) throw createError(400, 'EMPID_REQUIRED', 'empid is required');
-
-  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
-  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
-  if (String(conversation?.type) === 'general') {
-    throw createError(400, 'GENERAL_CONVERSATION_PROTECTED', 'General conversation does not support participants');
-  }
-
-  await insertParticipants(db, scopedCompanyId, normalizedConversationId, [empid]);
-  return { correlationId, ok: true, conversationId: normalizedConversationId, empid };
-}
-
 export async function deleteConversation({ user, companyId, conversationId, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);

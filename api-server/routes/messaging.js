@@ -84,8 +84,6 @@ const createConversationSchema = {
     topic: { type: 'string', minLength: 1, maxLength: 255 },
     body: { type: 'string', minLength: 1, maxLength: 4000 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
-    linkedType: { type: 'string', maxLength: 64 },
-    linkedId: { type: 'string', maxLength: 128 },
   },
 };
 
@@ -100,17 +98,6 @@ const postConversationMessageSchema = {
     body: { type: 'string', minLength: 1, maxLength: 4000 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-  },
-};
-
-
-const addConversationParticipantSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['empid'],
-  properties: {
-    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    empid: { type: 'string', minLength: 1, maxLength: 64 },
   },
 };
 
@@ -136,7 +123,6 @@ const ajv = new Ajv();
 const validateCreateConversation = ajv.compile(createConversationSchema);
 const validatePostConversationMessage = ajv.compile(postConversationMessageSchema);
 const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema);
-const validateAddConversationParticipant = ajv.compile(addConversationParticipantSchema);
 
 function validateBody(validator, message) {
   return (req, res, next) => {
@@ -197,16 +183,6 @@ router.post('/conversations/:conversationId/messages', validateBody(validatePost
     emitMessagingEvent(req, data?.message?.company_id, 'message.created', { message: data?.message, conversation: data?.conversation });
     return data;
   }, 201));
-
-
-router.post('/conversations/:conversationId/participants', validateBody(validateAddConversationParticipant, 'Invalid participant payload'), (req, res) =>
-  handle(res, req, () => addConversationParticipant({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    conversationId: Number(req.params.conversationId),
-    payload: req.body,
-    correlationId: req.correlationId,
-  }), 201));
 
 router.patch('/conversations/:conversationId/topic', validateBody(validatePatchConversationTopic, 'Invalid topic payload'), (req, res) =>
   handle(res, req, () => patchConversationTopic({

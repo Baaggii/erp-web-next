@@ -13,7 +13,6 @@ const {
   getConversationMessages,
   deleteConversation,
   patchConversationTopic,
-  addConversationParticipant,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -305,30 +304,4 @@ test('patchConversationTopic emits conversation.updated socket event', async () 
   assert.equal(emitted[0].event, 'conversation.updated');
   assert.equal(emitted[0].payload.topic, 'Socket topic');
   setMessagingIo(null);
-});
-
-
-test('conversation participants can add a participant to existing conversation', async () => {
-  const db = new MockDb();
-  const creator = { empid: 'E1', companyId: 5 };
-  const created = await createConversationRoot({
-    user: creator,
-    companyId: 5,
-    db,
-    getSession,
-    payload: { type: 'private', participants: ['E2'], topic: 'Team', body: 'Root' },
-  });
-
-  const added = await addConversationParticipant({
-    user: { empid: 'E2', companyId: 5 },
-    companyId: 5,
-    conversationId: created.conversation.id,
-    payload: { empid: 'E3' },
-    db,
-    getSession,
-  });
-
-  assert.equal(added.ok, true);
-  const visibleToE3 = await listConversations({ user: { empid: 'E3', companyId: 5 }, companyId: 5, db, getSession });
-  assert.equal(visibleToE3.items.some((entry) => Number(entry.id) === Number(created.conversation.id)), true);
 });
