@@ -19,14 +19,13 @@ test('adaptConversationListResponse normalizes strict backend list payload', () 
   });
 
   assert.deepEqual(adapted.items[0], {
-    id: '15',
+    id: 'conversation:15',
     conversationId: '15',
     title: 'sales_order #44',
-    type: 'private',
     linkedType: 'sales_order',
     linkedId: '44',
+    visibilityScope: 'private',
     isGeneral: false,
-    participants: [],
     lastMessageAt: '2026-01-02T03:04:05.000Z',
     lastMessageId: '901',
     unread: 0,
