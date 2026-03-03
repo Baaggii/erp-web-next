@@ -7,6 +7,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
   createConversationRoot,
+  addMessageReaction,
   deleteConversation,
   deleteMessage,
   getConversationMessages,
@@ -16,7 +17,9 @@ import {
   patchConversationTopic,
   postConversationMessage,
   presenceHeartbeat,
+  removeMessageReaction,
   switchCompanyContext,
+  toggleMessageReaction,
   toStructuredError,
 } from '../services/messagingService.js';
 
@@ -110,6 +113,16 @@ const patchConversationTopicSchema = {
   },
 };
 
+const messageReactionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['emoji'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    emoji: { type: 'string', minLength: 1, maxLength: 32 },
+  },
+};
+
 function correlation(req, res, next) {
   const correlationId = req.headers['x-correlation-id'] || createCorrelationId();
   req.correlationId = correlationId;
@@ -122,6 +135,7 @@ const ajv = new Ajv();
 const validateCreateConversation = ajv.compile(createConversationSchema);
 const validatePostConversationMessage = ajv.compile(postConversationMessageSchema);
 const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema);
+const validateMessageReaction = ajv.compile(messageReactionSchema);
 
 function validateBody(validator, message) {
   return (req, res, next) => {
@@ -280,6 +294,60 @@ router.delete('/messages/:id', (req, res) =>
     emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'message.deleted', { id: Number(req.params.id), messageId: Number(req.params.id) });
     return data;
   }));
+
+router.post('/messages/:id/reactions', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => addMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.delete('/messages/:id/reactions', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => removeMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.post('/messages/:id/reactions/toggle', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => toggleMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.post('/messages/:id/reaction', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => addMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.delete('/messages/:id/reaction', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => removeMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.post('/messages/:id/reaction/toggle', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
+  handle(res, req, () => toggleMessageReaction({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
 
 router.post('/presence/heartbeat', (req, res) =>
   handle(res, req, () =>
