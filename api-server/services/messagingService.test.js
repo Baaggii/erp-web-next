@@ -11,6 +11,7 @@ const {
   listConversations,
   postConversationMessage,
   getConversationMessages,
+  deleteConversation,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -81,7 +82,7 @@ class MockDb {
       }
       return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
-    if (text.startsWith('SELECT c.*, (c.type =')) {
+    if (text.startsWith('SELECT c.*,')) {
       const [companyId, empid, maybeCursor, limit] = params;
       const hasCursor = params.length === 4;
       const cursorId = hasCursor ? Number(maybeCursor) : null;
@@ -94,6 +95,20 @@ class MockDb {
         .slice(0, max)
         .map((c) => ({ ...c, is_general: c.type === 'general' }));
       return [rows, undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_conversations SET deleted_at = CURRENT_TIMESTAMP')) {
+      const [conversationId, companyId] = params;
+      const row = this.conversations.find((c) => c.id === Number(conversationId) && c.company_id === Number(companyId) && !c.deleted_at);
+      if (row) row.deleted_at = new Date().toISOString();
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
+    if (text.startsWith('UPDATE erp_messages SET deleted_at = CURRENT_TIMESTAMP WHERE conversation_id = ?')) {
+      const [conversationId, companyId] = params;
+      this.messages.forEach((m) => {
+        if (m.conversation_id === Number(conversationId) && m.company_id === Number(companyId) && !m.deleted_at) m.deleted_at = new Date().toISOString();
+      });
+      return [{ affectedRows: 1 }, undefined];
     }
     if (text.startsWith('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL')) {
       const [id, companyId] = params;
@@ -177,4 +192,22 @@ test('sending message requires participant access and validates message_class en
   const thread = await getConversationMessages({ user: creator, companyId: 1, conversationId: created.conversation.id, db, getSession });
   assert.equal(sent.message.body, 'Allowed');
   assert.equal(thread.items.length, 2);
+});
+
+
+test('conversation creator can delete conversation and others cannot', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 2 };
+  const created = await createConversationRoot({ user: creator, companyId: 2, db, getSession, payload: { type: 'private', participants: ['E2'], body: 'Root message' } });
+
+  await assert.rejects(
+    () => deleteConversation({ user: { empid: 'E2', companyId: 2 }, companyId: 2, conversationId: created.conversation.id, db, getSession }),
+    /Only the conversation creator can delete this conversation/,
+  );
+
+  const deleted = await deleteConversation({ user: creator, companyId: 2, conversationId: created.conversation.id, db, getSession });
+  assert.equal(deleted.ok, true);
+
+  const list = await listConversations({ user: creator, companyId: 2, db, getSession });
+  assert.equal(list.items.some((entry) => Number(entry.id) === Number(created.conversation.id)), false);
 });

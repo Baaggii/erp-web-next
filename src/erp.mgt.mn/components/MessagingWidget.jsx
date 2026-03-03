@@ -297,6 +297,18 @@ function conversationIdFromSelection(conversationId) {
   return raw;
 }
 
+function resolveSelectedConversationRootId(conversationId, conversations = []) {
+  if (!conversationId) return null;
+  if (conversationId === NEW_CONVERSATION_ID) return null;
+  if (conversationId === 'general') {
+    const generalConversation = Array.isArray(conversations)
+      ? conversations.find((entry) => entry?.isGeneral || entry?.id === 'general')
+      : null;
+    return normalizeConversationId(generalConversation?.conversationId);
+  }
+  return conversationIdFromSelection(conversationId);
+}
+
 
 function escapeRegexValue(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1157,7 +1169,7 @@ export default function MessagingWidget() {
         return;
       }
 
-      const selectedRootId = conversationIdFromSelection(state.activeConversationId);
+      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
       if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
       fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
     };
@@ -1242,7 +1254,7 @@ export default function MessagingWidget() {
         return { ...prev, [key]: mergeMessageList(prev[key], nextMessage) };
       });
 
-      const selectedRootId = conversationIdFromSelection(state.activeConversationId);
+      const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
       if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
@@ -1327,7 +1339,10 @@ export default function MessagingWidget() {
     : conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
   const activeConversation = isDraftConversation ? null : requestedConversation;
   const activeConversationId = isDraftConversation ? NEW_CONVERSATION_ID : (activeConversation?.id || null);
-  const activeConversationNumericId = normalizeConversationId(activeConversationId);
+  const activeConversationNumericId = normalizeConversationId(
+    activeConversation?.conversationId
+    || (activeConversationId === 'general' ? conversations.find((entry) => entry?.isGeneral || entry?.id === 'general')?.conversationId : activeConversationId),
+  );
   const threadMessagesRaw = useMemo(
     () => messages.filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === activeConversationNumericId),
     [activeConversationNumericId, messages],
@@ -1367,7 +1382,7 @@ export default function MessagingWidget() {
   }, [conversations, state.activeConversationId]);
 
   useEffect(() => {
-    const selectedRootId = conversationIdFromSelection(state.activeConversationId);
+    const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
     const activeCompany = state.activeCompanyId || companyId;
     if (!selectedRootId || !activeCompany) return;
     fetchThreadMessages(selectedRootId, activeCompany);
@@ -1584,6 +1599,14 @@ export default function MessagingWidget() {
     return normalizeId(message.author_empid) === selfEmpid;
   };
 
+  const canDeleteConversation = (conversation) => {
+    if (!conversation || conversation.isGeneral || conversation.isDraft) return false;
+    const rawCreator = normalizeId(conversation?.raw?.created_by_empid || conversation?.raw?.createdByEmpid);
+    if (rawCreator) return rawCreator === selfEmpid;
+    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.conversationId));
+    return canDeleteMessage(rootMessage);
+  };
+
   const handleDeleteMessage = async (messageId) => {
     const activeCompany = state.activeCompanyId || companyId;
     const params = new URLSearchParams({ companyId: String(activeCompany) });
@@ -1631,12 +1654,46 @@ export default function MessagingWidget() {
 
   const handleDeleteConversationFromList = async (conversation) => {
     if (!conversation?.conversationId) return;
-    const rootMessage = messages.find((entry) => Number(entry.id) === Number(conversation.conversationId));
-    if (!canDeleteMessage(rootMessage)) {
+    if (!canDeleteConversation(conversation)) {
       setComposerAnnouncement('You do not have permission to delete this thread.');
       return;
     }
-    await handleDeleteMessage(conversation.conversationId);
+    const activeCompany = state.activeCompanyId || companyId;
+    const params = new URLSearchParams({ companyId: String(activeCompany) });
+    const res = await fetch(`${API_BASE}/messaging/conversations/${conversation.conversationId}?${params.toString()}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to delete conversation.');
+      return;
+    }
+
+    const conversationRootId = normalizeConversationId(conversation.conversationId);
+    setMessagesByCompany((prev) => {
+      const key = getCompanyCacheKey(activeCompany);
+      const nextMessages = (prev[key] || []).filter((entry) => normalizeConversationId(entry.conversation_id || entry.conversationId) !== conversationRootId);
+      return { ...prev, [key]: nextMessages };
+    });
+
+    const companyKey = getCompanyCacheKey(activeCompany);
+    const currentConversations = state.conversationsByCompany[companyKey] || [];
+    dispatch({
+      type: 'conversations/loadSuccess',
+      payload: {
+        companyKey,
+        items: currentConversations.filter((entry) => normalizeConversationId(entry.conversationId || entry.id) !== conversationRootId),
+      },
+    });
+
+    if (normalizeConversationId(state.activeConversationId) === conversationRootId) {
+      dispatch({ type: 'widget/setConversation', payload: null });
+    }
+
+    setComposerAnnouncement('Conversation deleted.');
   };
 
   const dropTemporaryComposerMessage = (activeCompany, clientTempId) => {
@@ -1985,7 +2042,7 @@ export default function MessagingWidget() {
       return;
     }
     if (!id || state.composer.recipients.includes(id)) return;
-    const selectedRootId = conversationIdFromSelection(state.activeConversationId);
+    const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
     const isExistingPrivateConversation = !isDraftConversation && state.activeConversationId !== 'general' && Boolean(selectedRootId);
     if (isExistingPrivateConversation && !conversationParticipantIds.has(id)) {
       const label = resolveEmployeeLabel(id);
@@ -2213,7 +2270,7 @@ export default function MessagingWidget() {
                       type="button"
                       aria-label={`Delete conversation ${conversation.title}`}
                       onClick={() => handleDeleteConversationFromList(conversation)}
-                      disabled={!canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(conversation.conversationId)))}
+                      disabled={!canDeleteConversation(conversation)}
                       style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 11, cursor: 'pointer', padding: 0 }}
                     >
                       🗑
@@ -2234,8 +2291,8 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
               </div>
-              {activeConversation?.conversationId && canDeleteMessage(messages.find((entry) => Number(entry.id) === Number(activeConversation.rootMessageId))) && (
-                <button type="button" onClick={() => handleDeleteMessage(activeConversation.rootMessageId)} style={{ marginTop: 4 }}>
+              {activeConversation?.conversationId && canDeleteConversation(activeConversation) && (
+                <button type="button" onClick={() => handleDeleteConversationFromList(activeConversation)} style={{ marginTop: 4 }}>
                   Delete thread
                 </button>
               )}
