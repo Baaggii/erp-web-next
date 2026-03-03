@@ -525,7 +525,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -550,8 +550,11 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
         boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
         padding: '6px 8px',
         marginBottom: 6,
-        marginLeft: depth > 0 ? Math.min(depth * 12, 48) : 0,
-        width: '100%',
+        marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
+        marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
+        maxWidth: '92%',
+        width: 'fit-content',
+        minWidth: 'min(70%, 520px)',
         boxSizing: 'border-box',
       }}
     >
@@ -574,6 +577,7 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               onClick={(event) => {
                 const dropdown = event.currentTarget.closest('details');
                 if (dropdown) dropdown.open = false;
+                if (typeof onAnyAction === 'function') onAnyAction();
                 onReply(message.id);
               }}
               aria-label={`Reply to message ${message.id}`}
@@ -586,7 +590,10 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
                 type="button"
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
-                onClick={() => onOpenLinkedTransaction(linked.linkedId)}
+                onClick={() => {
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onOpenLinkedTransaction(linked.linkedId);
+                }}
                 style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
               >
                 Open txn:{linked.linkedId}
@@ -596,7 +603,10 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               && parentMap.has(normalizeId(message.parent_message_id || message.parentMessageId)) && (
               <button
                 type="button"
-                onClick={() => onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId))}
+                onClick={() => {
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
+                }}
                 aria-label="Jump to parent message"
                 style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
               >
@@ -604,12 +614,12 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => onToggleReplies(message.id)} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {canDeleteMessage(message) && (
-              <button type="button" onClick={() => onDeleteMessage(message.id)} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
@@ -666,6 +676,8 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
           canDeleteMessage={canDeleteMessage}
           onDeleteMessage={onDeleteMessage}
           onPreviewAttachment={onPreviewAttachment}
+          isOwnMessage={isOwnMessage}
+          onAnyAction={onAnyAction}
         />
       ))}
     </article>
@@ -2297,8 +2309,9 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
-    if (!activeCompany || !activeConversation?.conversationId) return;
-    fetchThreadMessages(activeConversation.rootMessageId, activeCompany);
+    const activeConversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!activeCompany || !activeConversationId) return;
+    fetchThreadMessages(activeConversationId, activeCompany);
   }, [activeConversation?.conversationId, state.activeCompanyId, companyId]);
 
   if (!state.isOpen) {
@@ -2318,6 +2331,7 @@ export default function MessagingWidget() {
 
   return (
     <section
+      ref={widgetRootRef}
       style={{
         position: 'fixed',
         right: 16,
@@ -2424,6 +2438,7 @@ export default function MessagingWidget() {
                 <button
                   type="button"
                   onClick={() => {
+                    closeOpenMessageMenus();
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
                     markConversationRead(conversation.conversationId || conversation.id, state.activeCompanyId || companyId);
                     dispatch({ type: 'composer/setTopic', payload: conversation.topic || '' });
@@ -2540,6 +2555,8 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
+                isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
+                onAnyAction={closeOpenMessageMenus}
               />
             ))}
           </main>
