@@ -22,6 +22,7 @@ class MockDb {
     this.conversations = [];
     this.participants = [];
     this.messages = [];
+    this.reads = [];
   }
 
   async query(sql, params = []) {
@@ -132,6 +133,25 @@ class MockDb {
         .sort((a, b) => b.id - a.id)
         .slice(0, limit);
       return [rows, undefined];
+    }
+
+    if (text.startsWith('INSERT IGNORE INTO erp_message_reads (message_id, empid, read_at) VALUES')) {
+      for (let idx = 0; idx < params.length; idx += 2) {
+        const messageId = Number(params[idx]);
+        const empid = String(params[idx + 1]);
+        const existing = this.reads.find((row) => row.message_id === messageId && row.empid === empid);
+        if (!existing) this.reads.push({ message_id: messageId, empid });
+      }
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (text.startsWith('SELECT message_id, empid FROM erp_message_reads WHERE message_id IN')) {
+      const ids = params.map((entry) => Number(entry));
+      return [this.reads.filter((row) => ids.includes(row.message_id)), undefined];
+    }
+
+    if (text.startsWith('SELECT r.message_id, r.emoji, COUNT(*) AS count,')) {
+      return [[], undefined];
     }
 
     throw new Error(`Unhandled SQL: ${text}`);
