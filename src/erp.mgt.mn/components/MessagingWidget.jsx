@@ -135,24 +135,83 @@ function isDocumentActive() {
   return true;
 }
 
-function normalizeReadByEntries(value) {
+function normalizeReadReceiptEntries(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => {
       if (!entry) return null;
-      if (typeof entry === 'object') {
-        return normalizeId(
-          entry.empid
-          || entry.emp_id
-          || entry.empId
-          || entry.user_id
-          || entry.userId
-          || entry.id,
-        ) || null;
+      if (typeof entry !== 'object') {
+        return {
+          empid: normalizeId(entry) || null,
+          readAt: null,
+          seenAt: null,
+          lastReadMessageId: null,
+          seenMessageId: null,
+          activeConversationId: null,
+          isConversationOpen: null,
+          isWidgetOpen: null,
+          isActive: null,
+          status: null,
+          read: null,
+        };
       }
-      return normalizeId(entry) || null;
+      const readAt = entry.read_at || entry.readAt || entry.opened_at || entry.openedAt || null;
+      const seenAt = entry.seen_at || entry.seenAt || entry.last_seen_at || entry.lastSeenAt || null;
+      const lastReadMessageId = Number(entry.last_read_message_id || entry.lastReadMessageId || 0) || null;
+      const seenMessageId = Number(entry.seen_message_id || entry.seenMessageId || 0) || null;
+      return {
+        empid: normalizeId(entry.empid || entry.emp_id || entry.empId || entry.user_id || entry.userId || entry.id) || null,
+        readAt,
+        seenAt,
+        lastReadMessageId,
+        seenMessageId,
+        activeConversationId: normalizeConversationId(
+          entry.active_conversation_id
+          || entry.activeConversationId
+          || entry.conversation_id
+          || entry.conversationId,
+        ),
+        isConversationOpen: typeof entry.conversation_open === 'boolean'
+          ? entry.conversation_open
+          : (typeof entry.conversationOpen === 'boolean' ? entry.conversationOpen : null),
+        isWidgetOpen: typeof entry.widget_open === 'boolean'
+          ? entry.widget_open
+          : (typeof entry.widgetOpen === 'boolean' ? entry.widgetOpen : null),
+        isActive: typeof entry.active === 'boolean'
+          ? entry.active
+          : (typeof entry.is_active === 'boolean'
+            ? entry.is_active
+            : (typeof entry.isActive === 'boolean' ? entry.isActive : null)),
+        status: String(entry.status || entry.presence || '').toLowerCase() || null,
+        read: typeof entry.read === 'boolean' ? entry.read : (typeof entry.is_read === 'boolean' ? entry.is_read : null),
+      };
     })
-    .filter(Boolean);
+    .filter((entry) => Boolean(entry?.empid));
+}
+
+function isVerifiedReadReceipt(entry, { messageId, activeConversationId, presenceMap }) {
+  if (!entry?.empid) return false;
+  const status = entry.status || presenceMap.get(entry.empid) || null;
+  const isActiveNow = entry.isActive != null
+    ? entry.isActive === true
+    : status === PRESENCE.ONLINE;
+  if (!isActiveNow) return false;
+
+  const hasOpenedConversation = entry.isConversationOpen != null
+    ? entry.isConversationOpen === true
+    : (entry.isWidgetOpen != null
+      ? entry.isWidgetOpen === true && Boolean(entry.activeConversationId && activeConversationId && entry.activeConversationId === activeConversationId)
+      : Boolean(entry.activeConversationId && activeConversationId && entry.activeConversationId === activeConversationId));
+  if (!hasOpenedConversation) return false;
+
+  const hasSeenMessage = Boolean(
+    entry.readAt
+    || entry.seenAt
+    || entry.read === true
+    || (entry.lastReadMessageId != null && messageId != null && entry.lastReadMessageId >= messageId)
+    || (entry.seenMessageId != null && messageId != null && entry.seenMessageId >= messageId),
+  );
+  return hasSeenMessage;
 }
 
 async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
@@ -626,7 +685,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
+function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, presenceMap = new Map(), activeConversationId = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const safeBody = sanitizeMessageText(decoded.text);
@@ -635,8 +694,11 @@ function MessageNode({ message, depth = 0, onReply, onJumpToParent, onToggleRepl
   const isCollapsed = collapsedMessageIds.has(message.id);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(normalizeId(message.id));
-  const readers = normalizeReadByEntries(message.read_by)
-    .filter((empid) => empid !== normalizeId(selfEmpid) && empid !== normalizeId(message.author_empid));
+  const messageId = numericMessageId(message.id);
+  const readers = normalizeReadReceiptEntries(message.read_by)
+    .filter((entry) => entry.empid !== normalizeId(selfEmpid) && entry.empid !== normalizeId(message.author_empid))
+    .filter((entry) => isVerifiedReadReceipt(entry, { messageId, activeConversationId, presenceMap }))
+    .map((entry) => entry.empid);
   const readerLabels = readers.map((empid) => resolveEmployeeLabel(empid));
   const authorLabel = resolveEmployeeLabel(message.author_empid);
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
@@ -2822,6 +2884,8 @@ export default function MessagingWidget() {
                 onAnyAction={closeOpenMessageMenus}
                 isMenuOpen={openMessageMenuId === normalizeId(message.id)}
                 onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
+                presenceMap={presenceMap}
+                activeConversationId={activeConversationNumericId}
               />
             ))}
           </main>
