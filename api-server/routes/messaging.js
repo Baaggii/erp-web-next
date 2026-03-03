@@ -187,13 +187,21 @@ router.post('/conversations/:conversationId/messages', validateBody(validatePost
   }, 201));
 
 router.patch('/conversations/:conversationId/topic', validateBody(validatePatchConversationTopic, 'Invalid topic payload'), (req, res) =>
-  handle(res, req, () => patchConversationTopic({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    conversationId: Number(req.params.conversationId),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await patchConversationTopic({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      conversationId: Number(req.params.conversationId),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'conversation.updated', {
+      conversation_id: data?.conversationId ?? Number(req.params.conversationId),
+      conversationId: data?.conversationId ?? Number(req.params.conversationId),
+      topic: data?.topic ?? req.body?.topic,
+    });
+    return data;
+  }));
 
 router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
   try {
