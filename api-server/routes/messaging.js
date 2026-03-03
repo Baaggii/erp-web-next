@@ -145,7 +145,10 @@ function emitMessagingEvent(req, companyId, eventName, payload) {
   if (!io) return;
   const normalizedCompanyId = Number(companyId || req.user?.companyId);
   if (!Number.isFinite(normalizedCompanyId) || normalizedCompanyId <= 0) return;
-  io.to(`company:${normalizedCompanyId}`).emit(eventName, { company_id: normalizedCompanyId, ...payload });
+  io
+    .to(`company:${normalizedCompanyId}`)
+    .to(`messaging:${normalizedCompanyId}`)
+    .emit(eventName, { company_id: normalizedCompanyId, ...payload });
 }
 
 router.get('/conversations', (req, res) =>

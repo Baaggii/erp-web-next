@@ -219,10 +219,13 @@ export async function patchConversationTopic({ user, companyId, conversationId, 
   await db.query('UPDATE erp_conversations SET topic = ? WHERE id = ? AND company_id = ? AND deleted_at IS NULL', [topic, normalizedConversationId, scopedCompanyId]);
 
   if (ioRef) {
-    ioRef.to(`company:${scopedCompanyId}`).emit('conversation.updated', {
-      conversation_id: normalizedConversationId,
-      topic,
-    });
+    ioRef
+      .to(`company:${scopedCompanyId}`)
+      .to(`messaging:${scopedCompanyId}`)
+      .emit('conversation.updated', {
+        conversation_id: normalizedConversationId,
+        topic,
+      });
   }
   return { correlationId, conversation: { id: normalizedConversationId, company_id: scopedCompanyId, topic } };
 }
