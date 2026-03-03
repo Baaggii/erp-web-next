@@ -2121,7 +2121,25 @@ export default function MessagingWidget() {
     return canDeleteMessage(rootMessage);
   };
 
+  const conversationHasMessages = (conversation) => {
+    const conversationRootId = normalizeConversationId(conversation?.conversationId || conversation?.id);
+    if (!conversationRootId) return false;
+    return messages.some((entry) => {
+      const messageConversationId = normalizeConversationId(entry.conversation_id || entry.conversationId);
+      return messageConversationId === conversationRootId && Number(entry.id) !== Number(conversationRootId);
+    });
+  };
+
+  const messageHasReplies = (messageId) => {
+    if (!messageId) return false;
+    return messages.some((entry) => Number(entry.parent_message_id || entry.parentMessageId) === Number(messageId));
+  };
+
   const handleDeleteMessage = async (messageId) => {
+    if (messageHasReplies(messageId)) {
+      setComposerAnnouncement('Cannot delete this message because it has replies.');
+      return;
+    }
     const activeCompany = state.activeCompanyId || companyId;
     const params = new URLSearchParams({ companyId: String(activeCompany) });
     const res = await fetch(`${API_BASE}/messaging/messages/${messageId}?${params.toString()}`, {
@@ -2170,6 +2188,10 @@ export default function MessagingWidget() {
     if (!conversation?.conversationId) return;
     if (!canDeleteConversation(conversation)) {
       setComposerAnnouncement('You do not have permission to delete this thread.');
+      return;
+    }
+    if (conversationHasMessages(conversation)) {
+      setComposerAnnouncement('Cannot delete this conversation because it already has messages.');
       return;
     }
     const activeCompany = state.activeCompanyId || companyId;
@@ -2808,13 +2830,12 @@ export default function MessagingWidget() {
                       {conversation.unread}
                     </span>
                   )}
-                  {!conversation.isGeneral && !conversation.isDraft && (
+                  {!conversation.isGeneral && !conversation.isDraft && canDeleteConversation(conversation) && (
                     <button
                       type="button"
                       aria-label={`Delete conversation ${conversation.title}`}
                       onClick={() => handleDeleteConversationFromList(conversation)}
-                      disabled={!canDeleteConversation(conversation)}
-                      style={{ border: 0, background: 'transparent', color: '#b91c1c', fontSize: 11, cursor: 'pointer', padding: 0 }}
+                      style={{ border: 0, background: '#fee2e2', color: '#b91c1c', fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, minWidth: 28, minHeight: 28, lineHeight: 1 }}
                     >
                       🗑
                     </button>
