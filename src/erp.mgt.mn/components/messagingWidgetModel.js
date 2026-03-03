@@ -46,11 +46,11 @@ export function normalizeId(value) {
 export function normalizeConversationId(value) {
   const normalized = normalizeId(value);
   if (!normalized) return null;
-  if (normalized.startsWith('conversation:')) {
-    const stripped = normalizeId(normalized.slice('conversation:'.length));
-    return stripped || null;
-  }
-  return normalized;
+  const stripped = normalized.startsWith('conversation:')
+    ? normalizeId(normalized.slice('conversation:'.length))
+    : normalized;
+  if (!stripped || !/^\d+$/.test(stripped)) return null;
+  return stripped;
 }
 
 export function buildSessionStorageKey(sessionId, suffix) {
