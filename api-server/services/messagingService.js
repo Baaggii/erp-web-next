@@ -200,7 +200,6 @@ async function enqueueConversationMessageWebPush({
       message: buildWebPushMessageText(messageBody),
       title: 'ERP message',
       url: '/#/',
-      bypassKindMute: true,
     });
   }
 }
