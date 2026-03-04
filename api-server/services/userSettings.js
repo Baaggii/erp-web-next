@@ -16,9 +16,16 @@ export async function getUserSettings(empid, companyId = 0) {
     ) {
       settings.settings_enable_tour_builder = true;
     }
+    if (!Object.prototype.hasOwnProperty.call(settings, 'webPushEnabled')) {
+      settings.webPushEnabled = false;
+    }
     return settings;
   } catch {
-    return { showTourButtons: true, settings_enable_tour_builder: true };
+    return {
+      showTourButtons: true,
+      settings_enable_tour_builder: true,
+      webPushEnabled: false,
+    };
   }
 }
 
@@ -46,6 +53,9 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
       normalizedSettings.settings_enable_tour_builder,
     );
   }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, 'webPushEnabled')) {
+    normalizedSettings.webPushEnabled = Boolean(normalizedSettings.webPushEnabled);
+  }
 
   data[empid] = { ...(data[empid] || {}), ...normalizedSettings };
   if (!Object.prototype.hasOwnProperty.call(data[empid], 'showTourButtons')) {
@@ -55,6 +65,9 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
     !Object.prototype.hasOwnProperty.call(data[empid], 'settings_enable_tour_builder')
   ) {
     data[empid].settings_enable_tour_builder = true;
+  }
+  if (!Object.prototype.hasOwnProperty.call(data[empid], 'webPushEnabled')) {
+    data[empid].webPushEnabled = false;
   }
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));

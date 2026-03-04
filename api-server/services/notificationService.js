@@ -1,3 +1,4 @@
+import { enqueueWebPushNotification } from './webPushService.js';
 let ioEmitter = null;
 let dbPool = null;
 
@@ -87,5 +88,15 @@ export async function notifyUser({
     throw new Error('Notification emitter not configured');
   }
   emitter.to(`user:${recipient}`).emit('notification:new', payload);
+  enqueueWebPushNotification({
+    companyId: companyId ?? null,
+    empid: recipient,
+    notificationId: payload.id,
+    kind: normalizedKind,
+    message: normalizedMessage,
+    relatedId: relatedId ?? null,
+    title: 'ERP notification',
+    url: '/#/notifications',
+  });
   return payload;
 }

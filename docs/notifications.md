@@ -38,3 +38,22 @@ using a key that includes the employee ID and ends with `-seen`, for example
 `${empid}-incoming-pending-seen`. These markers persist across logouts so that
 counts are retained between sessions. New hooks should follow the same naming
 pattern to maintain per-user tracking.
+
+## Web Push notifications
+
+The system supports browser-level web push notifications (service worker + Push API)
+when both toggles are enabled:
+
+1. General Configuration → Notifications → `webPushEnabled`
+2. Employee Configuration → General → `webPushEnabled`
+
+When both are true, the frontend registers `sw-webpush.js`, requests browser
+notification permission, creates a push subscription, and sends it to
+`POST /api/web_push/subscribe`. The backend stores subscriptions in
+`web_push_subscriptions`, sends encrypted push payloads with VAPID, retries
+transient failures, deduplicates bursts, rate-limits rapid sends per user, and
+marks subscriptions inactive on HTTP 404/410 responses.
+
+Payloads include `title`, `body`, `icon`, `badge`, and `data.url`. On click, the
+service worker focuses an existing app tab or opens a new one at the provided
+URL.

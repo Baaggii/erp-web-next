@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import express from "express";
 import cookieParser from "cookie-parser";
 import csurf from "csurf";
-import { testConnection } from "../db/index.js";
+import { testConnection, pool } from "../db/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { logger } from "./middlewares/logging.js";
 import authRoutes from "./routes/auth.js";
@@ -41,6 +41,8 @@ import reportRoutes from "./routes/report.js";
 import dashboardSectionRoutes from "./routes/dashboard_sections.js";
 import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
+import webPushRoutes from "./routes/web_push.js";
+import { setWebPushStore } from "./services/webPushService.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -69,6 +71,7 @@ app.use((req, res, next) => {
 });
 
 app.use(logger);
+setWebPushStore(pool);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
 const { config: imgCfg } = await getGeneralConfig();
@@ -132,6 +135,7 @@ app.use("/api/cnc_processing", cncProcessingRoutes);
 app.use("/api/dashboard_sections", dashboardSectionRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/period-control", periodControlRoutes);
+app.use("/api/web_push", webPushRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

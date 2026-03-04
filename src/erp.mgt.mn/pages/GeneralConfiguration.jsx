@@ -764,6 +764,25 @@ export default function GeneralConfiguration() {
               </label>
             </TooltipWrapper>
           </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('notifications_web_push_enabled', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Enable browser web push notifications globally (requires per-user opt-in)',
+              })}
+            >
+              <label>
+                Enable Web Push Notifications{' '}
+                <input
+                  name="webPushEnabled"
+                  type="checkbox"
+                  checked={active.webPushEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
         </>
       ) : tab === 'system' ? (
         <div>
