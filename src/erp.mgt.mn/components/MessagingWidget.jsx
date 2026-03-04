@@ -1990,6 +1990,24 @@ export default function MessagingWidget() {
 
   const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
+  const conversationPreviewById = useMemo(() => {
+    const byConversation = new Map();
+    messages.forEach((message) => {
+      const conversationId = normalizeConversationId(message?.conversation_id || message?.conversationId);
+      if (!conversationId) return;
+      const key = `conversation:${conversationId}`;
+      const existing = byConversation.get(key);
+      const nextTimestamp = new Date(message?.created_at || message?.createdAt || 0).getTime();
+      const existingTimestamp = existing?.timestamp || 0;
+      if (existing && nextTimestamp < existingTimestamp) return;
+      const decoded = extractMessageAttachments(message);
+      byConversation.set(key, {
+        timestamp: Number.isFinite(nextTimestamp) ? nextTimestamp : 0,
+        preview: sanitizeMessageText(decoded.text || '').slice(0, 160),
+      });
+    });
+    return byConversation;
+  }, [messages]);
   const unreadCount = useMemo(() => {
     const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
     const readState = lastReadByCompany?.[companyKey] || {};
@@ -2007,6 +2025,9 @@ export default function MessagingWidget() {
 
     if (!hasInitializedPreferredConversationRef.current) {
       hasInitializedPreferredConversationRef.current = true;
+      if (state.activeConversationId && conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+        return;
+      }
       const preferredConversationId = lastUserConversationId
         || conversations[0]?.id
         || null;
@@ -3254,6 +3275,9 @@ export default function MessagingWidget() {
                 >
                   <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
                     <strong>{conversation.title}</strong>
+                  </span>
+                  <span style={{ display: 'block', marginTop: 1, fontSize: 11, color: '#64748b', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {conversationPreviewById.get(conversation.id)?.preview || conversation.preview || 'No messages yet.'}
                   </span>
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
