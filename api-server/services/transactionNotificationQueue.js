@@ -7,6 +7,7 @@ import { getAllDisplayFields } from './displayFieldConfig.js';
 import { listCustomRelations } from './tableRelationsConfig.js';
 import { getConfigsByTable } from './transactionFormConfig.js';
 import { notifyUser } from './notificationService.js';
+import { enqueueWebPushNotification } from './webPushService.js';
 import { queryWithTenantScope } from './tenantScope.js';
 
 const NOTIFICATION_ROLE_SET = new Set([
@@ -575,6 +576,23 @@ function emitNotificationEvent(rooms, payload) {
   });
 }
 
+function enqueueWebPushForPayload(room, payload, companyId) {
+  const empid = String(room || '').startsWith('user:')
+    ? String(room).slice('user:'.length).trim().toUpperCase()
+    : '';
+  if (!empid || !companyId) return;
+  enqueueWebPushNotification({
+    companyId,
+    empid,
+    notificationId: payload?.id ?? null,
+    kind: payload?.kind || payload?.type || 'notification',
+    message: payload?.message || '',
+    relatedId: payload?.related_id ?? null,
+    title: 'ERP notification',
+    url: '/#/notifications',
+  });
+}
+
 async function handleTransactionNotification(job) {
   if (!job?.tableName || !job?.recordId || !job?.companyId) return;
   const transactionRow =
@@ -703,7 +721,10 @@ async function handleTransactionNotification(job) {
     const { updated, payloads } = updateResult;
     existingReferenceKeys = updateResult.existingReferenceKeys;
     if (payloads.length) {
-      payloads.forEach(({ room, payload }) => emitNotificationEvent([room], payload));
+      payloads.forEach(({ room, payload }) => {
+        emitNotificationEvent([room], payload);
+        enqueueWebPushForPayload(room, payload, job.companyId);
+      });
     }
     if (updated > 0 && job.action !== 'update') {
       return;
