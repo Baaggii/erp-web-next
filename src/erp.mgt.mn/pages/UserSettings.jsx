@@ -52,6 +52,8 @@ export default function UserSettingsPage() {
 function GeneralSettingsTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
+  const [webPushBusy, setWebPushBusy] = useState(false);
+  const [webPushStatus, setWebPushStatus] = useState('');
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   const notificationSound = userSettings.notificationSound || 'chime';
   const rawNotificationVolume = Number(userSettings.notificationVolume);
@@ -128,6 +130,47 @@ function GeneralSettingsTab() {
               {t('settings_enable_web_push', 'Enable web push notifications')}
             </label>
           </TooltipWrapper>
+          <div style={{ marginTop: '0.5rem' }}>
+            <button
+              type="button"
+              disabled={webPushBusy || !webPushEnabled}
+              onClick={async () => {
+                setWebPushBusy(true);
+                setWebPushStatus('');
+                try {
+                  const result = await requestWebPushPermission({ userSettings, promptForPermission: true });
+                  if (result?.ok) {
+                    setWebPushStatus(t('web_push_permission_success', 'Browser notification permission granted.'));
+                  } else if (result?.reason === 'permission_not_granted') {
+                    setWebPushStatus(t('web_push_permission_denied', 'Browser notification permission was not granted.'));
+                  } else if (result?.reason === 'vapid_not_configured') {
+                    setWebPushStatus(t('web_push_vapid_missing', 'VAPID keys are not configured on the server.'));
+                  } else {
+                    setWebPushStatus(t('web_push_permission_failed', 'Could not enable browser notifications.'));
+                  }
+                } catch (err) {
+                  setWebPushStatus(t('web_push_permission_failed', 'Could not enable browser notifications.'));
+                  console.warn('Failed to request web push permission', err);
+                } finally {
+                  setWebPushBusy(false);
+                }
+              }}
+              style={{
+                padding: '0.35rem 0.75rem',
+                borderRadius: '4px',
+                border: '1px solid #d1d5db',
+                background: '#f9fafb',
+                cursor: webPushBusy || !webPushEnabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {webPushBusy
+                ? t('web_push_requesting_permission', 'Requesting permission...')
+                : t('web_push_allow_browser', 'Allow browser notifications')}
+            </button>
+            {webPushStatus ? (
+              <div style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#334155' }}>{webPushStatus}</div>
+            ) : null}
+          </div>
           <div style={{ marginTop: '0.5rem' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <span>{t('web_push_muted_kinds', 'Muted notification kinds (comma-separated)')}</span>
