@@ -155,6 +155,70 @@ function normalizeReadByEntries(value) {
     .filter(Boolean);
 }
 
+function extractMessageActionTrace(message, resolveEmployeeLabel) {
+  if (!message || typeof message !== 'object') return [];
+
+  const traces = [];
+  const updatedAt = message?.updated_at || message?.updatedAt || null;
+  const createdAt = message?.created_at || message?.createdAt || null;
+  const deletedAt = message?.deleted_at || message?.deletedAt || message?.del_date || message?.delDate || null;
+  const deletedBy = normalizeId(
+    message?.deleted_by_empid
+    || message?.deleted_by
+    || message?.deletedByEmpid
+    || message?.deletedBy
+    || message?.del_emp,
+  );
+  const editedBy = normalizeId(
+    message?.updated_by_empid
+    || message?.updated_by
+    || message?.updatedByEmpid
+    || message?.updatedBy,
+  );
+  const markedDeleted = deletedAt || [message?.is_deleted, message?.isDeleted, message?.deleted].some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
+  const wasEdited = updatedAt && (!createdAt || new Date(updatedAt).getTime() > new Date(createdAt).getTime() + 1000);
+
+  if (wasEdited) {
+    traces.push({
+      key: 'edited',
+      label: 'Edited',
+      by: editedBy ? resolveEmployeeLabel(editedBy) : null,
+      at: updatedAt,
+    });
+  }
+
+  if (markedDeleted) {
+    traces.push({
+      key: 'deleted',
+      label: 'Deleted',
+      by: deletedBy ? resolveEmployeeLabel(deletedBy) : null,
+      at: deletedAt,
+    });
+  }
+
+  const history = Array.isArray(message?.actions_trace)
+    ? message.actions_trace
+    : Array.isArray(message?.action_trace)
+      ? message.action_trace
+      : Array.isArray(message?.history)
+        ? message.history
+        : [];
+  history.forEach((entry, idx) => {
+    const action = sanitizeMessageText(entry?.action || entry?.type || '').toLowerCase();
+    if (!action) return;
+    if (action !== 'edited' && action !== 'deleted') return;
+    const historyActor = normalizeId(entry?.empid || entry?.emp_id || entry?.userId || entry?.user_id || entry?.by);
+    traces.push({
+      key: `${action}-${idx}`,
+      label: action === 'edited' ? 'Edited' : 'Deleted',
+      by: historyActor ? resolveEmployeeLabel(historyActor) : null,
+      at: entry?.at || entry?.created_at || entry?.createdAt || null,
+    });
+  });
+
+  return traces;
+}
+
 async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
   const bodyPayload = JSON.stringify({ emoji, messageId: Number(messageId) || messageId });
   const attempts = shouldAddReaction
@@ -655,6 +719,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
+  const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
       open: isMenuOpen,
@@ -769,6 +834,23 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
         {highlightMentions(safeBody)}
       </div>
+      {actionTrace.length > 0 && (
+        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {actionTrace.map((entry) => {
+            const byText = entry.by ? ` by ${entry.by}` : '';
+            const atText = entry.at ? ` · ${new Date(entry.at).toLocaleString()}` : '';
+            return (
+              <span
+                key={entry.key}
+                title={`${entry.label}${byText}${atText}`}
+                style={{ fontSize: 11, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px' }}
+              >
+                {entry.label}{byText}{atText}
+              </span>
+            );
+          })}
+        </div>
+      )}
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {decoded.attachments.map((file) => {
@@ -910,6 +992,9 @@ export default function MessagingWidget() {
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [activityTick, setActivityTick] = useState(0);
+  const [typingByConversation, setTypingByConversation] = useState({});
+  const typingEmitRef = useRef({ key: null, ts: 0 });
+  const typingTimerRef = useRef(null);
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -1551,6 +1636,24 @@ export default function MessagingWidget() {
         },
       });
     };
+    const onTyping = (payload) => {
+      const conversationId = normalizeConversationId(payload?.conversation_id || payload?.conversationId || payload?.id);
+      const senderEmpid = normalizeId(payload?.empid || payload?.author_empid || payload?.user_id || payload?.userId);
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      const payloadCompanyId = normalizeId(payload?.company_id || payload?.companyId);
+      if (!conversationId || !senderEmpid || senderEmpid === selfEmpid) return;
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      const key = `${activeCompanyId || 'none'}:${conversationId}`;
+      setTypingByConversation((prev) => {
+        const nextUsers = new Set(Array.isArray(prev[key]) ? prev[key] : []);
+        nextUsers.add(senderEmpid);
+        return { ...prev, [key]: Array.from(nextUsers) };
+      });
+      globalThis.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = globalThis.setTimeout(() => {
+        setTypingByConversation((prev) => ({ ...prev, [key]: [] }));
+      }, 3500);
+    };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
@@ -1585,6 +1688,8 @@ export default function MessagingWidget() {
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
     socket.on('conversation.updated', onConversationUpdated);
+    socket.on('message.typing', onTyping);
+    socket.on('typing', onTyping);
     return () => {
       socket.off('message.created', onNew);
       socket.off('message.updated', onUpdated);
@@ -1592,6 +1697,8 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       socket.off('conversation.deleted', onConversationDeleted);
       socket.off('conversation.updated', onConversationUpdated);
+      socket.off('message.typing', onTyping);
+      socket.off('typing', onTyping);
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
@@ -2691,6 +2798,21 @@ export default function MessagingWidget() {
     event.target.style.height = `${Math.min(event.target.scrollHeight, 240)}px`;
     const caret = event.target.selectionStart || value.length;
     const left = value.slice(0, caret);
+
+    const selectedConversationId = normalizeConversationId(activeConversation?.conversationId || state.activeConversationId);
+    const activeCompany = normalizeId(state.activeCompanyId || companyId);
+    const socket = connectSocket();
+    if (socket && selectedConversationId && selfEmpid) {
+      const now = Date.now();
+      const key = `${activeCompany || 'none'}:${selectedConversationId}`;
+      if (!(typingEmitRef.current.key === key && now - typingEmitRef.current.ts < 1200)) {
+        typingEmitRef.current = { key, ts: now };
+        const payload = { conversationId: selectedConversationId, companyId: activeCompany, empid: selfEmpid };
+        socket.emit('message.typing', payload);
+        socket.emit('typing', payload);
+      }
+    }
+
     const mentionMatch = left.match(/(^|\s)@([A-Za-z0-9_.-]*)$/);
     if (!mentionMatch) {
       setMentionOpen(false);
@@ -2702,6 +2824,21 @@ export default function MessagingWidget() {
     setMentionQuery(mentionMatch[2] || '');
     setMentionStart(caret - mentionMatch[2].length - 1);
   };
+
+  const activeTypingUsers = useMemo(() => {
+    const activeCompany = normalizeId(state.activeCompanyId || companyId);
+    const conversationId = normalizeConversationId(activeConversation?.conversationId || state.activeConversationId);
+    if (!conversationId) return [];
+    return typingByConversation[`${activeCompany || 'none'}:${conversationId}`] || [];
+  }, [activeConversation?.conversationId, companyId, state.activeCompanyId, state.activeConversationId, typingByConversation]);
+
+  const typingLabel = useMemo(() => {
+    if (activeTypingUsers.length === 0) return '';
+    const labels = activeTypingUsers.map((empid) => resolveEmployeeLabel(empid));
+    if (labels.length === 1) return `${labels[0]} is typing...`;
+    if (labels.length === 2) return `${labels[0]} and ${labels[1]} are typing...`;
+    return `${labels[0]} and ${labels.length - 1} others are typing...`;
+  }, [activeTypingUsers, resolveEmployeeLabel]);
 
   const insertMention = (empid) => {
     if (mentionStart < 0) return;
@@ -2935,6 +3072,7 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
                 {editingMessage?.id && <span style={{ color: '#2563eb', fontWeight: 600 }}>Editing #{editingMessage.id}</span>}
+                {typingLabel && <span style={{ color: '#7c3aed', fontWeight: 600 }}>{typingLabel}</span>}
               </div>
               {canEditTopic && (
                 <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
