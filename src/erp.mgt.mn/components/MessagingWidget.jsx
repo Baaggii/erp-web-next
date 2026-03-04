@@ -20,6 +20,20 @@ import { adaptConversationListResponse, adaptThreadResponse } from './messagingA
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
 const NEW_CONVERSATION_ID = '__new__';
+const MESSAGE_TEXT_SCALE_MIN = 1;
+const MESSAGE_TEXT_SCALE_MAX = 1.8;
+const MESSAGE_TEXT_SCALE_STEP = 0.1;
+const DEFAULT_MESSAGE_TEXT_SCALE = 1.4;
+
+function clampMessageTextScale(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_MESSAGE_TEXT_SCALE;
+  return Math.min(MESSAGE_TEXT_SCALE_MAX, Math.max(MESSAGE_TEXT_SCALE_MIN, Number(numeric.toFixed(2))));
+}
+
+function toScaledFontSize(basePx, scale) {
+  return Math.round(basePx * clampMessageTextScale(scale));
+}
 
 function buildParticipantCacheKey(sessionId, companyId) {
   return `messaging-widget:participants:${normalizeId(sessionId) || 'anonymous'}:${normalizeId(companyId) || 'none'}`;
@@ -740,7 +754,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, openMenuId = null, onMenuOpenChange = null }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
@@ -759,13 +773,15 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const reactions = normalizeReactionList(message);
   const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
   const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
-  const normalizedMessageId = normalizeId(message.id);
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
       open: openMenuId === normalizedMessageId,
       onToggle: (event) => onMenuOpenChange(normalizedMessageId, event.currentTarget.open),
     }
     : {};
+  const metadataFontSize = toScaledFontSize(12, textScale);
+  const bodyFontSize = toScaledFontSize(14, textScale);
+  const chipFontSize = toScaledFontSize(12, textScale);
 
   if (isDeleted) {
     return (
@@ -794,8 +810,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             selfEmpid={selfEmpid}
             isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
             onAnyAction={onAnyAction}
-            openMenuId={openMenuId}
-            onMenuOpenChange={onMenuOpenChange}
+            textScale={textScale}
           />
         ))}
       </div>
@@ -822,14 +837,14 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       }}
     >
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
-        <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
+        <span style={{ fontSize: metadataFontSize, color: '#334155', fontWeight: 700 }}>{authorLabel}</span>
+        <span style={{ fontSize: metadataFontSize, color: '#64748b' }}>{new Date(message.created_at).toLocaleString()}</span>
         {isMentionedViewer && (
-          <span style={{ fontSize: 11, color: '#7c2d12', borderRadius: 999, background: '#ffedd5', padding: '1px 7px', fontWeight: 700 }}>
+          <span style={{ fontSize: metadataFontSize, color: '#7c2d12', borderRadius: 999, background: '#ffedd5', padding: '1px 7px', fontWeight: 700 }}>
             Mentioned you
           </span>
         )}
-        <span title={readTooltip} style={{ fontSize: 11, color: readerLabels.length > 0 ? '#0f766e' : '#64748b', borderRadius: 999, background: '#f1f5f9', padding: '1px 7px' }}>
+        <span title={readTooltip} style={{ fontSize: metadataFontSize, color: readerLabels.length > 0 ? '#0f766e' : '#64748b', borderRadius: 999, background: '#f1f5f9', padding: '1px 7px' }}>
           {readStatus}
         </span>
         <details
@@ -837,7 +852,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
           data-message-menu-root="true"
           style={{ marginLeft: 'auto', position: 'relative' }}
         >
-          <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
+          <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: toScaledFontSize(13, textScale), color: '#334155' }}>⋯</summary>
           <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
             {!isDeleted && (
               <button
@@ -908,7 +923,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
           </div>
         </details>
       </div>
-      <div style={{ marginTop: 4, fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+      <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
       {actionTrace.length > 0 && (
@@ -920,7 +935,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <span
                 key={entry.key}
                 title={`${entry.label}${byText}${atText}`}
-                style={{ fontSize: 11, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px' }}
+                style={{ fontSize: metadataFontSize, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px' }}
               >
                 {entry.label}{byText}{atText}
               </span>
@@ -949,7 +964,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               );
             }
             return (
-              <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: chipFontSize }}>
                 📎 {file.name || 'attachment'}
               </a>
             );
@@ -957,7 +972,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         </div>
       )}
       {!isDeleted && <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-        {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
+        {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: chipFontSize, color: '#64748b' }}>{replyCount} replies</span>}
         {reactions.map((entry) => {
           const reactedBySelf = entry.users.includes(normalizeId(selfEmpid));
           const hoverUsers = formatReactionHoverUsers(entry.users, resolveEmployeeLabel);
@@ -972,7 +987,7 @@ ${hoverUsers}`
               title={reactionTitle}
               aria-label={reactionTitle.replace(/\n/g, ', ')}
               onClick={() => onToggleReaction(message.id, entry.emoji)}
-              style={{ border: `1px solid ${reactedBySelf ? '#c7d2fe' : '#cbd5e1'}`, background: reactedBySelf ? '#eef2ff' : '#fff', borderRadius: 999, padding: '1px 7px', fontSize: 12 }}
+              style={{ border: `1px solid ${reactedBySelf ? '#c7d2fe' : '#cbd5e1'}`, background: reactedBySelf ? '#eef2ff' : '#fff', borderRadius: 999, padding: '1px 7px', fontSize: chipFontSize }}
             >
               {entry.emoji} {entry.count}
             </button>
@@ -984,7 +999,7 @@ ${hoverUsers}`
             type="button"
             onClick={() => onToggleReaction(message.id, emoji)}
             aria-label={`React with ${emoji}`}
-            style={{ border: '1px dashed #cbd5e1', background: '#fff', borderRadius: 999, padding: '1px 6px', fontSize: 12 }}
+            style={{ border: '1px dashed #cbd5e1', background: '#fff', borderRadius: 999, padding: '1px 6px', fontSize: chipFontSize }}
           >
             {emoji}
           </button>
@@ -1013,8 +1028,7 @@ ${hoverUsers}`
           selfEmpid={selfEmpid}
           isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
           onAnyAction={onAnyAction}
-          openMenuId={openMenuId}
-          onMenuOpenChange={onMenuOpenChange}
+          textScale={textScale}
         />
       ))}
     </article>
@@ -1044,6 +1058,14 @@ export default function MessagingWidget() {
   });
 
   const [state, dispatch] = useReducer(messagingWidgetReducer, bootState);
+  const messageTextScaleStorageKey = useMemo(
+    () => `messaging-widget:text-scale:${normalizeId(sessionId) || 'anonymous'}`,
+    [sessionId],
+  );
+  const [messageTextScale, setMessageTextScale] = useState(() => {
+    const raw = globalThis.localStorage?.getItem(`messaging-widget:text-scale:${normalizeId(sessionId) || 'anonymous'}`);
+    return clampMessageTextScale(raw);
+  });
   const [messagesByCompany, setMessagesByCompany] = useState({});
   const [presence, setPresence] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -1086,6 +1108,15 @@ export default function MessagingWidget() {
   const hasInitializedPreferredConversationRef = useRef(false);
   const audioContextRef = useRef(null);
   const notifiedMessageIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const raw = globalThis.localStorage?.getItem(messageTextScaleStorageKey);
+    setMessageTextScale(clampMessageTextScale(raw));
+  }, [messageTextScaleStorageKey]);
+
+  useEffect(() => {
+    globalThis.localStorage?.setItem(messageTextScaleStorageKey, String(clampMessageTextScale(messageTextScale)));
+  }, [messageTextScale, messageTextScaleStorageKey]);
 
   const draftStorageKey = useMemo(() => {
     const convKey = state.activeConversationId || 'new';
@@ -2288,6 +2319,11 @@ export default function MessagingWidget() {
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
+  const messageTextScalePercent = Math.round(clampMessageTextScale(messageTextScale) * 100);
+
+  const adjustMessageTextScale = (nextValue) => {
+    setMessageTextScale(clampMessageTextScale(nextValue));
+  };
 
   const handleOpenLinkedTransaction = (transactionId) => {
     if (canViewTransaction(transactionId, normalizeId(sessionId), permissions || {})) {
@@ -3045,6 +3081,35 @@ export default function MessagingWidget() {
           <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread across all threads</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <label htmlFor="messaging-text-size" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>Text size</label>
+          <button
+            type="button"
+            onClick={() => adjustMessageTextScale(messageTextScale - MESSAGE_TEXT_SCALE_STEP)}
+            aria-label="Decrease message text size"
+            style={{ border: '1px solid #475569', borderRadius: 8, background: '#0b1220', color: '#e2e8f0', padding: '6px 8px', fontSize: 12, lineHeight: 1 }}
+          >
+            A-
+          </button>
+          <input
+            id="messaging-text-size"
+            type="range"
+            min={MESSAGE_TEXT_SCALE_MIN}
+            max={MESSAGE_TEXT_SCALE_MAX}
+            step={MESSAGE_TEXT_SCALE_STEP}
+            value={messageTextScale}
+            onChange={(event) => adjustMessageTextScale(event.target.value)}
+            aria-label="Message text size"
+            style={{ width: 82 }}
+          />
+          <button
+            type="button"
+            onClick={() => adjustMessageTextScale(messageTextScale + MESSAGE_TEXT_SCALE_STEP)}
+            aria-label="Increase message text size"
+            style={{ border: '1px solid #475569', borderRadius: 8, background: '#0b1220', color: '#e2e8f0', padding: '6px 8px', fontSize: 12, lineHeight: 1 }}
+          >
+            A+
+          </button>
+          <span style={{ fontSize: 11, color: '#cbd5e1', minWidth: 42, textAlign: 'right' }}>{messageTextScalePercent}%</span>
           <label htmlFor="messaging-company-switch" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>Company</label>
           <input
             id="messaging-company-switch"
@@ -3250,8 +3315,9 @@ export default function MessagingWidget() {
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
                 isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
                 onAnyAction={closeOpenMessageMenus}
-                openMenuId={openMessageMenuId}
-                onMenuOpenChange={(messageId, isOpen) => setOpenMessageMenuId(isOpen ? messageId : null)}
+                isMenuOpen={openMessageMenuId === normalizeId(message.id)}
+                onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
+                textScale={messageTextScale}
               />
             ))}
 
