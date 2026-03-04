@@ -3140,7 +3140,7 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '150px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'grid', gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0 }}>
           <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
@@ -3169,16 +3169,15 @@ export default function MessagingWidget() {
                 </button>
               ))}
             </div>
-            <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1 }}>
+            <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1, gridAutoRows: '32px' }}>
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
                 const cleanedEmployeeLabel = formatEmployeeOption(entry)
                   .replace(/\s*[·•-]?\s*(online|offline|away|busy)\s*$/i, '');
                 return (
-                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0 }}>
+                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0, height: '100%' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatEmployeeOption(entry)}</span>
-                    <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 6px', background: '#f1f5f9' }}>{entry.status}</span>
+                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanedEmployeeLabel}</span>
                   </button>
                 );
               })}
@@ -3388,35 +3387,54 @@ export default function MessagingWidget() {
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
-            <textarea
-              id="messaging-composer"
-              ref={composerRef}
-              value={state.composer.body}
-              onChange={onComposerInput}
-              onPaste={onComposerPaste}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  sendMessage();
-                }
-              }}
-              rows={2}
-              placeholder="Type a message…"
-              aria-label="Message composer"
-              style={{
-                width: '100%',
-                marginTop: 2,
-                borderRadius: 10,
-                border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
-                padding: '6px 8px',
-                fontSize: composerTextFontSize,
-                lineHeight: 1.45,
-                minHeight: 40,
-                maxHeight: 110,
-                overflowY: 'auto',
-                resize: 'none',
-              }}
-            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', marginTop: 2 }}>
+              <textarea
+                id="messaging-composer"
+                ref={composerRef}
+                value={state.composer.body}
+                onChange={onComposerInput}
+                onPaste={onComposerPaste}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                rows={2}
+                placeholder="Type a message…"
+                aria-label="Message composer"
+                style={{
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  borderRadius: 10,
+                  border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
+                  padding: '6px 8px',
+                  fontSize: composerTextFontSize,
+                  lineHeight: 1.45,
+                  minHeight: 40,
+                  maxHeight: 110,
+                  overflowY: 'auto',
+                  resize: 'none',
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!canSendMessage}
+                style={{
+                  flex: '0 0 auto',
+                  border: 0,
+                  borderRadius: 10,
+                  background: canSendMessage ? '#2563eb' : '#94a3b8',
+                  color: '#fff',
+                  minWidth: 84,
+                  padding: '0 14px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Send
+              </button>
+            </div>
 
             {mentionOpen && (
               <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, marginTop: 6, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
