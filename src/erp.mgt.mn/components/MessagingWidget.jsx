@@ -747,6 +747,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
+  const isReplyMessage = Boolean(normalizeId(message.parent_message_id || message.parentMessageId));
   const isCollapsed = collapsedMessageIds.has(message.id);
   const isReplyTarget = activeReplyTarget && Number(activeReplyTarget) === Number(message.id);
   const isHighlighted = highlightedIds.has(normalizeId(message.id));
@@ -849,7 +850,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 Reply
               </button>
             )}
-            {isOwnMessage && !isDeleted && (
+            {isOwnMessage && !isDeleted && !isReplyMessage && (
               <button
                 type="button"
                 onClick={() => {
