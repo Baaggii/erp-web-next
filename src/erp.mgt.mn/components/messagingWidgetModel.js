@@ -100,18 +100,9 @@ export function prioritizeConversationSummaries(conversations = [], draftConvers
     : [];
 
   const sortedConversations = [...activeConversations].sort((a, b) => {
-    const aActivity = getConversationActivityScore(a);
-    const bActivity = getConversationActivityScore(b);
-
-    if (aActivity.kind === 'time' || bActivity.kind === 'time') {
-      if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'time' ? -1 : 1;
-      if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
-    } else if (aActivity.kind === 'id' || bActivity.kind === 'id') {
-      if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'id' ? -1 : 1;
-      if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
-    }
-
-    if (a?.isGeneral !== b?.isGeneral) return a?.isGeneral ? -1 : 1;
+    const aTime = new Date(a?.lastMessageAt || 0).getTime();
+    const bTime = new Date(b?.lastMessageAt || 0).getTime();
+    if (aTime !== bTime) return bTime - aTime;
     return Number(normalizeConversationId(b?.conversationId || b?.id) || 0)
       - Number(normalizeConversationId(a?.conversationId || a?.id) || 0);
   });

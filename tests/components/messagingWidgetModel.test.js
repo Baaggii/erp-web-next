@@ -128,14 +128,3 @@ test('prioritizeConversationSummaries orders by latest activity and keeps draft 
 
   assert.deepEqual(summaries.map((entry) => entry.id), ['__new__', 'conversation:2', 'conversation:1', 'general']);
 });
-
-
-test('prioritizeConversationSummaries falls back to lastMessageId and keeps general first on equal activity', () => {
-  const summaries = prioritizeConversationSummaries([
-    { id: 'conversation:5', conversationId: '5', isGeneral: false, lastMessageAt: null, lastMessageId: '101' },
-    { id: 'general', conversationId: '9', isGeneral: true, lastMessageAt: null, lastMessageId: '101' },
-    { id: 'conversation:6', conversationId: '6', isGeneral: false, lastMessageAt: null, lastMessageId: '102' },
-  ]);
-
-  assert.deepEqual(summaries.map((entry) => entry.id), ['conversation:6', 'general', 'conversation:5']);
-});

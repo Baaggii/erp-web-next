@@ -53,6 +53,7 @@ function GeneralSettingsTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [webPushTestBusy, setWebPushTestBusy] = useState(false);
   const [webPushStatus, setWebPushStatus] = useState('');
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
   const notificationSound = userSettings.notificationSound || 'chime';
@@ -201,6 +202,61 @@ function GeneralSettingsTab() {
               {webPushBusy
                 ? t('web_push_requesting_permission', 'Requesting permission...')
                 : t('web_push_allow_browser', 'Allow browser notifications')}
+            </button>
+            <button
+              type="button"
+              disabled={webPushTestBusy || !webPushEnabled}
+              onClick={async () => {
+                setWebPushTestBusy(true);
+                setWebPushStatus('');
+                try {
+                  const response = await fetch(`${API_BASE}/web_push/test-send`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      title: 'ERP test notification',
+                      body: 'This is a QA-triggered test push notification.',
+                      url: '/#/',
+                    }),
+                    skipErrorToast: true,
+                  });
+                  if (!response.ok) {
+                    setWebPushStatus(t('web_push_test_failed', 'Failed to send test web push notification.'));
+                  } else {
+                    const payload = await response.json().catch(() => ({}));
+                    const count = Number(payload?.activeSubscriptions || 0);
+                    setWebPushStatus(
+                      count > 0
+                        ? t(
+                            'web_push_test_sent',
+                            'Test web push queued. Check device notifications and server logs for delivery.',
+                          )
+                        : t(
+                            'web_push_test_no_subscriptions',
+                            'Test push queued but no active subscriptions were found for this user/device.',
+                          ),
+                    );
+                  }
+                } catch (err) {
+                  setWebPushStatus(t('web_push_test_failed', 'Failed to send test web push notification.'));
+                  console.warn('Failed to send test web push notification', err);
+                } finally {
+                  setWebPushTestBusy(false);
+                }
+              }}
+              style={{
+                marginLeft: '0.5rem',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '4px',
+                border: '1px solid #d1d5db',
+                background: '#f9fafb',
+                cursor: webPushTestBusy || !webPushEnabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {webPushTestBusy
+                ? t('web_push_test_sending', 'Sending test push...')
+                : t('web_push_send_test', 'Send test push')}
             </button>
             {webPushStatus ? (
               <div style={{ marginTop: '0.35rem', fontSize: '0.85rem', color: '#334155' }}>{webPushStatus}</div>

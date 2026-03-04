@@ -89,20 +89,6 @@ test('adaptConversationListResponse sorts by most recent last message regardless
   assert.deepEqual(adapted.items.map((entry) => entry.id), ['conversation:12', 'conversation:10', 'conversation:8']);
 });
 
-
-
-test('adaptConversationListResponse falls back to lastMessageId ordering when timestamp is missing', () => {
-  const adapted = adaptConversationListResponse({
-    items: [
-      { id: 6, type: 'private', visibility_scope: 'private', last_message_at: null, last_message_id: 301 },
-      { id: 7, type: 'private', visibility_scope: 'private', last_message_at: null, last_message_id: 305 },
-      { id: 8, type: 'private', visibility_scope: 'private', last_message_at: null, last_message_id: 302 },
-    ],
-  });
-
-  assert.deepEqual(adapted.items.map((entry) => entry.id), ['conversation:7', 'conversation:8', 'conversation:6']);
-});
-
 test('adaptConversationListResponse does not synthesize non-numeric general conversation ids', () => {
   const adapted = adaptConversationListResponse({
     items: [

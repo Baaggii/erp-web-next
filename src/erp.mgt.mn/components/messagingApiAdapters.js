@@ -95,15 +95,9 @@ export function adaptConversationListResponse(data) {
       })
       .filter(Boolean)
       .sort((a, b) => {
-        const aActivity = toActivityScore(a.lastMessageAt, a.lastMessageId);
-        const bActivity = toActivityScore(b.lastMessageAt, b.lastMessageId);
-        if (aActivity.kind === 'time' || bActivity.kind === 'time') {
-          if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'time' ? -1 : 1;
-          if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
-        } else if (aActivity.kind === 'id' || bActivity.kind === 'id') {
-          if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'id' ? -1 : 1;
-          if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
-        }
+        const aTime = new Date(a.lastMessageAt || 0).getTime();
+        const bTime = new Date(b.lastMessageAt || 0).getTime();
+        if (aTime !== bTime) return bTime - aTime;
         return Number(b.conversationId || 0) - Number(a.conversationId || 0);
       }),
     pageInfo: data?.pageInfo ?? null,
