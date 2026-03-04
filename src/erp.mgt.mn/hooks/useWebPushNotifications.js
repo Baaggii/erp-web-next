@@ -51,7 +51,11 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
     return { ok: false, reason: 'insecure_context' };
   }
 
-  if (!('Notification' in window)) {
+  const notificationApi = globalThis.Notification;
+  const hasNotificationApi = typeof notificationApi !== 'undefined';
+  const hasPushApi = 'serviceWorker' in navigator && 'PushManager' in window;
+
+  if (!hasNotificationApi && !hasPushApi) {
     return { ok: false, reason: 'notifications_unsupported' };
   }
 
@@ -89,13 +93,15 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
     return Notification.permission;
   }
 
-  let permission = Notification.permission;
-  if (promptForPermission && permission !== 'granted') {
+  let permission = hasNotificationApi ? notificationApi.permission : 'default';
+  if (hasNotificationApi && promptForPermission && permission !== 'granted') {
     permission = await askPermission();
   }
-  if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
+  if (hasNotificationApi && permission !== 'granted') {
+    return { ok: false, reason: 'permission_not_granted', permission };
+  }
 
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+  if (!hasPushApi) {
     return { ok: false, reason: 'push_unsupported', permission };
   }
 
@@ -129,6 +135,13 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
         applicationServerKey: urlBase64ToUint8Array(status.publicKey),
       }));
   } catch (error) {
+    if (error?.name === 'NotAllowedError') {
+      return {
+        ok: false,
+        reason: 'permission_not_granted',
+        permission: hasNotificationApi ? notificationApi.permission : permission,
+      };
+    }
     return { ok: false, reason: 'subscription_failed', error };
   }
 
@@ -174,7 +187,9 @@ export default function useWebPushNotifications({ user, userSettings, generalCon
 
     async function register() {
       try {
-        if (Notification.permission !== 'granted') return;
+        if (typeof globalThis.Notification !== 'undefined' && Notification.permission !== 'granted') {
+          return;
+        }
         const result = await requestWebPushPermission({
           userSettings,
           promptForPermission: false,
