@@ -1140,6 +1140,13 @@ async function getTableColumnsSafe(tableName) {
 }
 
 async function ensureValidColumns(tableName, columns, names) {
+  const invalidColumnError = (name) => {
+    const err = new Error(`Invalid column name: ${name}`);
+    err.code = 'INVALID_COLUMN';
+    err.status = 400;
+    return err;
+  };
+
   let lower = new Set(columns.map((c) => c.toLowerCase()));
   let refresh = false;
   for (const name of names) {
@@ -1154,7 +1161,7 @@ async function ensureValidColumns(tableName, columns, names) {
     lower = new Set(fresh.map((c) => c.toLowerCase()));
     for (const name of names) {
       if (!lower.has(String(name).toLowerCase())) {
-        throw new Error(`Invalid column name: ${name}`);
+        throw invalidColumnError(name);
       }
     }
   }

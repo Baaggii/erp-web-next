@@ -8,24 +8,30 @@ import { fileURLToPath } from 'url';
 const logFile = fileURLToPath(new URL('../logs/error.log', import.meta.url));
 
 export function errorHandler(err, req, res, next) {
-  console.error(err.stack);
-  try {
-    fs.mkdirSync(dirname(logFile), { recursive: true });
-    fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${err.stack}\n`);
-  } catch (logErr) {
-    console.error('Failed to write error log:', logErr);
+  const isCsrfError = err.code === 'EBADCSRFTOKEN';
+
+  if (isCsrfError) {
+    console.warn(`[CSRF] ${err.message}`);
+  } else {
+    console.error(err.stack);
+    try {
+      fs.mkdirSync(dirname(logFile), { recursive: true });
+      fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${err.stack}\n`);
+    } catch (logErr) {
+      console.error('Failed to write error log:', logErr);
+    }
   }
 
-  const status = err.status || (err.code === 'EBADCSRFTOKEN' ? 403 : 500);
+  const status = err.status || (isCsrfError ? 403 : 500);
   const correlationId = req?.correlationId || req?.headers?.['x-correlation-id'] || crypto.randomUUID();
   res.setHeader('x-correlation-id', correlationId);
 
   const message =
-    err.code === 'EBADCSRFTOKEN'
+    isCsrfError
       ? 'Invalid or expired CSRF token'
       : err.message || 'Internal Server Error';
 
-  const code = err.code === 'EBADCSRFTOKEN' ? 'CSRF_TOKEN_INVALID' : err.code || 'INTERNAL_ERROR';
+  const code = isCsrfError ? 'CSRF_TOKEN_INVALID' : err.code || 'INTERNAL_ERROR';
 
   return res.status(status).json({
     status,
