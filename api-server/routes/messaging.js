@@ -16,7 +16,6 @@ import {
   patchMessage,
   patchConversationTopic,
   addConversationParticipant,
-  removeConversationParticipant,
   postConversationMessage,
   presenceHeartbeat,
   removeMessageReaction,
@@ -130,21 +129,6 @@ const addConversationParticipantSchema = {
   },
 };
 
-const removeConversationParticipantSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    empid: { type: 'string', minLength: 1, maxLength: 64 },
-    participantEmpid: { type: 'string', minLength: 1, maxLength: 64 },
-    participant_empid: { type: 'string', minLength: 1, maxLength: 64 },
-    participantId: { type: 'string', minLength: 1, maxLength: 64 },
-    participant_id: { type: 'string', minLength: 1, maxLength: 64 },
-    userId: { type: 'string', minLength: 1, maxLength: 64 },
-    user_id: { type: 'string', minLength: 1, maxLength: 64 },
-  },
-};
-
 const messageReactionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -168,7 +152,6 @@ const validateCreateConversation = ajv.compile(createConversationSchema);
 const validatePostConversationMessage = ajv.compile(postConversationMessageSchema);
 const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema);
 const validateAddConversationParticipant = ajv.compile(addConversationParticipantSchema);
-const validateRemoveConversationParticipant = ajv.compile(removeConversationParticipantSchema);
 const validateMessageReaction = ajv.compile(messageReactionSchema);
 
 function validateBody(validator, message) {
@@ -268,36 +251,6 @@ router.post('/conversations/:conversationId/participants', validateBody(validate
     });
     return data;
   }));
-
-
-router.delete('/conversations/:conversationId/participants', validateBody(validateRemoveConversationParticipant, 'Invalid participant payload'), handleRemoveConversationParticipant);
-
-router.delete('/conversations/:conversationId/participant', validateBody(validateRemoveConversationParticipant, 'Invalid participant payload'), handleRemoveConversationParticipant);
-
-router.post('/conversations/:conversationId/participants/remove', validateBody(validateRemoveConversationParticipant, 'Invalid participant payload'), handleRemoveConversationParticipant);
-
-router.post('/conversations/:conversationId/participant/remove', validateBody(validateRemoveConversationParticipant, 'Invalid participant payload'), handleRemoveConversationParticipant);
-
-
-function handleRemoveConversationParticipant(req, res) {
-  return handle(res, req, async () => {
-    const data = await removeConversationParticipant({
-      user: req.user,
-      companyId: req.body?.companyId ?? req.query.companyId,
-      conversationId: Number(req.params.conversationId),
-      payload: req.body,
-      correlationId: req.correlationId,
-    });
-    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'conversation.updated', {
-      conversation_id: data?.conversation?.id ?? Number(req.params.conversationId),
-      conversationId: data?.conversation?.id ?? Number(req.params.conversationId),
-      participant_empid: data?.participant?.empid ?? null,
-      participantEmpid: data?.participant?.empid ?? null,
-      removed: true,
-    });
-    return data;
-  });
-}
 
 router.post('/uploads', messagingUpload.array('files', 8), async (req, res) => {
   try {
