@@ -779,6 +779,9 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       onToggle: (event) => onMenuOpenChange(event.currentTarget.open),
     }
     : {};
+  const metadataFontSize = toScaledFontSize(12, textScale);
+  const bodyFontSize = toScaledFontSize(14, textScale);
+  const chipFontSize = toScaledFontSize(12, textScale);
 
   if (isDeleted) {
     return (
