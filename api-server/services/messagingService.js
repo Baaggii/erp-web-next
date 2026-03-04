@@ -155,24 +155,38 @@ async function enqueueConversationMessageWebPush({
   db,
   companyId,
   conversationId,
+  conversationType,
   authorEmpid,
   messageBody,
   notifyWebPush = enqueueWebPushNotification,
 }) {
   if (!notifyWebPush || !companyId || !conversationId) return;
 
-  const [participantRows] = await db.query(
-    `SELECT empid
-       FROM erp_conversation_participants
-      WHERE company_id = ?
-        AND conversation_id = ?
-        AND left_at IS NULL`,
-    [companyId, conversationId],
-  );
+  let recipientRows = [];
+  if (String(conversationType || '').toLowerCase() === 'general') {
+    const [employeeRows] = await db.query(
+      `SELECT DISTINCT empid
+         FROM users
+        WHERE company_id = ?
+          AND TRIM(COALESCE(empid, '')) <> ''`,
+      [companyId],
+    );
+    recipientRows = employeeRows || [];
+  } else {
+    const [participantRows] = await db.query(
+      `SELECT empid
+         FROM erp_conversation_participants
+        WHERE company_id = ?
+          AND conversation_id = ?
+          AND left_at IS NULL`,
+      [companyId, conversationId],
+    );
+    recipientRows = participantRows || [];
+  }
 
   const sender = String(authorEmpid || '').trim().toUpperCase();
   const recipients = new Set(
-    (participantRows || [])
+    recipientRows
       .map((row) => String(row?.empid || '').trim().toUpperCase())
       .filter((empid) => empid && empid !== sender),
   );
@@ -186,6 +200,7 @@ async function enqueueConversationMessageWebPush({
       message: buildWebPushMessageText(messageBody),
       title: 'ERP message',
       url: '/#/',
+      bypassKindMute: true,
     });
   }
 }
@@ -234,6 +249,7 @@ export async function createConversationRoot({
     db,
     companyId: scopedCompanyId,
     conversationId,
+    conversationType: type,
     authorEmpid: sender,
     messageBody: message?.body,
     notifyWebPush,
@@ -281,6 +297,7 @@ export async function postConversationMessage({
     db,
     companyId: scopedCompanyId,
     conversationId: normalizedConversationId,
+    conversationType: conversation?.type,
     authorEmpid: String(user?.empid || ''),
     messageBody: message?.body,
     notifyWebPush,

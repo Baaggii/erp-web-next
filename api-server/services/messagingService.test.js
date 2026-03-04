@@ -72,6 +72,15 @@ class MockDb {
         .map((p) => ({ empid: p.empid }));
       return [rows, undefined];
     }
+    if (text.startsWith('SELECT DISTINCT empid FROM users')) {
+      const [companyId] = params;
+      const rows = this.employees
+        .filter((empid) => String(empid || '').trim())
+        .map((empid) => ({ empid: String(empid).trim() }));
+      const unique = Array.from(new Map(rows.map((row) => [row.empid.toUpperCase(), row])).values());
+      if (Number(companyId) <= 0) return [[], undefined];
+      return [unique, undefined];
+    }
     if (text.startsWith('INSERT INTO erp_messages')) {
       const [companyId, conversationId, authorEmpid, parentMessageId, body, messageClass] = params;
       const row = { id: this.nextMessageId++, company_id: Number(companyId), conversation_id: Number(conversationId), author_empid: authorEmpid, parent_message_id: parentMessageId ? Number(parentMessageId) : null, body, message_class: messageClass, created_at: new Date().toISOString(), deleted_at: null };
@@ -253,6 +262,7 @@ test('posting message enqueues web push for recipients except sender', async () 
   assert.equal(pushed.length, 2);
   assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E1', 'E3']));
   assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+  assert.equal(pushed.every((entry) => entry.bypassKindMute === true), true);
 });
 
 
@@ -291,6 +301,7 @@ test('general conversation message enqueues web push for company employees excep
   assert.equal(pushed.length, 2);
   assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
   assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+  assert.equal(pushed.every((entry) => entry.bypassKindMute === true), true);
 });
 
 

@@ -97,6 +97,7 @@ export async function notifyUser({
     relatedId: relatedId ?? null,
     title: 'ERP notification',
     url: '/#/notifications',
+    bypassKindMute: true,
   });
   return payload;
 }
