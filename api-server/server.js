@@ -71,11 +71,16 @@ import messagingRoutes from "./routes/messaging.js";
 import reportRoutes from "./routes/report.js";
 import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
+import webPushRoutes from "./routes/web_push.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
   setNotificationStore as setUnifiedNotificationStore,
 } from "./services/notificationService.js";
+import {
+  setWebPushStore,
+  setWebPushEmitter,
+} from "./services/webPushService.js";
 import {
   setMessagingIo,
   markOnline,
@@ -271,6 +276,8 @@ app.set("io", io);
 setNotificationEmitter(io);
 setUnifiedNotificationEmitter(io);
 setUnifiedNotificationStore(pool);
+setWebPushStore(pool);
+setWebPushEmitter(io);
 setMessagingIo(io);
 
 // Serve uploaded images statically
@@ -360,6 +367,7 @@ app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
 app.use("/api/cnc_processing", cncProcessingRoutes);
 app.use("/api", messagingRoutes);
 app.use("/api/messaging", messagingRoutes);
+app.use("/api/web_push", webPushRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
