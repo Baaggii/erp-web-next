@@ -2416,14 +2416,27 @@ export default function MessagingWidget() {
     return activeConversationParticipants.map((empid) => resolveEmployeeLabel(empid));
   }, [activeConversationParticipants, isDraftConversation, resolveEmployeeLabel, state.composer.recipients]);
   const conversationParticipantIds = useMemo(() => new Set(activeConversationParticipants), [activeConversationParticipants]);
+  const existingDirectConversationParticipantIds = useMemo(() => {
+    if (!isDraftConversation || !selfEmpid) return new Set();
+    return new Set(
+      conversations
+        .filter((conversation) => !conversation?.isGeneral)
+        .flatMap((conversation) => {
+          const participants = Array.from(new Set((conversation?.participants || []).map(normalizeId).filter(Boolean)));
+          if (participants.length !== 2 || !participants.includes(selfEmpid)) return [];
+          return participants.filter((empid) => empid !== selfEmpid);
+        }),
+    );
+  }, [conversations, isDraftConversation, selfEmpid]);
   const addRecipientCandidates = useMemo(() => {
     const query = composerRecipientSearch.trim().toLowerCase();
     return employeeRecords.filter((entry) => {
       if (conversationParticipantIds.has(entry.id)) return false;
+      if (existingDirectConversationParticipantIds.has(entry.id)) return false;
       if (!query) return true;
       return entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query);
     });
-  }, [composerRecipientSearch, employeeRecords, conversationParticipantIds]);
+  }, [composerRecipientSearch, employeeRecords, conversationParticipantIds, existingDirectConversationParticipantIds]);
 
   const activeRootMessage = useMemo(
     () => messages.find((entry) => Number(entry.id) === Number(activeConversation?.conversationId)) || null,
