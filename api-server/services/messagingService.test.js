@@ -13,6 +13,8 @@ const {
   getConversationMessages,
   deleteConversation,
   patchConversationTopic,
+  addConversationParticipant,
+  removeConversationParticipant,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -64,6 +66,13 @@ class MockDb {
       const [companyId, conversationId, empid] = params;
       const exists = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
       return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
+    }
+
+    if (text.startsWith('UPDATE erp_conversation_participants')) {
+      const [companyId, conversationId, empid] = params;
+      const row = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
+      if (row) row.left_at = new Date().toISOString();
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
     }
     if (text.startsWith('SELECT empid FROM erp_conversation_participants')) {
       const [companyId, conversationId] = params;
@@ -117,7 +126,7 @@ class MockDb {
         .filter((c) => (hasCursor ? c.id < cursorId : true))
         .sort((a, b) => (b.type === 'general') - (a.type === 'general') || b.id - a.id)
         .slice(0, max)
-        .map((c) => ({ ...c, is_general: c.type === 'general' }));
+        .map((c) => ({ ...c, is_general: c.type === 'general', participant_empids: this.participants.filter((p) => p.company_id === c.company_id && p.conversation_id === c.id && !p.left_at).map((p) => p.empid).join(',') || null }));
       return [rows, undefined];
     }
 
@@ -384,6 +393,77 @@ test('conversation creator/admin can update topic, non-creator cannot', async ()
   assert.equal(adminUpdated.conversation.topic, 'Updated by admin');
 });
 
+
+
+
+test('addConversationParticipant adds member to private conversation and grants visibility', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 3 };
+
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 3,
+    db,
+    getSession,
+    payload: {
+      type: 'private',
+      participants: ['E2'],
+      topic: 'Ops',
+      body: 'Initial',
+    },
+  });
+
+  const before = await listConversations({ user: { empid: 'E3', companyId: 3 }, companyId: 3, db, getSession });
+  assert.equal(before.items.some((entry) => entry.id === created.conversation.id), false);
+
+  const added = await addConversationParticipant({
+    user: creator,
+    companyId: 3,
+    conversationId: created.conversation.id,
+    db,
+    getSession,
+    payload: { empid: 'E3' },
+  });
+  assert.equal(added.participant.empid, 'E3');
+
+  const after = await listConversations({ user: { empid: 'E3', companyId: 3 }, companyId: 3, db, getSession });
+  assert.equal(after.items.some((entry) => entry.id === created.conversation.id), true);
+});
+
+
+test('removeConversationParticipant removes member from private conversation visibility', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 5 };
+
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 5,
+    db,
+    getSession,
+    payload: {
+      type: 'private',
+      participants: ['E2', 'E3'],
+      topic: 'Ops',
+      body: 'Initial',
+    },
+  });
+
+  const before = await listConversations({ user: { empid: 'E3', companyId: 5 }, companyId: 5, db, getSession });
+  assert.equal(before.items.some((entry) => entry.id === created.conversation.id), true);
+
+  const removed = await removeConversationParticipant({
+    user: creator,
+    companyId: 5,
+    conversationId: created.conversation.id,
+    db,
+    getSession,
+    payload: { empid: 'E3' },
+  });
+  assert.equal(removed.removed, true);
+
+  const after = await listConversations({ user: { empid: 'E3', companyId: 5 }, companyId: 5, db, getSession });
+  assert.equal(after.items.some((entry) => entry.id === created.conversation.id), false);
+});
 
 test('patchConversationTopic emits conversation.updated socket event', async () => {
   const db = new MockDb();

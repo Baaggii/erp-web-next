@@ -126,6 +126,22 @@ async function insertParticipants(db, companyId, conversationId, participants) {
   return unique;
 }
 
+
+async function removeParticipant(db, companyId, conversationId, empid) {
+  const normalizedEmpid = String(empid || '').trim();
+  if (!normalizedEmpid) return false;
+  const [result] = await db.query(
+    `UPDATE erp_conversation_participants
+        SET left_at = CURRENT_TIMESTAMP
+      WHERE company_id = ?
+        AND conversation_id = ?
+        AND empid = ?
+        AND left_at IS NULL`,
+    [companyId, conversationId, normalizedEmpid],
+  );
+  return Boolean(result?.affectedRows);
+}
+
 async function createMessage(db, { companyId, conversationId, authorEmpid, parentMessageId = null, body, messageClass }) {
   const [inserted] = await db.query(
     `INSERT INTO erp_messages
@@ -333,6 +349,80 @@ export async function patchConversationTopic({ user, companyId, conversationId, 
   return { correlationId, conversation: { id: normalizedConversationId, company_id: scopedCompanyId, topic } };
 }
 
+export async function addConversationParticipant({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+
+  if (String(conversation?.type || '').toLowerCase() === 'general') {
+    throw createError(400, 'GENERAL_CONVERSATION_IMMUTABLE', 'General conversation participants cannot be modified');
+  }
+
+  const participantEmpid = String(
+    payload?.empid
+    ?? payload?.participantEmpid
+    ?? payload?.participant_empid
+    ?? payload?.participantId
+    ?? payload?.participant_id
+    ?? payload?.userId
+    ?? payload?.user_id
+    ?? '',
+  ).trim();
+  if (!participantEmpid) throw createError(400, 'PARTICIPANT_REQUIRED', 'participant empid is required');
+
+  await insertParticipants(db, scopedCompanyId, normalizedConversationId, [participantEmpid]);
+
+  return {
+    correlationId,
+    conversation: { id: normalizedConversationId, company_id: scopedCompanyId },
+    participant: { empid: participantEmpid },
+  };
+}
+
+
+
+export async function removeConversationParticipant({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+
+  if (String(conversation?.type || '').toLowerCase() === 'general') {
+    throw createError(400, 'GENERAL_CONVERSATION_IMMUTABLE', 'General conversation participants cannot be modified');
+  }
+
+  const participantEmpid = String(
+    payload?.empid
+    ?? payload?.participantEmpid
+    ?? payload?.participant_empid
+    ?? payload?.participantId
+    ?? payload?.participant_id
+    ?? payload?.userId
+    ?? payload?.user_id
+    ?? '',
+  ).trim();
+  if (!participantEmpid) throw createError(400, 'PARTICIPANT_REQUIRED', 'participant empid is required');
+
+  const removed = await removeParticipant(db, scopedCompanyId, normalizedConversationId, participantEmpid);
+  if (!removed) throw createError(404, 'PARTICIPANT_NOT_FOUND', 'Participant not found in conversation');
+
+  return {
+    correlationId,
+    conversation: { id: normalizedConversationId, company_id: scopedCompanyId },
+    participant: { empid: participantEmpid },
+    removed: true,
+  };
+}
+
 export async function deleteConversation({ user, companyId, conversationId, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
@@ -378,7 +468,14 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
   const [rows] = await db.query(
     `SELECT c.*,
             lm.body AS last_message_body,
-            (c.type = 'general') AS is_general
+            (c.type = 'general') AS is_general,
+            (
+              SELECT GROUP_CONCAT(p.empid ORDER BY p.empid SEPARATOR ',')
+                FROM erp_conversation_participants p
+               WHERE p.company_id = c.company_id
+                 AND p.conversation_id = c.id
+                 AND p.left_at IS NULL
+            ) AS participant_empids
        FROM erp_conversations c
        LEFT JOIN erp_messages lm
          ON lm.id = c.last_message_id
