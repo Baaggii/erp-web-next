@@ -2320,6 +2320,7 @@ export default function MessagingWidget() {
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
   const messageTextScalePercent = Math.round(clampMessageTextScale(messageTextScale) * 100);
+  const composerTextFontSize = toScaledFontSize(14, messageTextScale);
 
   const adjustMessageTextScale = (nextValue) => {
     setMessageTextScale(clampMessageTextScale(nextValue));
