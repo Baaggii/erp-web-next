@@ -878,6 +878,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
   const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
+  const messageLinks = useMemo(() => extractWebLinks(safeBody), [safeBody]);
+  const [linkPreviews, setLinkPreviews] = useState({});
   const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
@@ -888,6 +890,29 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const metadataFontSize = toScaledFontSize(12, textScale);
   const bodyFontSize = toScaledFontSize(14, textScale);
   const chipFontSize = toScaledFontSize(12, textScale);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pending = messageLinks.filter((url) => !linkPreviews[url]);
+    if (pending.length === 0) return () => { cancelled = true; };
+
+    pending.forEach((url) => {
+      fetch(`/api/messaging/link-preview?url=${encodeURIComponent(url)}`, { credentials: 'include' })
+        .then((res) => res.json().catch(() => null))
+        .then((data) => {
+          if (cancelled || !data) return;
+          setLinkPreviews((prev) => ({ ...prev, [url]: data }));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setLinkPreviews((prev) => ({ ...prev, [url]: { url, ok: false, headers: [], title: '', error: 'Preview unavailable' } }));
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [messageLinks, linkPreviews]);
 
   if (isDeleted) {
     return (
@@ -1032,6 +1057,31 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
+      {messageLinks.length > 0 && (
+        <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+          {messageLinks.map((url) => {
+            const preview = linkPreviews[url];
+            if (!preview) {
+              return <div key={url} style={{ fontSize: metadataFontSize, color: '#64748b' }}>Loading link headers for {url}…</div>;
+            }
+            return (
+              <div key={url} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px', background: '#f8fafc' }}>
+                <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: chipFontSize, fontWeight: 600 }}>{preview.title || url}</a>
+                <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(preview.headers || []).map((header) => (
+                    <span key={`${url}-${header.name}`} style={{ fontSize: metadataFontSize, color: '#475569', border: '1px solid #cbd5e1', borderRadius: 999, padding: '1px 6px', background: '#fff' }}>
+                      {header.name}: {header.value}
+                    </span>
+                  ))}
+                  {(!preview.headers || preview.headers.length === 0) && (
+                    <span style={{ fontSize: metadataFontSize, color: '#94a3b8' }}>{preview.error || 'No headers available'}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {actionTrace.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {actionTrace.map((entry) => {
