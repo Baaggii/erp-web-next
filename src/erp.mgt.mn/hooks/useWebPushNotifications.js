@@ -51,15 +51,11 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
     return { ok: false, reason: 'insecure_context' };
   }
 
-  const notificationApi = globalThis.Notification ?? window.Notification;
-  const hasNotificationApi =
-    typeof notificationApi !== 'undefined' &&
-    (typeof notificationApi.permission === 'string' || typeof notificationApi.requestPermission === 'function');
-  const hasServiceWorkerApi = 'serviceWorker' in navigator;
-  const hasPushManagerApi = 'PushManager' in globalThis;
-  const hasPushApi = hasServiceWorkerApi && hasPushManagerApi;
+  const notificationApi = globalThis.Notification;
+  const hasNotificationApi = typeof notificationApi !== 'undefined';
+  const hasPushApi = 'serviceWorker' in navigator && 'PushManager' in window;
 
-  if (!hasNotificationApi && !hasServiceWorkerApi) {
+  if (!hasNotificationApi && !hasPushApi) {
     return { ok: false, reason: 'notifications_unsupported' };
   }
 
