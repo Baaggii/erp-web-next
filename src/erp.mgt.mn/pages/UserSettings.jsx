@@ -9,6 +9,7 @@ import {
   getNotificationSoundOptions,
   playNotificationSound,
 } from '../utils/playNotificationSound.js';
+import { requestWebPushPermission } from '../hooks/useWebPushNotifications.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation(['translation', 'tooltip']);
