@@ -155,6 +155,34 @@ function normalizeReadByEntries(value) {
     .filter(Boolean);
 }
 
+function isMessageDeleted(message) {
+  if (!message || typeof message !== 'object') return false;
+  const deletedAt = message?.deleted_at || message?.deletedAt || message?.del_date || message?.delDate;
+  if (deletedAt) return true;
+  return [message?.is_deleted, message?.isDeleted, message?.deleted]
+    .some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
+}
+
+function toDeletedMessage(message, payload = {}) {
+  const deletedAt = payload?.deleted_at || payload?.deletedAt || payload?.del_date || payload?.delDate || new Date().toISOString();
+  const deletedByEmpid = normalizeId(
+    payload?.deleted_by_empid
+    || payload?.deleted_by
+    || payload?.deletedByEmpid
+    || payload?.deletedBy
+    || payload?.del_emp,
+  );
+
+  return {
+    ...message,
+    ...payload,
+    body: '',
+    deleted_at: deletedAt,
+    is_deleted: true,
+    deleted_by_empid: deletedByEmpid || message?.deleted_by_empid || null,
+  };
+}
+
 function extractMessageActionTrace(message, resolveEmployeeLabel) {
   if (!message || typeof message !== 'object') return [];
 
@@ -175,7 +203,7 @@ function extractMessageActionTrace(message, resolveEmployeeLabel) {
     || message?.updatedByEmpid
     || message?.updatedBy,
   );
-  const markedDeleted = deletedAt || [message?.is_deleted, message?.isDeleted, message?.deleted].some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
+  const markedDeleted = isMessageDeleted(message);
   const wasEdited = updatedAt && (!createdAt || new Date(updatedAt).getTime() > new Date(createdAt).getTime() + 1000);
 
   if (wasEdited) {
