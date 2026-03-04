@@ -3179,6 +3179,11 @@ export default function MessagingWidget() {
       return;
     }
 
+    if (activeConversationParticipants.length <= 2) {
+      setComposerAnnouncement('A conversation must keep at least 2 participants. Add someone first before removing a participant.');
+      return;
+    }
+
     const activeCompany = state.activeCompanyId || companyId;
     const label = resolveEmployeeLabel(participantEmpid);
     const confirmed = globalThis.confirm(`Remove ${label} from this conversation?`);
@@ -3763,7 +3768,22 @@ export default function MessagingWidget() {
                           <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
                           <span style={{ fontSize: 13, color: '#0f172a' }}>{label}</span>
                           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{empid}</span>
-                          <button type="button" onClick={() => onRemoveConversationParticipant(empid)} style={{ border: '1px solid #fecaca', borderRadius: 6, background: '#fff1f2', color: '#b91c1c', padding: '2px 8px', fontSize: 12 }}>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveConversationParticipant(empid)}
+                            disabled={activeConversationParticipants.length <= 2}
+                            title={activeConversationParticipants.length <= 2 ? 'At least 2 participants are required' : 'Remove participant'}
+                            style={{
+                              border: '1px solid #fecaca',
+                              borderRadius: 6,
+                              background: '#fff1f2',
+                              color: '#b91c1c',
+                              padding: '2px 8px',
+                              fontSize: 12,
+                              opacity: activeConversationParticipants.length <= 2 ? 0.5 : 1,
+                              cursor: activeConversationParticipants.length <= 2 ? 'not-allowed' : 'pointer',
+                            }}
+                          >
                             Remove
                           </button>
                         </div>
