@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { pool, getEmploymentSession } from '../../db/index.js';
+import { enqueueWebPushNotification } from './webPushService.js';
 
 const MAX_MESSAGE_LENGTH = 4000;
 const CURSOR_PAGE_SIZE = 50;
@@ -143,7 +144,61 @@ async function createMessage(db, { companyId, conversationId, authorEmpid, paren
   return rows[0];
 }
 
-export async function createConversationRoot({ user, companyId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+function buildWebPushMessageText(body) {
+  const normalized = String(body || '').trim();
+  if (!normalized) return 'You have a new message';
+  if (normalized.length <= 160) return normalized;
+  return `${normalized.slice(0, 157)}...`;
+}
+
+async function enqueueConversationMessageWebPush({
+  db,
+  companyId,
+  conversationId,
+  authorEmpid,
+  messageBody,
+  notifyWebPush = enqueueWebPushNotification,
+}) {
+  if (!notifyWebPush || !companyId || !conversationId) return;
+
+  const [participantRows] = await db.query(
+    `SELECT empid
+       FROM erp_conversation_participants
+      WHERE company_id = ?
+        AND conversation_id = ?
+        AND left_at IS NULL`,
+    [companyId, conversationId],
+  );
+
+  const sender = String(authorEmpid || '').trim().toUpperCase();
+  const recipients = new Set(
+    (participantRows || [])
+      .map((row) => String(row?.empid || '').trim().toUpperCase())
+      .filter((empid) => empid && empid !== sender),
+  );
+
+  for (const empid of recipients) {
+    notifyWebPush({
+      companyId,
+      empid,
+      kind: 'message',
+      relatedId: conversationId,
+      message: buildWebPushMessageText(messageBody),
+      title: 'ERP message',
+      url: '/#/',
+    });
+  }
+}
+
+export async function createConversationRoot({
+  user,
+  companyId,
+  payload,
+  correlationId,
+  db = pool,
+  getSession = getEmploymentSession,
+  notifyWebPush = enqueueWebPushNotification,
+}) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const type = String(payload?.type || 'private').trim().toLowerCase();
@@ -175,10 +230,27 @@ export async function createConversationRoot({ user, companyId, payload, correla
     body: sanitizeBody(payload?.body),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
   });
+  await enqueueConversationMessageWebPush({
+    db,
+    companyId: scopedCompanyId,
+    conversationId,
+    authorEmpid: sender,
+    messageBody: message?.body,
+    notifyWebPush,
+  });
   return { correlationId, conversation: { id: conversationId, company_id: scopedCompanyId, type, topic, linked_type: linkedType, linked_id: linkedId }, message };
 }
 
-export async function postConversationMessage({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+export async function postConversationMessage({
+  user,
+  companyId,
+  conversationId,
+  payload,
+  correlationId,
+  db = pool,
+  getSession = getEmploymentSession,
+  notifyWebPush = enqueueWebPushNotification,
+}) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const normalizedConversationId = toId(conversationId ?? payload?.conversationId ?? payload?.conversation_id);
@@ -204,6 +276,14 @@ export async function postConversationMessage({ user, companyId, conversationId,
     parentMessageId,
     body: sanitizeBody(payload?.body),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
+  });
+  await enqueueConversationMessageWebPush({
+    db,
+    companyId: scopedCompanyId,
+    conversationId: normalizedConversationId,
+    authorEmpid: String(user?.empid || ''),
+    messageBody: message?.body,
+    notifyWebPush,
   });
   return { correlationId, conversation: { id: normalizedConversationId }, message };
 }
