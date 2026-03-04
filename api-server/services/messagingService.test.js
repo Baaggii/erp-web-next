@@ -262,6 +262,7 @@ test('posting message enqueues web push for recipients except sender', async () 
   assert.equal(pushed.length, 2);
   assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E1', 'E3']));
   assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+  assert.equal(pushed.every((entry) => entry.bypassKindMute === true), true);
 });
 
 
@@ -300,6 +301,7 @@ test('general conversation message enqueues web push for company employees excep
   assert.equal(pushed.length, 2);
   assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
   assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+  assert.equal(pushed.every((entry) => entry.bypassKindMute === true), true);
 });
 
 

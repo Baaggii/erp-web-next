@@ -127,14 +127,14 @@ function isKindMuted(settings, kind) {
   return Boolean(normalizedKind && mutedKinds.includes(normalizedKind));
 }
 
-async function isWebPushEnabled({ companyId, empid, kind }) {
+async function isWebPushEnabled({ companyId, empid, kind, bypassKindMute = false }) {
   const { config } = await getGeneralConfig(companyId);
   if (!config?.notifications?.webPushEnabled) return false;
 
   const settings = await getUserSettings(empid, companyId);
   if (settings?.webPushEnabled !== true) return false;
   if (isMutedByHour(settings)) return false;
-  if (isKindMuted(settings, kind)) return false;
+  if (!bypassKindMute && isKindMuted(settings, kind)) return false;
   return true;
 }
 
@@ -255,6 +255,7 @@ async function processJob(job) {
     companyId: job.companyId,
     empid: job.empid,
     kind: job.kind,
+    bypassKindMute: job.bypassKindMute === true,
   });
   if (!enabled) return;
 
