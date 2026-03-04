@@ -758,6 +758,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
   const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
+  const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
       open: isMenuOpen,
@@ -767,7 +768,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
 
   if (isDeleted) {
     return (
-      <div style={{ marginBottom: 6, marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0), marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0, maxWidth: '92%', width: 'fit-content', minWidth: 'min(70%, 520px)', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+      <div style={{ marginBottom: 6, marginLeft: isAuthoredBySelf ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0), marginRight: isAuthoredBySelf ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0, maxWidth: '92%', width: 'fit-content', minWidth: 'min(70%, 520px)', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
         This message was deleted.
         {!isCollapsed && message.replies.map((child) => (
           <MessageNode
@@ -790,7 +791,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onPreviewAttachment={onPreviewAttachment}
             onToggleReaction={onToggleReaction}
             selfEmpid={selfEmpid}
-            isOwnMessage={isOwnMessage}
+            isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
             onAnyAction={onAnyAction}
           />
         ))}
@@ -809,8 +810,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
         padding: '6px 8px',
         marginBottom: 6,
-        marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
-        marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
+        marginLeft: isAuthoredBySelf ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
+        marginRight: isAuthoredBySelf ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
         maxWidth: '92%',
         width: 'fit-content',
         minWidth: 'min(70%, 520px)',
@@ -849,7 +850,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 Reply
               </button>
             )}
-            {isOwnMessage && !isDeleted && (
+            {isAuthoredBySelf && !isDeleted && (
               <button
                 type="button"
                 onClick={() => {
@@ -1007,7 +1008,7 @@ ${hoverUsers}`
           onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
           selfEmpid={selfEmpid}
-          isOwnMessage={isOwnMessage}
+          isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
           onAnyAction={onAnyAction}
         />
       ))}
