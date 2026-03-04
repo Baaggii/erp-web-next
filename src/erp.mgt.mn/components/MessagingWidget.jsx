@@ -755,6 +755,7 @@ function canViewTransaction(transactionId, userId, permissions) {
 }
 
 function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+  const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
@@ -775,8 +776,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
-      open: openMenuId === normalizedMessageId,
-      onToggle: (event) => onMenuOpenChange(normalizedMessageId, event.currentTarget.open),
+      open: isMenuOpen,
+      onToggle: (event) => onMenuOpenChange(event.currentTarget.open),
     }
     : {};
   const metadataFontSize = toScaledFontSize(12, textScale);
@@ -858,7 +859,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={(event) => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onReply(message.id);
                 }}
@@ -872,7 +873,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onEdit(message);
                 }}
@@ -888,7 +889,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onOpenLinkedTransaction(linked.linkedId);
                 }}
@@ -902,7 +903,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
                 }}
@@ -913,12 +914,12 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {!isDeleted && canDeleteMessage(message) && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
@@ -2320,6 +2321,7 @@ export default function MessagingWidget() {
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
   const messageTextScalePercent = Math.round(clampMessageTextScale(messageTextScale) * 100);
+  const composerTextFontSize = toScaledFontSize(14, messageTextScale);
 
   const adjustMessageTextScale = (nextValue) => {
     setMessageTextScale(clampMessageTextScale(nextValue));
@@ -3138,9 +3140,9 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '180px minmax(0,1fr)', gap: 8, padding: 8, minHeight: 0, flex: 1 }}>
-        <aside style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#ffffff', display: 'grid', gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '150px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
+        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'grid', gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0 }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
               value={employeeSearch}
@@ -3175,7 +3177,8 @@ export default function MessagingWidget() {
                 return (
                   <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanedEmployeeLabel}</span>
+                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatEmployeeOption(entry)}</span>
+                    <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 6px', background: '#f1f5f9' }}>{entry.status}</span>
                   </button>
                 );
               })}
@@ -3185,7 +3188,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, minWidth: 0, alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -3234,7 +3237,7 @@ export default function MessagingWidget() {
           </div>
         </aside>
 
-        <section style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#ffffff', display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+        <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: '4px 10px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
             <strong style={{ display: 'block', fontSize: 13, color: '#0f172a', lineHeight: 1.2, overflowWrap: 'anywhere' }}>
               {activeTopic} — {activeConversation?.isGeneral ? 'Everybody' : (activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'No participants yet')}
@@ -3264,7 +3267,7 @@ export default function MessagingWidget() {
           </div>
           <main
             ref={threadPaneRef}
-            style={{ padding: '6px 10px 4px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0, minWidth: 0 }}
+            style={{ padding: '6px 10px 4px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }}
             aria-live="polite"
             onScroll={async (event) => {
               const container = event.currentTarget;
