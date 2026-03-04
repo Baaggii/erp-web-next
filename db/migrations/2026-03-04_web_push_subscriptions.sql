@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `web_push_subscriptions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `company_id` int NOT NULL,
+  `empid` varchar(10) NOT NULL,
+  `endpoint` text NOT NULL,
+  `p256dh` varchar(255) NOT NULL,
+  `auth` varchar(255) NOT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `subscription_hash` char(64) NOT NULL,
+  `notification_types` json DEFAULT NULL,
+  `mute_start_hour` tinyint unsigned DEFAULT NULL,
+  `mute_end_hour` tinyint unsigned DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `last_seen` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_subscription_hash` (`subscription_hash`),
+  KEY `idx_company_empid_active` (`company_id`,`empid`,`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

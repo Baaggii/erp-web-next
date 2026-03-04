@@ -68,7 +68,7 @@ export default function NotificationsPage({
   activeDashboardTab = null,
 }) {
   const { workflows, markWorkflowSeen, temporary, notificationColors } = usePendingRequests();
-  useAuth();
+  const { user } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -96,6 +96,10 @@ export default function NotificationsPage({
   });
   const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [expandedLists, setExpandedLists] = useState({});
+
+  if (user === undefined) {
+    return null;
+  }
 
   const temporaryReviewPending =
     Number(temporary?.counts?.review?.pendingCount ?? temporary?.counts?.review?.count) || 0;

@@ -35,6 +35,7 @@ import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from "./NotificationDots
 import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
 import MessagingWidget from "./MessagingWidget.jsx";
+import useWebPushNotifications from "../hooks/useWebPushNotifications.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -892,6 +893,7 @@ function stripStepForSave(step) {
 export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
+  useWebPushNotifications({ user, userSettings, generalConfig });
   const { t } = useContext(LangContext);
   const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
@@ -4092,13 +4094,14 @@ export function Header({
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
-  const { permissions: perms, user, setUser } = useContext(AuthContext);
+  const { permissions: perms, user, setUser, userSettings } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const location = useLocation();
   const navigate = useNavigate();
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
+  useWebPushNotifications({ user, userSettings, generalConfig });
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
   const hasTemporaryNew = Boolean(temporary?.hasNew);
@@ -4381,9 +4384,10 @@ function MainWindow({ title }) {
     openTourViewer,
     ensureTourDefinition,
   } = useContext(TourContext);
-  const { userSettings, session } = useContext(AuthContext);
+  const { user, userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
+  useWebPushNotifications({ user, userSettings, generalConfig });
   const toastApi = useToast();
   const addToast = useCallback(
     (message, type) => {

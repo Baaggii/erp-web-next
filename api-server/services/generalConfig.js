@@ -57,6 +57,7 @@ const defaults = {
   },
   notifications: {
     workflowToastEnabled: false,
+    webPushEnabled: false,
   },
   images: {
     basePath: 'uploads',
@@ -190,6 +191,10 @@ async function readConfig(companyId = 0) {
       result.notifications.workflowToastEnabled,
       defaults.notifications.workflowToastEnabled,
     );
+    result.notifications.webPushEnabled = coerceBoolean(
+      result.notifications.webPushEnabled,
+      defaults.notifications.webPushEnabled,
+    );
     return { config: withSystemInfo(result, companyId), isDefault };
   } catch {
     return { config: withSystemInfo({ ...defaults }, companyId), isDefault: true };
@@ -243,6 +248,10 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   cfg.notifications.workflowToastEnabled = coerceBoolean(
     cfg.notifications.workflowToastEnabled,
     defaults.notifications.workflowToastEnabled,
+  );
+  cfg.notifications.webPushEnabled = coerceBoolean(
+    cfg.notifications.webPushEnabled,
+    defaults.notifications.webPushEnabled,
   );
   if (updates.plan) {
     cfg.plan = {

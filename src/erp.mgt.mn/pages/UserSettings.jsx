@@ -9,6 +9,7 @@ import {
   getNotificationSoundOptions,
   playNotificationSound,
 } from '../utils/playNotificationSound.js';
+import { requestWebPushPermission } from '../hooks/useWebPushNotifications.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation(['translation', 'tooltip']);
@@ -58,6 +59,10 @@ function GeneralSettingsTab() {
     ? Math.min(Math.max(rawNotificationVolume, 0), 1)
     : 1;
   const soundOptions = getNotificationSoundOptions();
+  const webPushEnabled = userSettings.webPushEnabled ?? false;
+  const webPushMutedKinds = Array.isArray(userSettings.webPushMutedKinds)
+    ? userSettings.webPushMutedKinds.join(', ')
+    : userSettings.webPushMutedKinds || '';
   return (
     <div>
       <TooltipWrapper title={t('enable_tooltips', { ns: 'tooltip' })}>
@@ -107,6 +112,70 @@ function GeneralSettingsTab() {
             {t('preview_notification_sound', 'Preview sound')}
           </button>
         )}
+        <div style={{ marginTop: '0.75rem' }}>
+          <TooltipWrapper
+            title={t('settings_enable_web_push', {
+              ns: 'tooltip',
+              defaultValue: 'Allow this browser/device to receive push notifications',
+            })}
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={webPushEnabled}
+                onChange={(e) => updateUserSettings({ webPushEnabled: e.target.checked })}
+              />{' '}
+              {t('settings_enable_web_push', 'Enable web push notifications')}
+            </label>
+          </TooltipWrapper>
+          <div style={{ marginTop: '0.5rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span>{t('web_push_muted_kinds', 'Muted notification kinds (comma-separated)')}</span>
+              <input
+                type="text"
+                value={webPushMutedKinds}
+                placeholder="request,response,transaction"
+                onChange={(e) =>
+                  updateUserSettings({
+                    webPushMutedKinds: e.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem' }}>
+            <label>
+              {t('web_push_mute_start_hour', 'Mute start hour (0-23)')}{' '}
+              <input
+                type="number"
+                min="0"
+                max="23"
+                value={userSettings.webPushMuteStartHour ?? ''}
+                onChange={(e) =>
+                  updateUserSettings({
+                    webPushMuteStartHour: e.target.value === '' ? null : Number(e.target.value),
+                  })
+                }
+                style={{ width: '5rem' }}
+              />
+            </label>
+            <label>
+              {t('web_push_mute_end_hour', 'Mute end hour (0-23)')}{' '}
+              <input
+                type="number"
+                min="0"
+                max="23"
+                value={userSettings.webPushMuteEndHour ?? ''}
+                onChange={(e) =>
+                  updateUserSettings({
+                    webPushMuteEndHour: e.target.value === '' ? null : Number(e.target.value),
+                  })
+                }
+                style={{ width: '5rem' }}
+              />
+            </label>
+          </div>
+        </div>
         <div style={{ marginTop: '0.75rem' }}>
           <TooltipWrapper
             title={t('notification_volume', {

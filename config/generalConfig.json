@@ -58,5 +58,8 @@
     "receiptWidth": 80,
     "receiptHeight": 200,
     "receiptMargin": 5
+  },
+  "notifications": {
+    "webPushEnabled": false
   }
 }

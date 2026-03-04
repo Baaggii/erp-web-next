@@ -155,43 +155,6 @@ function normalizeReadByEntries(value) {
     .filter(Boolean);
 }
 
-function isMessageDeleted(message) {
-  if (!message || typeof message !== 'object') return false;
-  const deletedFlag = [message?.is_deleted, message?.isDeleted, message?.deleted]
-    .some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
-  return Boolean(
-    deletedFlag
-    || message?.deleted_at
-    || message?.deletedAt
-    || message?.del_date
-    || message?.delDate,
-  );
-}
-
-function toDeletedMessage(message = {}, payload = {}) {
-  const deletedAt = payload?.deleted_at || payload?.deletedAt || payload?.del_date || payload?.delDate || new Date().toISOString();
-  const deletedBy = normalizeId(
-    payload?.deleted_by_empid
-    || payload?.deleted_by
-    || payload?.deletedByEmpid
-    || payload?.deletedBy
-    || payload?.del_emp
-    || payload?.empid
-    || payload?.author_empid
-    || payload?.user_id
-    || payload?.userId,
-  );
-  return {
-    ...message,
-    body: 'This message was deleted.',
-    attachments: [],
-    is_deleted: true,
-    deleted_at: deletedAt,
-    updated_at: deletedAt,
-    ...(deletedBy ? { deleted_by_empid: deletedBy } : {}),
-  };
-}
-
 function extractMessageActionTrace(message, resolveEmployeeLabel) {
   if (!message || typeof message !== 'object') return [];
 
@@ -212,7 +175,7 @@ function extractMessageActionTrace(message, resolveEmployeeLabel) {
     || message?.updatedByEmpid
     || message?.updatedBy,
   );
-  const markedDeleted = isMessageDeleted(message);
+  const markedDeleted = deletedAt || [message?.is_deleted, message?.isDeleted, message?.deleted].some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
   const wasEdited = updatedAt && (!createdAt || new Date(updatedAt).getTime() > new Date(createdAt).getTime() + 1000);
 
   if (wasEdited) {
@@ -891,7 +854,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
           })}
         </div>
       )}
-      {!isDeleted && decoded.attachments.length > 0 && (
+      {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {decoded.attachments.map((file) => {
             if (isImageAttachment(file)) {
@@ -1034,7 +997,7 @@ export default function MessagingWidget() {
   const [activityTick, setActivityTick] = useState(0);
   const [typingByConversation, setTypingByConversation] = useState({});
   const typingEmitRef = useRef({ key: null, ts: 0 });
-  const typingTimerRef = useRef(new Map());
+  const typingTimerRef = useRef(null);
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -1679,24 +1642,10 @@ export default function MessagingWidget() {
       });
     };
     const onTyping = (payload) => {
-      const eventPayload = payload?.message || payload || {};
-      const conversationId = normalizeConversationId(
-        eventPayload?.conversation_id
-        || eventPayload?.conversationId
-        || eventPayload?.message?.conversation_id
-        || eventPayload?.message?.conversationId
-        || eventPayload?.id,
-      );
-      const senderEmpid = normalizeId(
-        eventPayload?.empid
-        || eventPayload?.author_empid
-        || eventPayload?.user_id
-        || eventPayload?.userId
-        || eventPayload?.user?.empid
-        || eventPayload?.user?.id,
-      );
+      const conversationId = normalizeConversationId(payload?.conversation_id || payload?.conversationId || payload?.id);
+      const senderEmpid = normalizeId(payload?.empid || payload?.author_empid || payload?.user_id || payload?.userId);
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
-      const payloadCompanyId = normalizeId(eventPayload?.company_id || eventPayload?.companyId || eventPayload?.message?.company_id || eventPayload?.message?.companyId);
+      const payloadCompanyId = normalizeId(payload?.company_id || payload?.companyId);
       if (!conversationId || !senderEmpid || senderEmpid === selfEmpid) return;
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
       const key = `${activeCompanyId || 'none'}:${conversationId}`;
@@ -1705,18 +1654,10 @@ export default function MessagingWidget() {
         nextUsers.add(senderEmpid);
         return { ...prev, [key]: Array.from(nextUsers) };
       });
-      const timeoutKey = `${key}:${senderEmpid}`;
-      const existingTimer = typingTimerRef.current.get(timeoutKey);
-      if (existingTimer) globalThis.clearTimeout(existingTimer);
-      const nextTimer = globalThis.setTimeout(() => {
-        setTypingByConversation((prev) => {
-          const current = new Set(Array.isArray(prev[key]) ? prev[key] : []);
-          current.delete(senderEmpid);
-          return { ...prev, [key]: Array.from(current) };
-        });
-        typingTimerRef.current.delete(timeoutKey);
+      globalThis.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = globalThis.setTimeout(() => {
+        setTypingByConversation((prev) => ({ ...prev, [key]: [] }));
       }, 3500);
-      typingTimerRef.current.set(timeoutKey, nextTimer);
     };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1763,8 +1704,6 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       socket.off('message.typing', onTyping);
       socket.off('typing', onTyping);
-      typingTimerRef.current.forEach((timerId) => globalThis.clearTimeout(timerId));
-      typingTimerRef.current.clear();
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
@@ -2810,6 +2749,22 @@ export default function MessagingWidget() {
     setComposerAnnouncement(`Linked transaction #${transactionId} to this message.`);
   };
 
+  const onComposerPaste = (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+
+    const directFiles = Array.from(clipboard.files || []);
+    const itemFiles = Array.from(clipboard.items || [])
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    const files = [...directFiles, ...itemFiles];
+    if (!files.length) return;
+
+    event.preventDefault();
+    addFiles(files);
+  };
+
   const onChooseRecipient = async (id) => {
     if (!id || state.composer.recipients.includes(id)) return;
     if (isDraftConversation) {
@@ -2877,7 +2832,7 @@ export default function MessagingWidget() {
       const key = `${activeCompany || 'none'}:${selectedConversationId}`;
       if (!(typingEmitRef.current.key === key && now - typingEmitRef.current.ts < 1200)) {
         typingEmitRef.current = { key, ts: now };
-        const payload = { conversationId: selectedConversationId, conversation_id: selectedConversationId, companyId: activeCompany, company_id: activeCompany, empid: selfEmpid, user_id: selfEmpid };
+        const payload = { conversationId: selectedConversationId, companyId: activeCompany, empid: selfEmpid };
         socket.emit('message.typing', payload);
         socket.emit('typing', payload);
       }
@@ -3261,6 +3216,7 @@ export default function MessagingWidget() {
               ref={composerRef}
               value={state.composer.body}
               onChange={onComposerInput}
+              onPaste={onComposerPaste}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                   event.preventDefault();
