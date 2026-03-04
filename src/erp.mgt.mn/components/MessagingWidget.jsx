@@ -706,7 +706,8 @@ function canViewTransaction(transactionId, userId, permissions) {
 function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
-  const safeBody = sanitizeMessageText(decoded.text);
+  const isDeleted = isMessageDeleted(message);
+  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -764,19 +765,21 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         >
           <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
           <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
-            <button
-              type="button"
-              onClick={(event) => {
-                if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
-                if (typeof onAnyAction === 'function') onAnyAction();
-                onReply(message.id);
-              }}
-              aria-label={`Reply to message ${message.id}`}
-              style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
-            >
-              Reply
-            </button>
-            {isOwnMessage && (
+            {!isDeleted && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onReply(message.id);
+                }}
+                aria-label={`Reply to message ${message.id}`}
+                style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
+              >
+                Reply
+              </button>
+            )}
+            {isOwnMessage && !isDeleted && (
               <button
                 type="button"
                 onClick={() => {
@@ -825,7 +828,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
-            {canDeleteMessage(message) && (
+            {!isDeleted && canDeleteMessage(message) && (
               <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
@@ -879,7 +882,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
           })}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      {!isDeleted && <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
         {reactions.map((entry) => {
           const reactedBySelf = entry.users.includes(normalizeId(selfEmpid));
@@ -912,7 +915,7 @@ ${hoverUsers}`
             {emoji}
           </button>
         ))}
-      </div>
+      </div>}
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
           key={child.id}
@@ -1594,11 +1597,13 @@ export default function MessagingWidget() {
       });
     };
     const onDeleted = (payload) => {
-      const messageId = Number(payload?.messageId || payload?.id);
+      const messageId = Number(payload?.messageId || payload?.message_id || payload?.id || payload?.message?.id);
       if (!messageId) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== messageId && Number(entry.parent_message_id || entry.parentMessageId) !== messageId);
+        const nextMessages = (prev[key] || []).map((entry) => (
+          Number(entry.id) === messageId ? toDeletedMessage(entry, payload?.message || payload) : entry
+        ));
         return { ...prev, [key]: nextMessages };
       });
     };
@@ -2277,13 +2282,17 @@ export default function MessagingWidget() {
     }
     setMessagesByCompany((prev) => {
       const key = getCompanyCacheKey(activeCompany);
-      const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
+      const nextMessages = (prev[key] || []).map((entry) => (
+        Number(entry.id) === Number(messageId)
+          ? toDeletedMessage(entry, { deleted_by_empid: selfEmpid })
+          : entry
+      ));
       return { ...prev, [key]: nextMessages };
     });
-    if (Number(activeConversation?.conversationId) === Number(messageId)) {
-      dispatch({ type: 'widget/setConversation', payload: null });
+    if (normalizeId(editingMessage?.id) === normalizeId(messageId)) {
+      cancelEditingMessage();
     }
-    setComposerAnnouncement('Conversation deleted.');
+    setComposerAnnouncement('Message deleted.');
   };
 
 
