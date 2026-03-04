@@ -1470,6 +1470,7 @@ export default function MessagingWidget() {
   }, [isNarrowLayout]);
 
   const showLeftPane = !isNarrowLayout || !isLeftPaneCollapsed;
+  const narrowSplitPaneLayout = isNarrowLayout && showLeftPane && !isMobileLayout;
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -3323,9 +3324,28 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? (showLeftPane ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)') : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: narrowSplitPaneLayout
+          ? 'minmax(260px, 1fr) minmax(0, 1fr)'
+          : (isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)'),
+        gridTemplateRows: isNarrowLayout && !narrowSplitPaneLayout
+          ? (showLeftPane ? 'minmax(260px, 45%) minmax(0, 1fr)' : 'minmax(0, 1fr)')
+          : 'minmax(0, 1fr)',
+        minHeight: 0,
+        flex: 1,
+        overflow: 'hidden',
+      }}>
         {showLeftPane && (
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', borderBottom: isNarrowLayout ? '1px solid #e2e8f0' : 'none', background: '#ffffff', display: 'grid', gridTemplateRows: isNarrowLayout ? 'minmax(120px, 1fr) minmax(120px, 1fr)' : 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, overflow: 'hidden' }}>
+        <aside style={{
+          borderRight: narrowSplitPaneLayout || !isNarrowLayout ? '1px solid #e2e8f0' : 'none',
+          borderBottom: isNarrowLayout && !narrowSplitPaneLayout ? '1px solid #e2e8f0' : 'none',
+          background: '#ffffff',
+          display: 'grid',
+          gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}>
           <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
