@@ -1470,6 +1470,8 @@ export default function MessagingWidget() {
   }, [isNarrowLayout]);
 
   const showLeftPane = !isNarrowLayout || !isLeftPaneCollapsed;
+  const narrowSplitPaneLayout = isNarrowLayout && showLeftPane && !isMobileLayout;
+  const mobileDrawerLayout = isMobileLayout && showLeftPane;
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -3323,9 +3325,35 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? (showLeftPane ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)') : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{
+        display: 'grid',
+        position: 'relative',
+        gridTemplateColumns: narrowSplitPaneLayout
+          ? 'minmax(260px, 1fr) minmax(0, 1fr)'
+          : (isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)'),
+        gridTemplateRows: isNarrowLayout && !narrowSplitPaneLayout && !mobileDrawerLayout
+          ? (showLeftPane ? 'minmax(260px, 45%) minmax(0, 1fr)' : 'minmax(0, 1fr)')
+          : 'minmax(0, 1fr)',
+        minHeight: 0,
+        flex: 1,
+        overflow: 'hidden',
+      }}>
         {showLeftPane && (
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', borderBottom: isNarrowLayout ? '1px solid #e2e8f0' : 'none', background: '#ffffff', display: 'grid', gridTemplateRows: isNarrowLayout ? 'minmax(120px, 1fr) minmax(120px, 1fr)' : 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, overflow: 'hidden' }}>
+        <aside style={{
+          borderRight: (mobileDrawerLayout || narrowSplitPaneLayout || !isNarrowLayout) ? '1px solid #e2e8f0' : 'none',
+          borderBottom: isNarrowLayout && !narrowSplitPaneLayout && !mobileDrawerLayout ? '1px solid #e2e8f0' : 'none',
+          background: '#ffffff',
+          display: 'grid',
+          gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)',
+          minHeight: 0,
+          overflow: 'hidden',
+          zIndex: mobileDrawerLayout ? 3 : 'auto',
+          position: mobileDrawerLayout ? 'absolute' : 'relative',
+          inset: mobileDrawerLayout ? '0 auto 0 0' : 'auto',
+          width: mobileDrawerLayout ? 'min(88vw, 360px)' : 'auto',
+          maxWidth: '100%',
+          boxShadow: mobileDrawerLayout ? '10px 0 26px rgba(15, 23, 42, 0.2)' : 'none',
+        }}>
           <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
@@ -3420,6 +3448,15 @@ export default function MessagingWidget() {
             ))}
           </div>
         </aside>
+        )}
+
+        {mobileDrawerLayout && (
+          <button
+            type="button"
+            aria-label="Close users and conversations pane"
+            onClick={() => setIsLeftPaneCollapsed(true)}
+            style={{ position: 'absolute', inset: 0, border: 0, background: 'rgba(15, 23, 42, 0.35)', zIndex: 2, cursor: 'pointer' }}
+          />
         )}
 
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
