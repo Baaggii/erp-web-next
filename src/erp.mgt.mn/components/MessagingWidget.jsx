@@ -152,6 +152,17 @@ function highlightMentions(text) {
   }).filter(Boolean);
 }
 
+function extractWebLinks(text) {
+  const source = sanitizeMessageText(text || '');
+  if (!source) return [];
+  const matches = source.match(/(?:https?:\/\/|www\.)[^\s)\]}"']+/gi) || [];
+  const normalized = matches
+    .map((value) => value.replace(/[),.;!?]+$/g, ''))
+    .filter(Boolean)
+    .map((value) => (value.toLowerCase().startsWith('www.') ? `https://${value}` : value));
+  return Array.from(new Set(normalized));
+}
+
 function resolveAttachmentKind(file) {
   const type = String(file?.type || '').toLowerCase();
   const source = `${String(file?.name || '')} ${String(file?.url || '')}`.toLowerCase();
