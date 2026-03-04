@@ -3061,15 +3061,15 @@ export default function MessagingWidget() {
         position: 'fixed',
         right: 16,
         bottom: 16,
-        width: isNarrowLayout ? '96vw' : 940,
+        width: isNarrowLayout ? '96vw' : 860,
         maxWidth: '98vw',
         background: '#f8fafc',
         border: '1px solid #cbd5e1',
         borderRadius: 14,
         zIndex: 1200,
         overflow: 'hidden',
-        height: 'min(58vh, calc(100dvh - 32px))',
-        maxHeight: 'min(58vh, calc(100dvh - 32px))',
+        height: 'min(72vh, calc(100dvh - 32px))',
+        maxHeight: 'min(72vh, calc(100dvh - 32px))',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -3138,9 +3138,9 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '300px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', flex: '1 1 45%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '180px minmax(0,1fr)', gap: 8, padding: 8, minHeight: 0, flex: 1 }}>
+        <aside style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#ffffff', display: 'grid', gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
               value={employeeSearch}
@@ -3149,7 +3149,7 @@ export default function MessagingWidget() {
               aria-label="Search employees"
               style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', marginBottom: 8 }}
             />
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
               {STATUS_FILTERS.map((filter) => (
                 <button
                   key={filter.value}
@@ -3170,11 +3170,12 @@ export default function MessagingWidget() {
             <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1 }}>
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
+                const cleanedEmployeeLabel = formatEmployeeOption(entry)
+                  .replace(/\s*[·•-]?\s*(online|offline|away|busy)\s*$/i, '');
                 return (
-                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
+                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                    <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
+                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanedEmployeeLabel}</span>
                   </button>
                 );
               })}
@@ -3184,7 +3185,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, flex: '1 1 55%', alignContent: 'start', gridAutoRows: 'max-content' }}>
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, minWidth: 0, alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -3208,7 +3209,7 @@ export default function MessagingWidget() {
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
                   <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
-                    <strong>{conversation.title}</strong> · {conversation.preview}
+                    <strong>{conversation.title}</strong>
                   </span>
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -3233,10 +3234,37 @@ export default function MessagingWidget() {
           </div>
         </aside>
 
-        <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+        <section style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#ffffff', display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '4px 10px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <strong style={{ display: 'block', fontSize: 13, color: '#0f172a', lineHeight: 1.2, overflowWrap: 'anywhere' }}>
+              {activeTopic} — {activeConversation?.isGeneral ? 'Everybody' : (activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'No participants yet')}
+            </strong>
+            <div style={{ marginTop: 2, fontSize: 11, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
+              {editingMessage?.id && <span style={{ color: '#2563eb', fontWeight: 600 }}>Editing #{editingMessage.id}</span>}
+              {typingLabel && <span style={{ color: '#6d28d9', fontWeight: 600 }}>{typingLabel}</span>}
+            </div>
+            {canEditTopic && activeConversation?.conversationId && !isDraftConversation && (
+              <div style={{ marginTop: 3, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  value={state.composer.topic}
+                  onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
+                  onBlur={updateConversationTopic}
+                  placeholder="Edit conversation topic"
+                  aria-label="Edit conversation topic"
+                  style={{ width: '100%', maxWidth: 300, borderRadius: 8, border: '1px solid #cbd5e1', padding: '4px 6px', fontSize: 11 }}
+                />
+                {canDeleteConversation(activeConversation) && (
+                  <button type="button" onClick={() => handleDeleteConversationFromList(activeConversation)} style={{ border: '1px solid #fecaca', borderRadius: 8, background: '#fff1f2', color: '#b91c1c', padding: '4px 6px', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <main
             ref={threadPaneRef}
-            style={{ padding: '8px 10px 6px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0 }}
+            style={{ padding: '6px 10px 4px', overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, minHeight: 0, minWidth: 0 }}
             aria-live="polite"
             onScroll={async (event) => {
               const container = event.currentTarget;
@@ -3255,34 +3283,6 @@ export default function MessagingWidget() {
               });
             }}
           >
-            <div style={{ position: 'sticky', top: 0, background: '#f8fafc', paddingBottom: 6, marginBottom: 6 }}>
-              <strong style={{ display: 'block', fontSize: 15, color: '#0f172a', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
-                {activeTopic} — {activeConversation?.isGeneral ? 'Everybody' : (activeConversationParticipantLabels.length ? activeConversationParticipantLabels.join(', ') : 'No participants yet')}
-              </strong>
-              <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
-                {editingMessage?.id && <span style={{ color: '#2563eb', fontWeight: 600 }}>Editing #{editingMessage.id}</span>}
-                {typingLabel && <span style={{ color: '#7c3aed', fontWeight: 600 }}>{typingLabel}</span>}
-              </div>
-              {canEditTopic && (
-                <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input
-                    value={state.composer.topic}
-                    onChange={(event) => dispatch({ type: 'composer/setTopic', payload: event.target.value })}
-                    onBlur={updateConversationTopic}
-                    placeholder="Edit conversation topic"
-                    aria-label="Edit conversation topic"
-                    style={{ width: '100%', maxWidth: 360, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
-                  />
-                </div>
-              )}
-              {activeConversation?.conversationId && canDeleteConversation(activeConversation) && (
-                <button type="button" onClick={() => handleDeleteConversationFromList(activeConversation)} style={{ marginTop: 4 }}>
-                  Delete thread
-                </button>
-              )}
-            </div>
-
             {networkState === 'loading' && <p>Loading messages…</p>}
             {networkState === 'error' && <p role="alert">{error}</p>}
             {networkState === 'ready' && threadMessages.length === 0 && <p>No messages in this thread.</p>}
@@ -3331,7 +3331,7 @@ export default function MessagingWidget() {
           </main>
 
           <form
-            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '6px 10px', maxHeight: '34vh', overflow: 'hidden', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}
+            style={{ borderTop: '1px solid #e2e8f0', background: '#ffffff', padding: '4px 8px', maxHeight: '23vh', overflow: 'hidden', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}
             onSubmit={(event) => {
               event.preventDefault();
               sendMessage();
@@ -3385,35 +3385,44 @@ export default function MessagingWidget() {
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
-            <textarea
-              id="messaging-composer"
-              ref={composerRef}
-              value={state.composer.body}
-              onChange={onComposerInput}
-              onPaste={onComposerPaste}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  sendMessage();
-                }
-              }}
-              rows={2}
-              placeholder="Type a message…"
-              aria-label="Message composer"
-              style={{
-                width: '100%',
-                marginTop: 2,
-                borderRadius: 10,
-                border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
-                padding: '7px 9px',
-                fontSize: composerTextFontSize,
-                lineHeight: 1.45,
-                minHeight: 46,
-                maxHeight: 140,
-                overflowY: 'auto',
-                resize: 'none',
-              }}
-            />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch', marginTop: 2 }}>
+              <textarea
+                id="messaging-composer"
+                ref={composerRef}
+                value={state.composer.body}
+                onChange={onComposerInput}
+                onPaste={onComposerPaste}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                rows={2}
+                placeholder="Type a message…"
+                aria-label="Message composer"
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  borderRadius: 10,
+                  border: dragOverComposer ? '2px dashed #f97316' : '2px dashed #cbd5e1',
+                  padding: '6px 8px',
+                  fontSize: composerTextFontSize,
+                  lineHeight: 1.45,
+                  minHeight: 40,
+                  maxHeight: 110,
+                  overflowY: 'auto',
+                  resize: 'none',
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!canSendMessage}
+                style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '0 12px', minWidth: 64, fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed', flexShrink: 0 }}
+              >
+                {editingMessage?.id ? 'Save' : 'Send'}
+              </button>
+            </div>
 
             {mentionOpen && (
               <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, marginTop: 6, background: '#fff', maxHeight: 180, overflowY: 'auto' }}>
@@ -3430,9 +3439,9 @@ export default function MessagingWidget() {
 
             <p title="Drag files to attach, or drag a transaction ID to link context." style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b' }}>Tip: drag files or a transaction ID here.</p>
 
-            <div style={{ marginTop: 4 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ position: 'relative', flex: '1 1 220px' }}>
+            <div style={{ marginTop: 2 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', alignItems: 'flex-end' }}>
+                <div style={{ position: 'relative', flex: '1 1 auto' }}>
                   <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
                   <input
                     id="messaging-add-recipient"
@@ -3444,7 +3453,7 @@ export default function MessagingWidget() {
                     style={{ width: '100%', marginTop: 2, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
                   />
                   {composerRecipientSearch.trim() && (
-                    <div style={{ marginTop: 6, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', maxHeight: 140, overflowY: 'auto' }}>
+                    <div style={{ marginTop: 6, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', maxHeight: 110, overflowY: 'auto' }}>
                       {addRecipientCandidates.slice(0, 8).map((entry) => (
                         <button key={entry.id} type="button" onClick={() => onChooseRecipient(entry.id)} style={{ width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid #f1f5f9', background: 'transparent', padding: '6px 8px' }}>
                           {entry.label}
@@ -3454,13 +3463,6 @@ export default function MessagingWidget() {
                     </div>
                   )}
                 </div>
-                <button
-                  type="submit"
-                  disabled={!canSendMessage}
-                  style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '6px 10px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}
-                >
-                  {editingMessage?.id ? 'Save edit' : 'Send'}
-                </button>
                 {editingMessage?.id && (
                   <button
                     type="button"
@@ -3470,14 +3472,14 @@ export default function MessagingWidget() {
                     Cancel edit
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setAttachmentsOpen((prev) => !prev)}
+                  style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', padding: '6px 8px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
+                >
+                  {attachmentsOpen ? '▾' : '▸'} Context {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setAttachmentsOpen((prev) => !prev)}
-                style={{ border: 0, background: 'transparent', padding: 0, marginTop: 4, fontSize: 12, fontWeight: 600, color: '#334155' }}
-              >
-                {attachmentsOpen ? '▾' : '▸'} Context & attachments {state.composer.attachments.length > 0 ? `(${state.composer.attachments.length})` : ''}
-              </button>
               {attachmentsOpen && (
                 <>
                   {state.composer.replyToId && (
