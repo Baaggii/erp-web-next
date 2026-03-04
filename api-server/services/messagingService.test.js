@@ -127,7 +127,7 @@ class MockDb {
       const cursor = hasCursor ? Number(params[2]) : null;
       const limit = Number(params[params.length - 1]);
       const rows = this.messages
-        .filter((m) => m.company_id === Number(companyId) && m.conversation_id === Number(conversationId) && !m.deleted_at)
+        .filter((m) => m.company_id === Number(companyId) && m.conversation_id === Number(conversationId))
         .filter((m) => (hasCursor ? m.id < cursor : true))
         .sort((a, b) => b.id - a.id)
         .slice(0, limit);
@@ -212,6 +212,27 @@ test('sending message requires participant access and validates message_class en
   assert.equal(thread.items.length, 2);
 });
 
+
+
+
+test('getConversationMessages keeps deleted messages with masked body', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 4 };
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 4,
+    db,
+    getSession,
+    payload: { type: 'private', participants: ['E2'], topic: 'Mask deleted', body: 'Visible before delete' },
+  });
+
+  db.messages[0].deleted_at = new Date().toISOString();
+
+  const thread = await getConversationMessages({ user: creator, companyId: 4, conversationId: created.conversation.id, db, getSession });
+  assert.equal(thread.items.length, 1);
+  assert.equal(Boolean(thread.items[0].deleted_at), true);
+  assert.equal(thread.items[0].body, '');
+});
 
 test('conversation creator can delete conversation and others cannot', async () => {
   const db = new MockDb();
