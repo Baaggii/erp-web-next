@@ -3540,26 +3540,6 @@ export default function MessagingWidget() {
                 })}
               </div>
               )}
-              {!isDraftConversation && !activeConversation?.isGeneral && (
-              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {activeConversationParticipants.map((empid) => {
-                  const found = employeeRecords.find((entry) => entry.id === empid);
-                  const label = found?.label || resolveEmployeeLabel(empid);
-                  const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
-                  return (
-                    <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
-                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
-                        {initialsForLabel(label)}
-                      </span>
-                      <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
-                      <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
-                      <button type="button" aria-label={`Remove participant ${label}`} onClick={() => onRemoveConversationParticipant(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
-                    </span>
-                  );
-                })}
-              </div>
-              )}
-
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
