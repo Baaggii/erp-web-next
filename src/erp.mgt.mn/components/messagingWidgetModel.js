@@ -83,6 +83,14 @@ export function excludeGeneralConversationSummaries(conversations = []) {
 }
 
 
+function getConversationActivityScore(conversation) {
+  const timestamp = new Date(conversation?.lastMessageAt || 0).getTime();
+  if (Number.isFinite(timestamp) && timestamp > 0) return { kind: 'time', value: timestamp };
+  const messageId = normalizeId(conversation?.lastMessageId);
+  if (/^\d+$/.test(messageId)) return { kind: 'id', value: Number(messageId) };
+  return { kind: 'none', value: 0 };
+}
+
 export function prioritizeConversationSummaries(conversations = [], draftConversationSummary = null) {
   const activeConversations = Array.isArray(conversations)
     ? conversations.filter((conversation) => {

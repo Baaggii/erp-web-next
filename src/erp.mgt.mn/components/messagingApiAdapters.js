@@ -42,6 +42,14 @@ function deriveConversationTitle(entry, isGeneral = false) {
   ).slice(0, 120) || 'Untitled conversation';
 }
 
+function toActivityScore(lastMessageAt, lastMessageId) {
+  const timestamp = new Date(lastMessageAt || 0).getTime();
+  if (Number.isFinite(timestamp) && timestamp > 0) return { kind: 'time', value: timestamp };
+  const normalizedId = normalizeId(lastMessageId);
+  if (/^\d+$/.test(normalizedId)) return { kind: 'id', value: Number(normalizedId) };
+  return { kind: 'none', value: 0 };
+}
+
 export function adaptConversationListResponse(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
 
