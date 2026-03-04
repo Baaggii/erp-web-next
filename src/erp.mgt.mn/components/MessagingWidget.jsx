@@ -128,13 +128,58 @@ const STATUS_FILTERS = [
 function highlightMentions(text) {
   const raw = sanitizeMessageText(text || '');
   if (!raw) return [<span key="empty">Empty message</span>];
-  return raw.split(/(@[A-Za-z0-9_.-]+)/g).map((part, idx) => {
+  const trailingPunctuationPattern = /[),.;!?]+$/;
+  const normalizeHref = (value) => (value.startsWith('http://') || value.startsWith('https://') ? value : `https://${value}`);
+
+  return raw.split(/(https?:\/\/[^\s]+|www\.[^\s]+|@[A-Za-z0-9_.-]+)/g).map((part, idx) => {
     if (!part) return null;
     if (part.startsWith('@')) {
       return <mark key={`${part}-${idx}`} style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '0 2px' }}>{part}</mark>;
     }
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const clean = part.replace(trailingPunctuationPattern, '');
+      const trailing = part.slice(clean.length);
+      return (
+        <React.Fragment key={`${part}-${idx}`}>
+          <a href={normalizeHref(clean)} target="_blank" rel="noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
+            {clean}
+          </a>
+          {trailing}
+        </React.Fragment>
+      );
+    }
     return <span key={`${part}-${idx}`}>{part}</span>;
   }).filter(Boolean);
+}
+
+function resolveAttachmentKind(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const source = `${String(file?.name || '')} ${String(file?.url || '')}`.toLowerCase();
+  if (isImageAttachment(file)) return 'image';
+  if (type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|m4v)(\?.*)?$/.test(source)) return 'video';
+  if (type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac)(\?.*)?$/.test(source)) return 'audio';
+  if (type.includes('pdf') || /\.pdf(\?.*)?$/.test(source)) return 'pdf';
+  if (type.includes('word') || /\.(docx?|odt|rtf)(\?.*)?$/.test(source)) return 'document';
+  if (type.includes('excel') || type.includes('spreadsheet') || /\.(xlsx?|csv|ods|xlsb)(\?.*)?$/.test(source)) return 'spreadsheet';
+  if (type.includes('presentation') || /\.(pptx?|odp)(\?.*)?$/.test(source)) return 'presentation';
+  if (type.includes('zip') || type.includes('compressed') || /\.(zip|rar|7z|tar|gz|bz2|xz)(\?.*)?$/.test(source)) return 'archive';
+  if (type.startsWith('text/') || /\.(txt|md|json|xml|log|ini|yaml|yml|sql)(\?.*)?$/.test(source)) return 'text';
+  return 'file';
+}
+
+function attachmentKindIcon(kind) {
+  switch (kind) {
+    case 'image': return '🖼️';
+    case 'video': return '🎬';
+    case 'audio': return '🎵';
+    case 'pdf': return '📕';
+    case 'document': return '📄';
+    case 'spreadsheet': return '📊';
+    case 'presentation': return '📽️';
+    case 'archive': return '🗜️';
+    case 'text': return '📝';
+    default: return '📎';
+  }
 }
 
 function countNestedReplies(message) {
@@ -976,27 +1021,38 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       )}
       {decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-          {decoded.attachments.map((file) => {
-            if (isImageAttachment(file)) {
+          {decoded.attachments.map((file, index) => {
+            const kind = resolveAttachmentKind(file);
+            if (kind === 'image') {
               return (
-                <button
-                  key={`${file.url}-${file.name}`}
-                  type="button"
-                  onClick={() => onPreviewAttachment(file)}
-                  style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: 4, cursor: 'pointer' }}
-                  aria-label={`Preview image ${file.name || 'attachment'}`}
-                >
-                  <img
-                    src={file.url}
-                    alt={file.name || 'attachment thumbnail'}
-                    style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 6, display: 'block' }}
-                  />
-                </button>
+                <div key={`${file.url}-${file.name}-${index}`} style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: 4, background: '#fff' }}>
+                  <button
+                    type="button"
+                    onClick={() => onPreviewAttachment(file)}
+                    style={{ border: 0, background: 'transparent', borderRadius: 8, padding: 0, cursor: 'pointer' }}
+                    aria-label={`Preview image ${file.name || 'attachment'}`}
+                  >
+                    <img
+                      src={file.url}
+                      alt={file.name || 'attachment thumbnail'}
+                      style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                    />
+                  </button>
+                  <a href={file.url} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 4, fontSize: chipFontSize }}>
+                    {attachmentKindIcon(kind)} Open
+                  </a>
+                </div>
               );
             }
             return (
-              <a key={`${file.url}-${file.name}`} href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: chipFontSize }}>
-                📎 {file.name || 'attachment'}
+              <a
+                key={`${file.url}-${file.name}-${index}`}
+                href={file.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: chipFontSize, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: '4px 8px', textDecoration: 'none', color: '#0f172a' }}
+              >
+                {attachmentKindIcon(kind)} {file.name || 'attachment'}
               </a>
             );
           })}
