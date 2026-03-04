@@ -3457,13 +3457,6 @@ export default function MessagingWidget() {
                     </div>
                   )}
                 </div>
-                <button
-                  type="submit"
-                  disabled={!canSendMessage}
-                  style={{ border: 0, borderRadius: 8, background: canSendMessage ? '#2563eb' : '#94a3b8', color: '#fff', padding: '6px 10px', fontWeight: 600, cursor: canSendMessage ? 'pointer' : 'not-allowed' }}
-                >
-                  {editingMessage?.id ? 'Save edit' : 'Send'}
-                </button>
                 {editingMessage?.id && (
                   <button
                     type="button"
