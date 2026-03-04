@@ -66,6 +66,13 @@ class MockDb {
       const exists = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
       return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
     }
+
+    if (text.startsWith('UPDATE erp_conversation_participants')) {
+      const [companyId, conversationId, empid] = params;
+      const row = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
+      if (row) row.left_at = new Date().toISOString();
+      return [{ affectedRows: row ? 1 : 0 }, undefined];
+    }
     if (text.startsWith('SELECT empid FROM erp_conversation_participants')) {
       const [companyId, conversationId] = params;
       const rows = this.participants
@@ -118,7 +125,7 @@ class MockDb {
         .filter((c) => (hasCursor ? c.id < cursorId : true))
         .sort((a, b) => (b.type === 'general') - (a.type === 'general') || b.id - a.id)
         .slice(0, max)
-        .map((c) => ({ ...c, is_general: c.type === 'general' }));
+        .map((c) => ({ ...c, is_general: c.type === 'general', participant_empids: this.participants.filter((p) => p.company_id === c.company_id && p.conversation_id === c.id && !p.left_at).map((p) => p.empid).join(',') || null }));
       return [rows, undefined];
     }
 

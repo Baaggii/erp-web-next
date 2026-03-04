@@ -126,6 +126,22 @@ async function insertParticipants(db, companyId, conversationId, participants) {
   return unique;
 }
 
+
+async function removeParticipant(db, companyId, conversationId, empid) {
+  const normalizedEmpid = String(empid || '').trim();
+  if (!normalizedEmpid) return false;
+  const [result] = await db.query(
+    `UPDATE erp_conversation_participants
+        SET left_at = CURRENT_TIMESTAMP
+      WHERE company_id = ?
+        AND conversation_id = ?
+        AND empid = ?
+        AND left_at IS NULL`,
+    [companyId, conversationId, normalizedEmpid],
+  );
+  return Boolean(result?.affectedRows);
+}
+
 async function createMessage(db, { companyId, conversationId, authorEmpid, parentMessageId = null, body, messageClass }) {
   const [inserted] = await db.query(
     `INSERT INTO erp_messages
@@ -413,7 +429,14 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
   const [rows] = await db.query(
     `SELECT c.*,
             lm.body AS last_message_body,
-            (c.type = 'general') AS is_general
+            (c.type = 'general') AS is_general,
+            (
+              SELECT GROUP_CONCAT(p.empid ORDER BY p.empid SEPARATOR ',')
+                FROM erp_conversation_participants p
+               WHERE p.company_id = c.company_id
+                 AND p.conversation_id = c.id
+                 AND p.left_at IS NULL
+            ) AS participant_empids
        FROM erp_conversations c
        LEFT JOIN erp_messages lm
          ON lm.id = c.last_message_id

@@ -325,6 +325,36 @@ async function requestAddConversationParticipant({ conversationId, companyId, em
   return lastFailedResponse;
 }
 
+
+
+async function requestRemoveConversationParticipant({ conversationId, companyId, empid }) {
+  const payload = JSON.stringify({ companyId, empid });
+  const attempts = [
+    { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
+    { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participant` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participants/remove` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participant/remove` },
+  ];
+
+  let lastFailedResponse = null;
+  for (const attempt of attempts) {
+    const response = await fetch(attempt.path, {
+      method: attempt.method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    if (response.ok) return response;
+    if (response.status === 404 || response.status === 405) {
+      lastFailedResponse = response;
+      continue;
+    }
+    return response;
+  }
+
+  return lastFailedResponse;
+}
+
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -3044,12 +3074,43 @@ export default function MessagingWidget() {
     });
   };
 
-  const onRemoveRecipient = (id) => {
+  const onRemoveDraftRecipient = (id) => {
     if (!isDraftConversation) {
       setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
       return;
     }
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
+  };
+
+  const onRemoveConversationParticipant = async (id) => {
+    const participantEmpid = normalizeId(id);
+    if (!participantEmpid) return;
+
+    if (isDraftConversation) {
+      onRemoveDraftRecipient(participantEmpid);
+      return;
+    }
+
+    const conversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!conversationId) {
+      setComposerAnnouncement('Select a conversation first.');
+      return;
+    }
+
+    const activeCompany = state.activeCompanyId || companyId;
+    const label = resolveEmployeeLabel(participantEmpid);
+    const confirmed = globalThis.confirm(`Remove ${label} from this conversation?`);
+    if (!confirmed) return;
+
+    const res = await requestRemoveConversationParticipant({ conversationId, companyId: activeCompany, empid: participantEmpid });
+    if (!res || !res.ok) {
+      const payload = res ? await res.json().catch(() => null) : null;
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to remove participant.');
+      return;
+    }
+
+    setComposerAnnouncement(`${label} was removed from the conversation.`);
+    refreshConversationList(activeCompany);
   };
 
   useEffect(() => {
@@ -3403,7 +3464,25 @@ export default function MessagingWidget() {
                       </span>
                       <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
                       <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
-                      <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
+                      <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveDraftRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
+                    </span>
+                  );
+                })}
+              </div>
+              {!isDraftConversation && !activeConversation?.isGeneral && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {activeConversationParticipants.map((empid) => {
+                  const found = employeeRecords.find((entry) => entry.id === empid);
+                  const label = found?.label || resolveEmployeeLabel(empid);
+                  const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
+                  return (
+                    <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
+                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                        {initialsForLabel(label)}
+                      </span>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
+                      <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
+                      <button type="button" aria-label={`Remove participant ${label}`} onClick={() => onRemoveConversationParticipant(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                     </span>
                   );
                 })}
