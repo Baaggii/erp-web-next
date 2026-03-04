@@ -75,6 +75,20 @@ test('adaptConversationListResponse marks company-wide unlinked conversation as 
   assert.equal(adapted.items[0].title, 'General');
 });
 
+
+
+test('adaptConversationListResponse sorts by most recent last message regardless of general channel', () => {
+  const adapted = adaptConversationListResponse({
+    items: [
+      { id: 8, type: 'general', visibility_scope: 'company', last_message_at: '2026-01-01T03:00:00.000Z' },
+      { id: 12, type: 'private', visibility_scope: 'private', last_message_at: '2026-01-03T03:00:00.000Z' },
+      { id: 10, type: 'private', visibility_scope: 'private', last_message_at: '2026-01-02T03:00:00.000Z' },
+    ],
+  });
+
+  assert.deepEqual(adapted.items.map((entry) => entry.id), ['conversation:12', 'conversation:10', 'conversation:8']);
+});
+
 test('adaptConversationListResponse does not synthesize non-numeric general conversation ids', () => {
   const adapted = adaptConversationListResponse({
     items: [

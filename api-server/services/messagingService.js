@@ -155,37 +155,24 @@ async function enqueueConversationMessageWebPush({
   db,
   companyId,
   conversationId,
-  conversationType,
   authorEmpid,
   messageBody,
   notifyWebPush = enqueueWebPushNotification,
 }) {
   if (!notifyWebPush || !companyId || !conversationId) return;
 
-  let recipientRows = [];
-  if (String(conversationType || '').toLowerCase() === 'general') {
-    const [employees] = await db.query(
-      `SELECT DISTINCT employment_emp_id AS empid
-         FROM tbl_employment
-        WHERE employment_emp_id IS NOT NULL
-          AND TRIM(employment_emp_id) <> ''`,
-    );
-    recipientRows = employees || [];
-  } else {
-    const [participantRows] = await db.query(
-      `SELECT empid
-         FROM erp_conversation_participants
-        WHERE company_id = ?
-          AND conversation_id = ?
-          AND left_at IS NULL`,
-      [companyId, conversationId],
-    );
-    recipientRows = participantRows || [];
-  }
+  const [participantRows] = await db.query(
+    `SELECT empid
+       FROM erp_conversation_participants
+      WHERE company_id = ?
+        AND conversation_id = ?
+        AND left_at IS NULL`,
+    [companyId, conversationId],
+  );
 
   const sender = String(authorEmpid || '').trim().toUpperCase();
   const recipients = new Set(
-    recipientRows
+    (participantRows || [])
       .map((row) => String(row?.empid || '').trim().toUpperCase())
       .filter((empid) => empid && empid !== sender),
   );
@@ -247,7 +234,6 @@ export async function createConversationRoot({
     db,
     companyId: scopedCompanyId,
     conversationId,
-    conversationType: type,
     authorEmpid: sender,
     messageBody: message?.body,
     notifyWebPush,
@@ -295,7 +281,6 @@ export async function postConversationMessage({
     db,
     companyId: scopedCompanyId,
     conversationId: normalizedConversationId,
-    conversationType: conversation?.type,
     authorEmpid: String(user?.empid || ''),
     messageBody: message?.body,
     notifyWebPush,
