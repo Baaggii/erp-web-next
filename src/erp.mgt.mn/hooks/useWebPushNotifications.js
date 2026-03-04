@@ -60,12 +60,16 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   }
 
   async function askPermission() {
-    if (typeof Notification.requestPermission !== 'function') {
-      return Notification.permission;
+    if (!hasNotificationApi) {
+      return 'default';
+    }
+
+    if (typeof notificationApi.requestPermission !== 'function') {
+      return notificationApi.permission;
     }
 
     try {
-      const maybePromise = Notification.requestPermission();
+      const maybePromise = notificationApi.requestPermission.call(notificationApi);
       if (maybePromise && typeof maybePromise.then === 'function') {
         return maybePromise;
       }
@@ -78,19 +82,19 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
 
     try {
       return await new Promise((resolve) => {
-        Notification.requestPermission((legacyPermission) => {
+        notificationApi.requestPermission.call(notificationApi, (legacyPermission) => {
           if (typeof legacyPermission === 'string') {
             resolve(legacyPermission);
             return;
           }
-          resolve(Notification.permission);
+          resolve(notificationApi.permission);
         });
       });
     } catch (error) {
-      return Notification.permission;
+      return notificationApi.permission;
     }
 
-    return Notification.permission;
+    return notificationApi.permission;
   }
 
   let permission = hasNotificationApi ? notificationApi.permission : 'default';
@@ -127,6 +131,9 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   let subscription;
   try {
     const registration = await navigator.serviceWorker.register('/sw-webpush.js');
+    if (!registration?.pushManager || typeof registration.pushManager.subscribe !== 'function') {
+      return { ok: false, reason: 'push_unsupported', permission };
+    }
     const existing = await registration.pushManager.getSubscription();
     subscription =
       existing ||
