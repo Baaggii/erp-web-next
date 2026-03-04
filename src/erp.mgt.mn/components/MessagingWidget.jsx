@@ -155,6 +155,107 @@ function normalizeReadByEntries(value) {
     .filter(Boolean);
 }
 
+function isMessageDeleted(message) {
+  if (!message || typeof message !== 'object') return false;
+  const deletedFlag = [message?.is_deleted, message?.isDeleted, message?.deleted]
+    .some((value) => value === true || value === 1 || String(value).toLowerCase() === 'true');
+  return Boolean(
+    deletedFlag
+    || message?.deleted_at
+    || message?.deletedAt
+    || message?.del_date
+    || message?.delDate,
+  );
+}
+
+function toDeletedMessage(message = {}, payload = {}) {
+  const deletedAt = payload?.deleted_at || payload?.deletedAt || payload?.del_date || payload?.delDate || new Date().toISOString();
+  const deletedBy = normalizeId(
+    payload?.deleted_by_empid
+    || payload?.deleted_by
+    || payload?.deletedByEmpid
+    || payload?.deletedBy
+    || payload?.del_emp
+    || payload?.empid
+    || payload?.author_empid
+    || payload?.user_id
+    || payload?.userId,
+  );
+  return {
+    ...message,
+    body: 'This message was deleted.',
+    attachments: [],
+    is_deleted: true,
+    deleted_at: deletedAt,
+    updated_at: deletedAt,
+    ...(deletedBy ? { deleted_by_empid: deletedBy } : {}),
+  };
+}
+
+function extractMessageActionTrace(message, resolveEmployeeLabel) {
+  if (!message || typeof message !== 'object') return [];
+
+  const traces = [];
+  const updatedAt = message?.updated_at || message?.updatedAt || null;
+  const createdAt = message?.created_at || message?.createdAt || null;
+  const deletedAt = message?.deleted_at || message?.deletedAt || message?.del_date || message?.delDate || null;
+  const deletedBy = normalizeId(
+    message?.deleted_by_empid
+    || message?.deleted_by
+    || message?.deletedByEmpid
+    || message?.deletedBy
+    || message?.del_emp,
+  );
+  const editedBy = normalizeId(
+    message?.updated_by_empid
+    || message?.updated_by
+    || message?.updatedByEmpid
+    || message?.updatedBy,
+  );
+  const markedDeleted = isMessageDeleted(message);
+  const wasEdited = updatedAt && (!createdAt || new Date(updatedAt).getTime() > new Date(createdAt).getTime() + 1000);
+
+  if (wasEdited) {
+    traces.push({
+      key: 'edited',
+      label: 'Edited',
+      by: editedBy ? resolveEmployeeLabel(editedBy) : null,
+      at: updatedAt,
+    });
+  }
+
+  if (markedDeleted) {
+    traces.push({
+      key: 'deleted',
+      label: 'Deleted',
+      by: deletedBy ? resolveEmployeeLabel(deletedBy) : null,
+      at: deletedAt,
+    });
+  }
+
+  const history = Array.isArray(message?.actions_trace)
+    ? message.actions_trace
+    : Array.isArray(message?.action_trace)
+      ? message.action_trace
+      : Array.isArray(message?.history)
+        ? message.history
+        : [];
+  history.forEach((entry, idx) => {
+    const action = sanitizeMessageText(entry?.action || entry?.type || '').toLowerCase();
+    if (!action) return;
+    if (action !== 'edited' && action !== 'deleted') return;
+    const historyActor = normalizeId(entry?.empid || entry?.emp_id || entry?.userId || entry?.user_id || entry?.by);
+    traces.push({
+      key: `${action}-${idx}`,
+      label: action === 'edited' ? 'Edited' : 'Deleted',
+      by: historyActor ? resolveEmployeeLabel(historyActor) : null,
+      at: entry?.at || entry?.created_at || entry?.createdAt || null,
+    });
+  });
+
+  return traces;
+}
+
 async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
   const bodyPayload = JSON.stringify({ emoji, messageId: Number(messageId) || messageId });
   const attempts = shouldAddReaction
@@ -642,7 +743,8 @@ function canViewTransaction(transactionId, userId, permissions) {
 function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
-  const safeBody = sanitizeMessageText(decoded.text);
+  const isDeleted = isMessageDeleted(message);
+  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -655,6 +757,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readStatus = readerLabels.length > 0 ? `Read (${readerLabels.length})` : 'Unread';
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
+  const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
       open: isMenuOpen,
@@ -699,19 +802,21 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         >
           <summary style={{ listStyle: 'none', cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 6, padding: '1px 8px', fontSize: 13, color: '#334155' }}>⋯</summary>
           <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', minWidth: 150, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, display: 'grid', padding: 4 }}>
-            <button
-              type="button"
-              onClick={(event) => {
-                if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
-                if (typeof onAnyAction === 'function') onAnyAction();
-                onReply(message.id);
-              }}
-              aria-label={`Reply to message ${message.id}`}
-              style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
-            >
-              Reply
-            </button>
-            {isOwnMessage && (
+            {!isDeleted && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onAnyAction === 'function') onAnyAction();
+                  onReply(message.id);
+                }}
+                aria-label={`Reply to message ${message.id}`}
+                style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}
+              >
+                Reply
+              </button>
+            )}
+            {isOwnMessage && !isDeleted && (
               <button
                 type="button"
                 onClick={() => {
@@ -760,7 +865,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
-            {canDeleteMessage(message) && (
+            {!isDeleted && canDeleteMessage(message) && (
               <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
@@ -769,7 +874,24 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: 12, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
         {highlightMentions(safeBody)}
       </div>
-      {decoded.attachments.length > 0 && (
+      {actionTrace.length > 0 && (
+        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {actionTrace.map((entry) => {
+            const byText = entry.by ? ` by ${entry.by}` : '';
+            const atText = entry.at ? ` · ${new Date(entry.at).toLocaleString()}` : '';
+            return (
+              <span
+                key={entry.key}
+                title={`${entry.label}${byText}${atText}`}
+                style={{ fontSize: 11, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px' }}
+              >
+                {entry.label}{byText}{atText}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {!isDeleted && decoded.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {decoded.attachments.map((file) => {
             if (isImageAttachment(file)) {
@@ -797,7 +919,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
           })}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      {!isDeleted && <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
         {replyCount > 0 && <span aria-label="Nested reply count" style={{ fontSize: 12, color: '#64748b' }}>{replyCount} replies</span>}
         {reactions.map((entry) => {
           const reactedBySelf = entry.users.includes(normalizeId(selfEmpid));
@@ -830,7 +952,7 @@ ${hoverUsers}`
             {emoji}
           </button>
         ))}
-      </div>
+      </div>}
       {!isCollapsed && message.replies.map((child) => (
         <MessageNode
           key={child.id}
@@ -910,6 +1032,9 @@ export default function MessagingWidget() {
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [activityTick, setActivityTick] = useState(0);
+  const [typingByConversation, setTypingByConversation] = useState({});
+  const typingEmitRef = useRef({ key: null, ts: 0 });
+  const typingTimerRef = useRef(new Map());
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -1509,11 +1634,13 @@ export default function MessagingWidget() {
       });
     };
     const onDeleted = (payload) => {
-      const messageId = Number(payload?.messageId || payload?.id);
+      const messageId = Number(payload?.messageId || payload?.message_id || payload?.id || payload?.message?.id);
       if (!messageId) return;
       setMessagesByCompany((prev) => {
         const key = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== messageId && Number(entry.parent_message_id || entry.parentMessageId) !== messageId);
+        const nextMessages = (prev[key] || []).map((entry) => (
+          Number(entry.id) === messageId ? toDeletedMessage(entry, payload?.message || payload) : entry
+        ));
         return { ...prev, [key]: nextMessages };
       });
     };
@@ -1551,6 +1678,46 @@ export default function MessagingWidget() {
         },
       });
     };
+    const onTyping = (payload) => {
+      const eventPayload = payload?.message || payload || {};
+      const conversationId = normalizeConversationId(
+        eventPayload?.conversation_id
+        || eventPayload?.conversationId
+        || eventPayload?.message?.conversation_id
+        || eventPayload?.message?.conversationId
+        || eventPayload?.id,
+      );
+      const senderEmpid = normalizeId(
+        eventPayload?.empid
+        || eventPayload?.author_empid
+        || eventPayload?.user_id
+        || eventPayload?.userId
+        || eventPayload?.user?.empid
+        || eventPayload?.user?.id,
+      );
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      const payloadCompanyId = normalizeId(eventPayload?.company_id || eventPayload?.companyId || eventPayload?.message?.company_id || eventPayload?.message?.companyId);
+      if (!conversationId || !senderEmpid || senderEmpid === selfEmpid) return;
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      const key = `${activeCompanyId || 'none'}:${conversationId}`;
+      setTypingByConversation((prev) => {
+        const nextUsers = new Set(Array.isArray(prev[key]) ? prev[key] : []);
+        nextUsers.add(senderEmpid);
+        return { ...prev, [key]: Array.from(nextUsers) };
+      });
+      const timeoutKey = `${key}:${senderEmpid}`;
+      const existingTimer = typingTimerRef.current.get(timeoutKey);
+      if (existingTimer) globalThis.clearTimeout(existingTimer);
+      const nextTimer = globalThis.setTimeout(() => {
+        setTypingByConversation((prev) => {
+          const current = new Set(Array.isArray(prev[key]) ? prev[key] : []);
+          current.delete(senderEmpid);
+          return { ...prev, [key]: Array.from(current) };
+        });
+        typingTimerRef.current.delete(timeoutKey);
+      }, 3500);
+      typingTimerRef.current.set(timeoutKey, nextTimer);
+    };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
@@ -1585,6 +1752,8 @@ export default function MessagingWidget() {
     socket.on('message.deleted', onDeleted);
     socket.on('conversation.deleted', onConversationDeleted);
     socket.on('conversation.updated', onConversationUpdated);
+    socket.on('message.typing', onTyping);
+    socket.on('typing', onTyping);
     return () => {
       socket.off('message.created', onNew);
       socket.off('message.updated', onUpdated);
@@ -1592,6 +1761,10 @@ export default function MessagingWidget() {
       socket.off('message.deleted', onDeleted);
       socket.off('conversation.deleted', onConversationDeleted);
       socket.off('conversation.updated', onConversationUpdated);
+      socket.off('message.typing', onTyping);
+      socket.off('typing', onTyping);
+      typingTimerRef.current.forEach((timerId) => globalThis.clearTimeout(timerId));
+      typingTimerRef.current.clear();
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
@@ -2170,13 +2343,17 @@ export default function MessagingWidget() {
     }
     setMessagesByCompany((prev) => {
       const key = getCompanyCacheKey(activeCompany);
-      const nextMessages = (prev[key] || []).filter((entry) => Number(entry.id) !== Number(messageId) && Number(entry.parent_message_id || entry.parentMessageId) !== Number(messageId));
+      const nextMessages = (prev[key] || []).map((entry) => (
+        Number(entry.id) === Number(messageId)
+          ? toDeletedMessage(entry, { deleted_by_empid: selfEmpid })
+          : entry
+      ));
       return { ...prev, [key]: nextMessages };
     });
-    if (Number(activeConversation?.conversationId) === Number(messageId)) {
-      dispatch({ type: 'widget/setConversation', payload: null });
+    if (normalizeId(editingMessage?.id) === normalizeId(messageId)) {
+      cancelEditingMessage();
     }
-    setComposerAnnouncement('Conversation deleted.');
+    setComposerAnnouncement('Message deleted.');
   };
 
 
@@ -2691,6 +2868,21 @@ export default function MessagingWidget() {
     event.target.style.height = `${Math.min(event.target.scrollHeight, 240)}px`;
     const caret = event.target.selectionStart || value.length;
     const left = value.slice(0, caret);
+
+    const selectedConversationId = normalizeConversationId(activeConversation?.conversationId || state.activeConversationId);
+    const activeCompany = normalizeId(state.activeCompanyId || companyId);
+    const socket = connectSocket();
+    if (socket && selectedConversationId && selfEmpid) {
+      const now = Date.now();
+      const key = `${activeCompany || 'none'}:${selectedConversationId}`;
+      if (!(typingEmitRef.current.key === key && now - typingEmitRef.current.ts < 1200)) {
+        typingEmitRef.current = { key, ts: now };
+        const payload = { conversationId: selectedConversationId, conversation_id: selectedConversationId, companyId: activeCompany, company_id: activeCompany, empid: selfEmpid, user_id: selfEmpid };
+        socket.emit('message.typing', payload);
+        socket.emit('typing', payload);
+      }
+    }
+
     const mentionMatch = left.match(/(^|\s)@([A-Za-z0-9_.-]*)$/);
     if (!mentionMatch) {
       setMentionOpen(false);
@@ -2702,6 +2894,21 @@ export default function MessagingWidget() {
     setMentionQuery(mentionMatch[2] || '');
     setMentionStart(caret - mentionMatch[2].length - 1);
   };
+
+  const activeTypingUsers = useMemo(() => {
+    const activeCompany = normalizeId(state.activeCompanyId || companyId);
+    const conversationId = normalizeConversationId(activeConversation?.conversationId || state.activeConversationId);
+    if (!conversationId) return [];
+    return typingByConversation[`${activeCompany || 'none'}:${conversationId}`] || [];
+  }, [activeConversation?.conversationId, companyId, state.activeCompanyId, state.activeConversationId, typingByConversation]);
+
+  const typingLabel = useMemo(() => {
+    if (activeTypingUsers.length === 0) return '';
+    const labels = activeTypingUsers.map((empid) => resolveEmployeeLabel(empid));
+    if (labels.length === 1) return `${labels[0]} is typing...`;
+    if (labels.length === 2) return `${labels[0]} and ${labels[1]} are typing...`;
+    return `${labels[0]} and ${labels.length - 1} others are typing...`;
+  }, [activeTypingUsers, resolveEmployeeLabel]);
 
   const insertMention = (empid) => {
     if (mentionStart < 0) return;
@@ -2935,6 +3142,7 @@ export default function MessagingWidget() {
               <div style={{ marginTop: 3, fontSize: 12, color: '#334155', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ color: '#64748b' }}>Ctrl/Cmd + Enter to send.</span>
                 {editingMessage?.id && <span style={{ color: '#2563eb', fontWeight: 600 }}>Editing #{editingMessage.id}</span>}
+                {typingLabel && <span style={{ color: '#7c3aed', fontWeight: 600 }}>{typingLabel}</span>}
               </div>
               {canEditTopic && (
                 <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
