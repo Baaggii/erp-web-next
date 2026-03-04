@@ -22,6 +22,7 @@ class MockDb {
     this.conversations = [];
     this.participants = [];
     this.messages = [];
+    this.employees = [];
   }
 
   async query(sql, params = []) {
@@ -255,6 +256,42 @@ test('posting message enqueues web push for recipients except sender', async () 
 });
 
 
+
+
+
+test('general conversation message enqueues web push for company employees except sender', async () => {
+  const db = new MockDb();
+  db.conversations.push({
+    id: 1,
+    company_id: 9,
+    type: 'general',
+    topic: null,
+    linked_type: null,
+    linked_id: null,
+    created_by_empid: 'SYSTEM',
+    deleted_at: null,
+    last_message_id: null,
+    last_message_at: null,
+  });
+  db.employees = ['E1', 'E2', 'E3', ''];
+
+  const pushed = [];
+  const notifyWebPush = (job) => pushed.push(job);
+
+  await postConversationMessage({
+    user: { empid: 'E1', companyId: 9 },
+    companyId: 9,
+    conversationId: 1,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { body: 'Announcement' },
+  });
+
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
+  assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+});
 
 
 test('getConversationMessages keeps deleted messages with masked body', async () => {
