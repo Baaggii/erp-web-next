@@ -1861,6 +1861,10 @@ export default function ERPLayout() {
             );
             let placeholderStep = null;
             let placeholderIndex = clampedIndex;
+            let arrowIsValid = false;
+            let arrowTrackedElement = null;
+            let markerValueForAssignment = "";
+            let markerValueForRemoval = "";
             updateTourSteps((prevSteps) => {
               if (!Array.isArray(prevSteps)) return prevSteps;
               if (clampedIndex < 0 || clampedIndex >= prevSteps.length) {
@@ -1955,10 +1959,6 @@ export default function ERPLayout() {
                 : fallbackWatchSelectors;
 
               let arrowRect = null;
-              let arrowIsValid = false;
-              let arrowTrackedElement = null;
-              let markerValueForAssignment = "";
-              let markerValueForRemoval = "";
               if (typeof document !== "undefined" && document?.body) {
                 try {
                   const arrowElements = document.querySelectorAll(fallbackSelector);
