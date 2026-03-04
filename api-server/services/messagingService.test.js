@@ -22,6 +22,7 @@ class MockDb {
     this.conversations = [];
     this.participants = [];
     this.messages = [];
+    this.employees = [];
   }
 
   async query(sql, params = []) {
@@ -63,6 +64,16 @@ class MockDb {
       const [companyId, conversationId, empid] = params;
       const exists = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
       return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
+    }
+    if (text.startsWith('SELECT empid FROM erp_conversation_participants')) {
+      const [companyId, conversationId] = params;
+      const rows = this.participants
+        .filter((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && !p.left_at)
+        .map((p) => ({ empid: p.empid }));
+      return [rows, undefined];
+    }
+    if (text.startsWith('SELECT DISTINCT employment_emp_id AS empid FROM tbl_employment')) {
+      return [this.employees.map((empid) => ({ empid })), undefined];
     }
     if (text.startsWith('INSERT INTO erp_messages')) {
       const [companyId, conversationId, authorEmpid, parentMessageId, body, messageClass] = params;
@@ -212,7 +223,79 @@ test('sending message requires participant access and validates message_class en
   assert.equal(thread.items.length, 2);
 });
 
+test('posting message enqueues web push for recipients except sender', async () => {
+  const db = new MockDb();
+  const pushed = [];
+  const notifyWebPush = (job) => pushed.push(job);
 
+  const created = await createConversationRoot({
+    user: { empid: 'E1', companyId: 1 },
+    companyId: 1,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { type: 'private', participants: ['E2', 'E3'], topic: 'Start', body: 'First message' },
+  });
+
+  // Root post from E1 should notify E2 + E3
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
+  pushed.length = 0;
+
+  await postConversationMessage({
+    user: { empid: 'E2', companyId: 1 },
+    companyId: 1,
+    conversationId: created.conversation.id,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { body: 'Reply from E2' },
+  });
+
+  // Reply from E2 should notify E1 + E3
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E1', 'E3']));
+  assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+});
+
+
+
+
+
+
+test('general conversation message enqueues web push for company employees except sender', async () => {
+  const db = new MockDb();
+  db.conversations.push({
+    id: 1,
+    company_id: 9,
+    type: 'general',
+    topic: null,
+    linked_type: null,
+    linked_id: null,
+    created_by_empid: 'SYSTEM',
+    deleted_at: null,
+    last_message_id: null,
+    last_message_at: null,
+  });
+  db.employees = ['E1', 'E2', 'E3', ''];
+
+  const pushed = [];
+  const notifyWebPush = (job) => pushed.push(job);
+
+  await postConversationMessage({
+    user: { empid: 'E1', companyId: 9 },
+    companyId: 9,
+    conversationId: 1,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { body: 'Announcement' },
+  });
+
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
+  assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
+});
 
 
 test('getConversationMessages keeps deleted messages with masked body', async () => {
