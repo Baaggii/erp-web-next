@@ -4384,7 +4384,7 @@ function MainWindow({ title }) {
     openTourViewer,
     ensureTourDefinition,
   } = useContext(TourContext);
-  const { userSettings, session } = useContext(AuthContext);
+  const { user, userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
