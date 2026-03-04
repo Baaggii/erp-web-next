@@ -87,11 +87,10 @@ export function adaptConversationListResponse(data) {
       })
       .filter(Boolean)
       .sort((a, b) => {
-        if (a.isGeneral) return -1;
-        if (b.isGeneral) return 1;
         const aTime = new Date(a.lastMessageAt || 0).getTime();
         const bTime = new Date(b.lastMessageAt || 0).getTime();
-        return bTime - aTime;
+        if (aTime !== bTime) return bTime - aTime;
+        return Number(b.conversationId || 0) - Number(a.conversationId || 0);
       }),
     pageInfo: data?.pageInfo ?? null,
   };
