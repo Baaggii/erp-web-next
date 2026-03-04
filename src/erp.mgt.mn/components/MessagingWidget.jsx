@@ -295,6 +295,36 @@ async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
   }
   throw lastError || new Error('Reaction request failed');
 }
+
+async function requestAddConversationParticipant({ conversationId, companyId, empid }) {
+  const payload = JSON.stringify({ companyId, empid });
+  const attempts = [
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participant` },
+    { method: 'PUT', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversation/${conversationId}/participants` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/members` },
+  ];
+
+  let lastFailedResponse = null;
+  for (const attempt of attempts) {
+    const response = await fetch(attempt.path, {
+      method: attempt.method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    if (response.ok) return response;
+    if (response.status === 404 || response.status === 405) {
+      lastFailedResponse = response;
+      continue;
+    }
+    return response;
+  }
+
+  return lastFailedResponse;
+}
+
 function extractContextLink(message) {
   const linkedType = message?.linked_type || message?.linkedType || null;
   const linkedId = message?.linked_id || message?.linkedId || null;
@@ -2921,14 +2951,9 @@ export default function MessagingWidget() {
     const confirmed = globalThis.confirm(`Add ${label} to this conversation? They will be able to see existing conversation history.`);
     if (!confirmed) return;
 
-    const res = await fetch(`${API_BASE}/messaging/conversations/${conversationId}/participants`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId: activeCompany, empid: id }),
-    });
-    if (!res.ok) {
-      const payload = await res.json().catch(() => null);
+    const res = await requestAddConversationParticipant({ conversationId, companyId: activeCompany, empid: id });
+    if (!res || !res.ok) {
+      const payload = res ? await res.json().catch(() => null) : null;
       setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to add participant.');
       return;
     }
