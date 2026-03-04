@@ -1470,8 +1470,8 @@ export default function MessagingWidget() {
   }, [isNarrowLayout]);
 
   const showLeftPane = !isNarrowLayout || !isLeftPaneCollapsed;
-  const narrowSplitPaneLayout = isNarrowLayout && showLeftPane && !isMobileLayout;
-  const mobileDrawerLayout = isMobileLayout && showLeftPane;
+  const narrowSplitPaneLayout = isNarrowLayout && showLeftPane;
+  const mobileDrawerLayout = false;
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -3328,11 +3328,9 @@ export default function MessagingWidget() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: narrowSplitPaneLayout
-          ? 'minmax(260px, 1fr) minmax(0, 1fr)'
+          ? 'minmax(220px, 1fr) minmax(0, 1fr)'
           : (isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)'),
-        gridTemplateRows: isNarrowLayout && !narrowSplitPaneLayout
-          ? (showLeftPane ? 'minmax(260px, 45%) minmax(0, 1fr)' : 'minmax(0, 1fr)')
-          : 'minmax(0, 1fr)',
+        gridTemplateRows: 'minmax(0, 1fr)',
         minHeight: 0,
         flex: 1,
         overflow: 'hidden',
