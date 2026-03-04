@@ -756,6 +756,39 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
     }
     : {};
 
+  if (isDeleted) {
+    return (
+      <div style={{ marginBottom: 6, marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0), marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0, maxWidth: '92%', width: 'fit-content', minWidth: 'min(70%, 520px)', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+        This message was deleted.
+        {!isCollapsed && message.replies.map((child) => (
+          <MessageNode
+            key={child.id}
+            message={child}
+            depth={depth + 1}
+            onReply={onReply}
+            onEdit={onEdit}
+            onJumpToParent={onJumpToParent}
+            onToggleReplies={onToggleReplies}
+            collapsedMessageIds={collapsedMessageIds}
+            parentMap={parentMap}
+            permissions={permissions}
+            activeReplyTarget={activeReplyTarget}
+            highlightedIds={highlightedIds}
+            onOpenLinkedTransaction={onOpenLinkedTransaction}
+            resolveEmployeeLabel={resolveEmployeeLabel}
+            canDeleteMessage={canDeleteMessage}
+            onDeleteMessage={onDeleteMessage}
+            onPreviewAttachment={onPreviewAttachment}
+            onToggleReaction={onToggleReaction}
+            selfEmpid={selfEmpid}
+            isOwnMessage={isOwnMessage}
+            onAnyAction={onAnyAction}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <article
       aria-label={`Message ${message.id}`}

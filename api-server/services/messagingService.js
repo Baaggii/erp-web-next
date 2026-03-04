@@ -327,7 +327,6 @@ export async function getConversationMessages({ user, companyId, conversationId,
     `SELECT * FROM erp_messages
       WHERE company_id = ?
         AND conversation_id = ?
-        AND deleted_at IS NULL
         ${cursorId ? 'AND id < ?' : ''}
       ORDER BY id DESC
       LIMIT ?`,
@@ -341,6 +340,7 @@ export async function getConversationMessages({ user, companyId, conversationId,
 
   const viewerEmpid = String(user?.empid || '').trim();
   const readableMessageIds = items
+    .filter((row) => !row?.deleted_at)
     .filter((row) => String(row?.author_empid || '') !== viewerEmpid)
     .map((row) => toId(row?.id))
     .filter(Boolean);
@@ -403,10 +403,16 @@ export async function getConversationMessages({ user, companyId, conversationId,
 
   const itemsWithReads = items.map((row) => {
     const messageId = toId(row?.id);
-    const readBy = Array.from(readByMap.get(messageId) || []);
-    const byEmoji = reactionsByMessage.get(messageId) || new Map();
+    const isDeleted = Boolean(row?.deleted_at);
+    const readBy = isDeleted ? [] : Array.from(readByMap.get(messageId) || []);
+    const byEmoji = isDeleted ? new Map() : (reactionsByMessage.get(messageId) || new Map());
     const reactions = Array.from(byEmoji.entries()).map(([emoji, users]) => ({ emoji, count: users.size, users: Array.from(users) }));
-    return { ...row, read_by: readBy, reactions };
+    return {
+      ...row,
+      body: isDeleted ? '' : row?.body,
+      read_by: readBy,
+      reactions,
+    };
   });
 
   return {
