@@ -11,7 +11,10 @@ const { addMessageReaction, removeMessageReaction, toggleMessageReaction, getCon
 class ReactionDb {
   constructor() {
     this.conversations = [{ id: 1, company_id: 9, type: 'private', deleted_at: null }];
-    this.participants = [{ company_id: 9, conversation_id: 1, empid: 'E1', left_at: null }];
+    this.participants = [
+      { company_id: 9, conversation_id: 1, empid: 'E1', left_at: null },
+      { company_id: 9, conversation_id: 1, empid: 'E2', left_at: null },
+    ];
     this.messages = [{ id: 10, company_id: 9, conversation_id: 1, author_empid: 'E2', deleted_at: null }];
     this.reactions = [];
   }
@@ -31,6 +34,13 @@ class ReactionDb {
       const [companyId, conversationId, empid] = params;
       const row = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
       return [[row ? { 1: 1 } : null].filter(Boolean), undefined];
+    }
+    if (text.startsWith('SELECT empid FROM erp_conversation_participants')) {
+      const [companyId, conversationId] = params;
+      const rows = this.participants
+        .filter((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && !p.left_at)
+        .map((p) => ({ empid: p.empid }));
+      return [rows, undefined];
     }
     if (text.startsWith('INSERT INTO erp_message_reactions')) {
       const [messageId, companyId, empid, emoji] = params;
@@ -79,13 +89,22 @@ test('message reactions can be added/toggled/removed and returned with message p
   const db = new ReactionDb();
   const user = { empid: 'E1', companyId: 9 };
 
-  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
-  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
-  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
+  const notifications = [];
+  const notifyWebPush = (payload) => notifications.push(payload);
+
+  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession, notifyWebPush });
+  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession, notifyWebPush });
+  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession, notifyWebPush });
   await removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
-  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🎉' }, db, getSession });
+  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🎉' }, db, getSession, notifyWebPush });
 
   const response = await getConversationMessages({ user, companyId: 9, conversationId: 1, db, getSession });
   assert.equal(response.items.length, 1);
   assert.deepEqual(response.items[0].reactions, [{ emoji: '🎉', count: 1, users: ['E1'] }]);
+
+  assert.equal(notifications.length, 3);
+  assert.ok(notifications.every((entry) => entry.kind === 'message'));
+  assert.ok(notifications.every((entry) => entry.empid === 'E2'));
+  assert.match(notifications[0].message, /E1 reacted 👍/);
+
 });

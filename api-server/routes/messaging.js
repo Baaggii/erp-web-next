@@ -188,6 +188,27 @@ async function handle(res, req, work, okStatus = 200) {
   }
 }
 
+
+function buildReactionEventMessage(data) {
+  const actorEmpid = String(data?.actorEmpid || '').trim();
+  const emoji = String(data?.emoji || '').trim();
+  return {
+    id: `reaction:${data?.messageId || 'unknown'}:${Date.now()}`,
+    company_id: data?.companyId,
+    conversation_id: data?.conversationId,
+    related_message_id: data?.messageId,
+    message_class: 'reaction',
+    author_empid: actorEmpid,
+    body: `${actorEmpid || 'Someone'} reacted ${emoji || '👍'}`,
+    reaction: {
+      message_id: data?.messageId,
+      emoji,
+      reacted: data?.reacted === true,
+      actor_empid: actorEmpid,
+    },
+  };
+}
+
 function emitMessagingEvent(req, companyId, eventName, payload) {
   const io = req.app.get('io');
   if (!io) return;
@@ -368,58 +389,82 @@ router.delete('/messages/:id', (req, res) =>
   }));
 
 router.post('/messages/:id/reactions', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => addMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await addMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.delete('/messages/:id/reactions', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => removeMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await removeMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.post('/messages/:id/reactions/toggle', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => toggleMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await toggleMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.post('/messages/:id/reaction', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => addMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await addMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.delete('/messages/:id/reaction', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => removeMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await removeMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.post('/messages/:id/reaction/toggle', validateBody(validateMessageReaction, 'Invalid reaction payload'), (req, res) =>
-  handle(res, req, () => toggleMessageReaction({
-    user: req.user,
-    companyId: req.body?.companyId ?? req.query.companyId,
-    messageId: Number(req.params.id),
-    payload: req.body,
-    correlationId: req.correlationId,
-  })));
+  handle(res, req, async () => {
+    const data = await toggleMessageReaction({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      messageId: Number(req.params.id),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.companyId, 'message.created', { message: buildReactionEventMessage(data) });
+    return data;
+  }));
 
 router.post('/presence/heartbeat', (req, res) =>
   handle(res, req, () =>
