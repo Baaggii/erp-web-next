@@ -182,19 +182,6 @@ function attachmentKindIcon(kind) {
   }
 }
 
-
-function extractWebLinks(text, limit = 3) {
-  const raw = sanitizeMessageText(text || '');
-  if (!raw) return [];
-  const matches = raw.match(/(?:https?:\/\/[^\s]+|www\.[^\s]+)/gi) || [];
-  const trailingPunctuationPattern = /[),.;!?]+$/;
-  const normalized = matches
-    .map((entry) => entry.replace(trailingPunctuationPattern, ''))
-    .filter(Boolean)
-    .map((entry) => (entry.startsWith('http://') || entry.startsWith('https://') ? entry : `https://${entry}`));
-  return Array.from(new Set(normalized)).slice(0, limit);
-}
-
 function countNestedReplies(message) {
   const replies = Array.isArray(message?.replies) ? message.replies : [];
   return replies.reduce((sum, child) => sum + 1 + countNestedReplies(child), 0);
@@ -362,6 +349,36 @@ async function requestAddConversationParticipant({ conversationId, companyId, em
     { method: 'PUT', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
     { method: 'POST', path: `${API_BASE}/messaging/conversation/${conversationId}/participants` },
     { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/members` },
+  ];
+
+  let lastFailedResponse = null;
+  for (const attempt of attempts) {
+    const response = await fetch(attempt.path, {
+      method: attempt.method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    if (response.ok) return response;
+    if (response.status === 404 || response.status === 405) {
+      lastFailedResponse = response;
+      continue;
+    }
+    return response;
+  }
+
+  return lastFailedResponse;
+}
+
+
+
+async function requestRemoveConversationParticipant({ conversationId, companyId, empid }) {
+  const payload = JSON.stringify({ companyId, empid });
+  const attempts = [
+    { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
+    { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participant` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participants/remove` },
+    { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participant/remove` },
   ];
 
   let lastFailedResponse = null;
@@ -1223,6 +1240,7 @@ export default function MessagingWidget() {
   const [companyRecords, setCompanyRecords] = useState([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [composerRecipientSearch, setComposerRecipientSearch] = useState('');
+  const [participantsModalOpen, setParticipantsModalOpen] = useState(false);
   const [newConversationSelections, setNewConversationSelections] = useState([]);
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
@@ -3163,12 +3181,43 @@ export default function MessagingWidget() {
     });
   };
 
-  const onRemoveRecipient = (id) => {
+  const onRemoveDraftRecipient = (id) => {
     if (!isDraftConversation) {
       setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
       return;
     }
     dispatch({ type: 'composer/setRecipients', payload: state.composer.recipients.filter((entry) => entry !== id) });
+  };
+
+  const onRemoveConversationParticipant = async (id) => {
+    const participantEmpid = normalizeId(id);
+    if (!participantEmpid) return;
+
+    if (isDraftConversation) {
+      onRemoveDraftRecipient(participantEmpid);
+      return;
+    }
+
+    const conversationId = normalizeConversationId(activeConversation?.conversationId);
+    if (!conversationId) {
+      setComposerAnnouncement('Select a conversation first.');
+      return;
+    }
+
+    const activeCompany = state.activeCompanyId || companyId;
+    const label = resolveEmployeeLabel(participantEmpid);
+    const confirmed = globalThis.confirm(`Remove ${label} from this conversation?`);
+    if (!confirmed) return;
+
+    const res = await requestRemoveConversationParticipant({ conversationId, companyId: activeCompany, empid: participantEmpid });
+    if (!res || !res.ok) {
+      const payload = res ? await res.json().catch(() => null) : null;
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to remove participant.');
+      return;
+    }
+
+    setComposerAnnouncement(`${label} was removed from the conversation.`);
+    refreshConversationList(activeCompany);
   };
 
   useEffect(() => {
@@ -3522,7 +3571,26 @@ export default function MessagingWidget() {
                       </span>
                       <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
                       <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
-                      <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
+                      <button type="button" aria-label={`Remove recipient ${label}`} onClick={() => onRemoveDraftRecipient(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
+                    </span>
+                  );
+                })}
+              </div>
+              )}
+              {!isDraftConversation && !activeConversation?.isGeneral && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {activeConversationParticipants.map((empid) => {
+                  const found = employeeRecords.find((entry) => entry.id === empid);
+                  const label = found?.label || resolveEmployeeLabel(empid);
+                  const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
+                  return (
+                    <span key={empid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', borderRadius: 999, padding: '4px 10px', background: '#f8fafc' }}>
+                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+                        {initialsForLabel(label)}
+                      </span>
+                      <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
+                      <span style={{ fontSize: 12, color: '#1e293b' }}>{label}</span>
+                      <button type="button" aria-label={`Remove participant ${label}`} onClick={() => onRemoveConversationParticipant(empid)} style={{ border: 0, background: 'transparent', color: '#64748b' }}>×</button>
                     </span>
                   );
                 })}
@@ -3598,28 +3666,15 @@ export default function MessagingWidget() {
 
             <div style={{ marginTop: 2 }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', alignItems: 'flex-end' }}>
-                <div style={{ position: 'relative', flex: '1 1 auto' }}>
-                  <label htmlFor="messaging-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add recipient</label>
-                  <input
-                    id="messaging-add-recipient"
-                    type="search"
-                    value={composerRecipientSearch}
-                    onChange={(event) => setComposerRecipientSearch(event.target.value)}
-                    placeholder="Search by name or employee ID"
-                    aria-label="Add recipient"
-                    style={{ width: '100%', marginTop: 2, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
-                  />
-                  {composerRecipientSearch.trim() && (
-                    <div style={{ marginTop: 6, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', maxHeight: 110, overflowY: 'auto' }}>
-                      {addRecipientCandidates.slice(0, 8).map((entry) => (
-                        <button key={entry.id} type="button" onClick={() => onChooseRecipient(entry.id)} style={{ width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid #f1f5f9', background: 'transparent', padding: '6px 8px' }}>
-                          {entry.label}
-                        </button>
-                      ))}
-                      {addRecipientCandidates.length === 0 && <p style={{ margin: 0, padding: '6px 8px', fontSize: 12, color: '#64748b' }}>No non-participant users found.</p>}
-                    </div>
-                  )}
-                </div>
+                {!isDraftConversation && !activeConversation?.isGeneral && (
+                  <button
+                    type="button"
+                    onClick={() => setParticipantsModalOpen(true)}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', padding: '6px 10px', fontWeight: 600 }}
+                  >
+                    Show participants ({activeConversationParticipants.length})
+                  </button>
+                )}
                 {editingMessage?.id && (
                   <button
                     type="button"
@@ -3689,7 +3744,70 @@ export default function MessagingWidget() {
 
             </div>
 
+
             <p aria-live="assertive" style={{ fontSize: 12, marginBottom: 0 }}>{composerAnnouncement}</p>
+
+            {participantsModalOpen && !isDraftConversation && !activeConversation?.isGeneral && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                onClick={() => {
+                  setParticipantsModalOpen(false);
+                  setComposerRecipientSearch('');
+                }}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1900, padding: 16 }}
+              >
+                <div onClick={(event) => event.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: 'min(92vw, 560px)', maxHeight: '80vh', overflow: 'auto', padding: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: 14 }}>Conversation participants</strong>
+                    <button type="button" onClick={() => { setParticipantsModalOpen(false); setComposerRecipientSearch(''); }}>Close</button>
+                  </div>
+                  <p style={{ margin: '8px 0', fontSize: 12, color: '#64748b' }}>Add or remove participants for this conversation.</p>
+
+                  <label htmlFor="messaging-modal-add-recipient" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Add participant</label>
+                  <input
+                    id="messaging-modal-add-recipient"
+                    type="search"
+                    value={composerRecipientSearch}
+                    onChange={(event) => setComposerRecipientSearch(event.target.value)}
+                    placeholder="Search by name or employee ID"
+                    aria-label="Add participant"
+                    style={{ width: '100%', marginTop: 4, borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px' }}
+                  />
+                  {composerRecipientSearch.trim() && (
+                    <div style={{ marginTop: 6, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', maxHeight: 140, overflowY: 'auto' }}>
+                      {addRecipientCandidates.slice(0, 12).map((entry) => (
+                        <button key={entry.id} type="button" onClick={() => onChooseRecipient(entry.id)} style={{ width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid #f1f5f9', background: 'transparent', padding: '6px 8px' }}>
+                          + {entry.label}
+                        </button>
+                      ))}
+                      {addRecipientCandidates.length === 0 && <p style={{ margin: 0, padding: '6px 8px', fontSize: 12, color: '#64748b' }}>No non-participant users found.</p>}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+                    {activeConversationParticipants.map((empid) => {
+                      const found = employeeRecords.find((entry) => entry.id === empid);
+                      const label = found?.label || resolveEmployeeLabel(empid);
+                      const status = found?.status || presenceMap.get(empid) || PRESENCE.OFFLINE;
+                      return (
+                        <div key={`modal-participant-${empid}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
+                          <span style={{ fontSize: 13, color: '#0f172a' }}>{label}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{empid}</span>
+                          <button type="button" onClick={() => onRemoveConversationParticipant(empid)} style={{ border: '1px solid #fecaca', borderRadius: 6, background: '#fff1f2', color: '#b91c1c', padding: '2px 8px', fontSize: 12 }}>
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {activeConversationParticipants.length === 0 && (
+                      <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>No participants found.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {attachmentPreviewOpen && attachmentPreview && (
               <div
