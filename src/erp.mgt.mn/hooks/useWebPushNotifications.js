@@ -56,9 +56,30 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
       return Notification.permission;
     }
 
-    const maybePromise = Notification.requestPermission((legacyPermission) => legacyPermission);
-    if (maybePromise && typeof maybePromise.then === 'function') {
-      return maybePromise;
+    try {
+      const maybePromise = Notification.requestPermission();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        return maybePromise;
+      }
+      if (typeof maybePromise === 'string') {
+        return maybePromise;
+      }
+    } catch (error) {
+      // Fall through to callback-based legacy API.
+    }
+
+    try {
+      return await new Promise((resolve) => {
+        Notification.requestPermission((legacyPermission) => {
+          if (typeof legacyPermission === 'string') {
+            resolve(legacyPermission);
+            return;
+          }
+          resolve(Notification.permission);
+        });
+      });
+    } catch (error) {
+      return Notification.permission;
     }
 
     return Notification.permission;
