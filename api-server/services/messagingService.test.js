@@ -13,6 +13,7 @@ const {
   getConversationMessages,
   deleteConversation,
   patchConversationTopic,
+  addConversationParticipant,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -385,6 +386,41 @@ test('conversation creator/admin can update topic, non-creator cannot', async ()
 });
 
 
+
+
+test('addConversationParticipant adds member to private conversation and grants visibility', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 3 };
+
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 3,
+    db,
+    getSession,
+    payload: {
+      type: 'private',
+      participants: ['E2'],
+      topic: 'Ops',
+      body: 'Initial',
+    },
+  });
+
+  const before = await listConversations({ user: { empid: 'E3', companyId: 3 }, companyId: 3, db, getSession });
+  assert.equal(before.items.some((entry) => entry.id === created.conversation.id), false);
+
+  const added = await addConversationParticipant({
+    user: creator,
+    companyId: 3,
+    conversationId: created.conversation.id,
+    db,
+    getSession,
+    payload: { empid: 'E3' },
+  });
+  assert.equal(added.participant.empid, 'E3');
+
+  const after = await listConversations({ user: { empid: 'E3', companyId: 3 }, companyId: 3, db, getSession });
+  assert.equal(after.items.some((entry) => entry.id === created.conversation.id), true);
+});
 test('patchConversationTopic emits conversation.updated socket event', async () => {
   const db = new MockDb();
   const creator = { empid: 'E1', companyId: 4 };
