@@ -64,6 +64,13 @@ class MockDb {
       const exists = this.participants.find((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && p.empid === empid && !p.left_at);
       return [[exists ? { 1: 1 } : null].filter(Boolean), undefined];
     }
+    if (text.startsWith('SELECT empid FROM erp_conversation_participants')) {
+      const [companyId, conversationId] = params;
+      const rows = this.participants
+        .filter((p) => p.company_id === Number(companyId) && p.conversation_id === Number(conversationId) && !p.left_at)
+        .map((p) => ({ empid: p.empid }));
+      return [rows, undefined];
+    }
     if (text.startsWith('INSERT INTO erp_messages')) {
       const [companyId, conversationId, authorEmpid, parentMessageId, body, messageClass] = params;
       const row = { id: this.nextMessageId++, company_id: Number(companyId), conversation_id: Number(conversationId), author_empid: authorEmpid, parent_message_id: parentMessageId ? Number(parentMessageId) : null, body, message_class: messageClass, created_at: new Date().toISOString(), deleted_at: null };
@@ -210,6 +217,41 @@ test('sending message requires participant access and validates message_class en
   const thread = await getConversationMessages({ user: creator, companyId: 1, conversationId: created.conversation.id, db, getSession });
   assert.equal(sent.message.body, 'Allowed');
   assert.equal(thread.items.length, 2);
+});
+
+test('posting message enqueues web push for recipients except sender', async () => {
+  const db = new MockDb();
+  const pushed = [];
+  const notifyWebPush = (job) => pushed.push(job);
+
+  const created = await createConversationRoot({
+    user: { empid: 'E1', companyId: 1 },
+    companyId: 1,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { type: 'private', participants: ['E2', 'E3'], topic: 'Start', body: 'First message' },
+  });
+
+  // Root post from E1 should notify E2 + E3
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E2', 'E3']));
+  pushed.length = 0;
+
+  await postConversationMessage({
+    user: { empid: 'E2', companyId: 1 },
+    companyId: 1,
+    conversationId: created.conversation.id,
+    db,
+    getSession,
+    notifyWebPush,
+    payload: { body: 'Reply from E2' },
+  });
+
+  // Reply from E2 should notify E1 + E3
+  assert.equal(pushed.length, 2);
+  assert.deepEqual(new Set(pushed.map((entry) => entry.empid)), new Set(['E1', 'E3']));
+  assert.equal(pushed.every((entry) => entry.kind === 'message'), true);
 });
 
 
