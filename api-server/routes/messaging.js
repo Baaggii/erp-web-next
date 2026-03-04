@@ -171,30 +171,6 @@ async function handle(res, req, work, okStatus = 200) {
   }
 }
 
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function normalizePreviewUrl(rawUrl) {
-  const candidate = String(rawUrl || '').trim();
-  if (!candidate) return null;
-  const withProtocol = /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
-  try {
-    const parsed = new URL(withProtocol);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
 function emitMessagingEvent(req, companyId, eventName, payload) {
   const io = req.app.get('io');
   if (!io) return;
@@ -205,50 +181,6 @@ function emitMessagingEvent(req, companyId, eventName, payload) {
     .to(`messaging:${normalizedCompanyId}`)
     .emit(eventName, { company_id: normalizedCompanyId, ...payload });
 }
-
-
-router.get('/link-preview', (req, res) =>
-  handle(res, req, async () => {
-    const url = normalizePreviewUrl(req.query.url);
-    if (!url) {
-      return { url: null, headers: [], title: '', ok: false, error: 'Invalid URL' };
-    }
-
-    let response;
-    try {
-      response = await fetchWithTimeout(url, {
-        method: 'GET',
-        redirect: 'follow',
-        headers: {
-          'User-Agent': 'ERP Messaging Link Preview/1.0',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      }, 6000);
-    } catch {
-      return { url, headers: [], title: '', ok: false, error: 'Failed to fetch URL' };
-    }
-
-    const pickHeaders = ['content-type', 'content-length', 'last-modified', 'server', 'cache-control', 'x-frame-options'];
-    const headers = pickHeaders
-      .map((name) => ({ name, value: response.headers.get(name) || '' }))
-      .filter((entry) => entry.value);
-
-    let title = '';
-    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-    if (contentType.includes('text/html')) {
-      const html = await response.text().catch(() => '');
-      const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      title = match ? String(match[1]).replace(/\s+/g, ' ').trim().slice(0, 200) : '';
-    }
-
-    return {
-      url,
-      ok: response.ok,
-      status: response.status,
-      title,
-      headers,
-    };
-  }));
 
 router.get('/conversations', (req, res) =>
   handle(res, req, () => listConversations({ user: req.user, companyId: req.query.companyId, cursor: req.query.cursor, limit: req.query.limit, correlationId: req.correlationId })));
