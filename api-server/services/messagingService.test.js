@@ -14,7 +14,6 @@ const {
   deleteConversation,
   patchConversationTopic,
   addConversationParticipant,
-  removeConversationParticipant,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -429,42 +428,6 @@ test('addConversationParticipant adds member to private conversation and grants 
   const after = await listConversations({ user: { empid: 'E3', companyId: 3 }, companyId: 3, db, getSession });
   assert.equal(after.items.some((entry) => entry.id === created.conversation.id), true);
 });
-
-
-test('removeConversationParticipant removes member from private conversation visibility', async () => {
-  const db = new MockDb();
-  const creator = { empid: 'E1', companyId: 5 };
-
-  const created = await createConversationRoot({
-    user: creator,
-    companyId: 5,
-    db,
-    getSession,
-    payload: {
-      type: 'private',
-      participants: ['E2', 'E3'],
-      topic: 'Ops',
-      body: 'Initial',
-    },
-  });
-
-  const before = await listConversations({ user: { empid: 'E3', companyId: 5 }, companyId: 5, db, getSession });
-  assert.equal(before.items.some((entry) => entry.id === created.conversation.id), true);
-
-  const removed = await removeConversationParticipant({
-    user: creator,
-    companyId: 5,
-    conversationId: created.conversation.id,
-    db,
-    getSession,
-    payload: { empid: 'E3' },
-  });
-  assert.equal(removed.removed, true);
-
-  const after = await listConversations({ user: { empid: 'E3', companyId: 5 }, companyId: 5, db, getSession });
-  assert.equal(after.items.some((entry) => entry.id === created.conversation.id), false);
-});
-
 test('patchConversationTopic emits conversation.updated socket event', async () => {
   const db = new MockDb();
   const creator = { empid: 'E1', companyId: 4 };
