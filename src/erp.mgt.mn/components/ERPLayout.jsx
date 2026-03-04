@@ -4094,7 +4094,7 @@ export function Header({
 
 /** Left sidebar with “menu groups” and “pinned items” **/
 function Sidebar({ onOpen, open, isMobile }) {
-  const { permissions: perms, user, setUser } = useContext(AuthContext);
+  const { permissions: perms, user, setUser, userSettings } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const location = useLocation();
   const navigate = useNavigate();
@@ -4384,7 +4384,7 @@ function MainWindow({ title }) {
     openTourViewer,
     ensureTourDefinition,
   } = useContext(TourContext);
-  const { userSettings, session } = useContext(AuthContext);
+  const { user, userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });

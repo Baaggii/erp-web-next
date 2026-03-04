@@ -123,15 +123,7 @@ function GeneralSettingsTab() {
               <input
                 type="checkbox"
                 checked={webPushEnabled}
-                onChange={async (e) => {
-                  const checked = e.target.checked;
-                  if (!checked) {
-                    updateUserSettings({ webPushEnabled: false });
-                    return;
-                  }
-                  const permission = await requestWebPushPermission();
-                  updateUserSettings({ webPushEnabled: permission === 'granted' });
-                }}
+                onChange={(e) => updateUserSettings({ webPushEnabled: e.target.checked })}
               />{' '}
               {t('settings_enable_web_push', 'Enable web push notifications')}
             </label>

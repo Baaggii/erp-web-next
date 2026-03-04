@@ -41,12 +41,6 @@ async function ensureVapidConfigured() {
   return true;
 }
 
-async function canSubscribeWithPublicKey() {
-  const client = await getWebPushClient();
-  const { publicKey } = getVapidConfig();
-  return Boolean(client && publicKey);
-}
-
 export function setWebPushStore(store) {
   dbPool = store || null;
 }
@@ -370,13 +364,10 @@ export function getWebPushPublicKey() {
 export async function getWebPushStatus({ companyId, empid }) {
   const { config } = await getGeneralConfig(companyId);
   const settings = await getUserSettings(empid, companyId);
-  const canSubscribe = await canSubscribeWithPublicKey();
-  const vapidConfigured = await ensureVapidConfigured();
   return {
     enabledGlobal: Boolean(config?.notifications?.webPushEnabled),
     enabledUser: settings?.webPushEnabled === true,
-    canSubscribe,
-    vapidConfigured,
+    vapidConfigured: await ensureVapidConfigured(),
     publicKey: getWebPushPublicKey(),
   };
 }
