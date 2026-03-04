@@ -1025,7 +1025,7 @@ export default function MessagingWidget() {
   const [activityTick, setActivityTick] = useState(0);
   const [typingByConversation, setTypingByConversation] = useState({});
   const typingEmitRef = useRef({ key: null, ts: 0 });
-  const typingTimerRef = useRef(null);
+  const typingTimerRef = useRef(new Map());
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
@@ -1682,10 +1682,18 @@ export default function MessagingWidget() {
         nextUsers.add(senderEmpid);
         return { ...prev, [key]: Array.from(nextUsers) };
       });
-      globalThis.clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = globalThis.setTimeout(() => {
-        setTypingByConversation((prev) => ({ ...prev, [key]: [] }));
+      const timerKey = `${key}:${senderEmpid}`;
+      const existingTimer = typingTimerRef.current.get(timerKey);
+      if (existingTimer) globalThis.clearTimeout(existingTimer);
+      const timeoutId = globalThis.setTimeout(() => {
+        setTypingByConversation((prev) => {
+          const users = new Set(Array.isArray(prev[key]) ? prev[key] : []);
+          users.delete(senderEmpid);
+          return { ...prev, [key]: Array.from(users) };
+        });
+        typingTimerRef.current.delete(timerKey);
       }, 3500);
+      typingTimerRef.current.set(timerKey, timeoutId);
     };
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
@@ -1724,6 +1732,10 @@ export default function MessagingWidget() {
     socket.on('message.typing', onTyping);
     socket.on('typing', onTyping);
     return () => {
+      typingTimerRef.current.forEach((timeoutId) => {
+        globalThis.clearTimeout(timeoutId);
+      });
+      typingTimerRef.current.clear();
       socket.off('message.created', onNew);
       socket.off('message.updated', onUpdated);
       socket.off('presence.updated', onPresence);
@@ -3182,6 +3194,14 @@ export default function MessagingWidget() {
                 onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
               />
             ))}
+
+            {typingLabel && (
+              <div style={{ display: 'flex', marginTop: 8, marginBottom: 4 }} aria-live="polite" aria-atomic="true">
+                <span style={{ maxWidth: '80%', borderRadius: 999, background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#6d28d9', padding: '4px 10px', fontSize: 12, fontWeight: 600 }}>
+                  {typingLabel}
+                </span>
+              </div>
+            )}
           </main>
 
           <form
