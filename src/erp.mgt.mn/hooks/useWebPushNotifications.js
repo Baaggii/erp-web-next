@@ -47,6 +47,16 @@ function normalizeMutedKinds(userSettings) {
 }
 
 export async function requestWebPushPermission({ userSettings, promptForPermission = true } = {}) {
+  const userAgent = (navigator.userAgent || '').toLowerCase();
+  const isIos = /iphone|ipad|ipod/.test(userAgent);
+  const isStandalone =
+    window.matchMedia?.('(display-mode: standalone)')?.matches ||
+    window.navigator?.standalone === true;
+
+  if (isIos && !isStandalone) {
+    return { ok: false, reason: 'ios_home_screen_required' };
+  }
+
   if (!window.isSecureContext) {
     return { ok: false, reason: 'insecure_context' };
   }
@@ -96,7 +106,7 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
 
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    return { ok: false, reason: 'push_unsupported', permission };
+    return { ok: true, reason: 'push_unsupported', permission };
   }
 
   let status;
