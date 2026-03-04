@@ -2740,6 +2740,22 @@ export default function MessagingWidget() {
     setComposerAnnouncement(`Linked transaction #${transactionId} to this message.`);
   };
 
+  const onComposerPaste = (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+
+    const directFiles = Array.from(clipboard.files || []);
+    const itemFiles = Array.from(clipboard.items || [])
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    const files = [...directFiles, ...itemFiles];
+    if (!files.length) return;
+
+    event.preventDefault();
+    addFiles(files);
+  };
+
   const onChooseRecipient = async (id) => {
     if (!id || state.composer.recipients.includes(id)) return;
     if (isDraftConversation) {
@@ -3191,6 +3207,7 @@ export default function MessagingWidget() {
               ref={composerRef}
               value={state.composer.body}
               onChange={onComposerInput}
+              onPaste={onComposerPaste}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                   event.preventDefault();

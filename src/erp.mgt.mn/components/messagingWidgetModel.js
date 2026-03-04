@@ -66,8 +66,10 @@ export function sanitizeMessageText(value) {
 
 export function safePreviewableFile(file) {
   if (!file) return false;
-  const type = String(file.type || '').toLowerCase();
-  return type.startsWith('image/') || type === 'application/pdf' || type.startsWith('text/');
+  if (typeof File !== 'undefined' && !(file instanceof File)) return false;
+  const hasName = Boolean(String(file.name || '').trim());
+  const hasReadableSize = Number.isFinite(Number(file.size)) && Number(file.size) >= 0;
+  return hasName && hasReadableSize;
 }
 
 export function getCompanyCacheKey(companyId) {
