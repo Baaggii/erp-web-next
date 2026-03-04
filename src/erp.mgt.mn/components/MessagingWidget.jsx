@@ -3172,6 +3172,8 @@ export default function MessagingWidget() {
             <div style={{ overflowY: 'auto', display: 'grid', gap: 4, minHeight: 0, flex: 1 }}>
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
+                const cleanedEmployeeLabel = formatEmployeeOption(entry)
+                  .replace(/\s*[·•-]?\s*(online|offline|away|busy)\s*$/i, '');
                 return (
                   <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
@@ -3210,7 +3212,7 @@ export default function MessagingWidget() {
                   style={{ textAlign: 'left', border: 0, background: 'transparent', width: '100%', padding: 0, minWidth: 0 }}
                 >
                   <span style={{ display: 'block', fontSize: 12, color: '#0f172a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>
-                    <strong>{conversation.title}</strong> · {conversation.preview}
+                    <strong>{conversation.title}</strong>
                   </span>
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
