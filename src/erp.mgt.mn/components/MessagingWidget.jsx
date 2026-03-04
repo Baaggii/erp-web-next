@@ -2028,7 +2028,7 @@ export default function MessagingWidget() {
     const selectedRootId = resolveSelectedConversationRootId(state.activeConversationId, conversations);
     const activeCompany = state.activeCompanyId || companyId;
     if (!state.isOpen || !selectedRootId || !activeCompany) return;
-    activeThreadInitialScrollRef.current = selectedRootId;
+    activeThreadInitialScrollRef.current = normalizeConversationId(selectedRootId);
     fetchThreadMessages(selectedRootId, activeCompany);
   }, [state.activeCompanyId, state.activeConversationId, companyId, state.isOpen]);
 
@@ -2086,15 +2086,15 @@ export default function MessagingWidget() {
   }, [activityTick, activeConversationNumericId, companyId, markConversationRead, state.activeCompanyId, state.isOpen, threadMessagesRaw.length]);
 
   useEffect(() => {
-    if (!activeConversationNumericId || threadMessagesRaw.length === 0) return;
-    if (activeThreadInitialScrollRef.current !== activeConversationNumericId) return;
+    if (!state.isOpen || !activeConversationNumericId || threadMessagesRaw.length === 0) return;
+    if (normalizeConversationId(activeThreadInitialScrollRef.current) !== activeConversationNumericId) return;
     const pane = threadPaneRef.current;
     if (!pane) return;
     requestAnimationFrame(() => {
       pane.scrollTop = pane.scrollHeight;
       activeThreadInitialScrollRef.current = null;
     });
-  }, [activeConversationNumericId, threadMessagesRaw.length]);
+  }, [activeConversationNumericId, state.isOpen, threadMessagesRaw.length]);
 
   useEffect(() => {
     if (!state.isOpen || !activeConversationNumericId) return;
@@ -3286,8 +3286,9 @@ export default function MessagingWidget() {
             }}
           >
             {networkState === 'loading' && <p>Loading messages…</p>}
+            {networkState === 'ready' && activeThreadPageState?.isLoading && threadMessages.length === 0 && <p>Loading messages…</p>}
             {networkState === 'error' && <p role="alert">{error}</p>}
-            {networkState === 'ready' && threadMessages.length === 0 && <p>No messages in this thread.</p>}
+            {networkState === 'ready' && !activeThreadPageState?.isLoading && threadMessages.length === 0 && <p>No messages in this thread.</p>}
 
             {threadMessages.map((message) => (
               <MessageNode
