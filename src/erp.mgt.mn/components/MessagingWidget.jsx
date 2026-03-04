@@ -1205,6 +1205,7 @@ export default function MessagingWidget() {
   const [newConversationSelections, setNewConversationSelections] = useState([]);
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -1451,8 +1452,11 @@ export default function MessagingWidget() {
 
   useEffect(() => {
     const applyResponsivePanels = () => {
-      const narrow = globalThis.innerWidth < 1180;
+      const viewportWidth = globalThis.innerWidth || 0;
+      const narrow = viewportWidth < 1180;
+      const mobile = viewportWidth < 720;
       setIsNarrowLayout(narrow);
+      setIsMobileLayout(mobile);
     };
     applyResponsivePanels();
     globalThis.addEventListener('resize', applyResponsivePanels);
@@ -3233,12 +3237,12 @@ export default function MessagingWidget() {
       }}
       aria-label="Messaging widget"
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
-        <div>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileLayout ? 'stretch' : 'center', flexDirection: isMobileLayout ? 'column' : 'row', gap: 12, padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
+        <div style={{ minWidth: 0 }}>
           <strong style={{ fontSize: 16 }}>Messaging</strong>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread across all threads</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: isMobileLayout ? 'flex-start' : 'flex-end' }}>
           <label htmlFor="messaging-text-size" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>Text size</label>
           <button
             type="button"
@@ -3275,7 +3279,7 @@ export default function MessagingWidget() {
             value={state.activeCompanyId || ''}
             onChange={onSwitchCompany}
             aria-label="Switch company context"
-            style={{ minWidth: 170, borderRadius: 8, border: '1px solid #475569', background: '#0b1220', color: '#e2e8f0', padding: '6px 8px' }}
+            style={{ minWidth: isMobileLayout ? 0 : 170, width: isMobileLayout ? '100%' : 'auto', flex: isMobileLayout ? '1 1 100%' : '0 1 auto', borderRadius: 8, border: '1px solid #475569', background: '#0b1220', color: '#e2e8f0', padding: '6px 8px' }}
           />
           <datalist id="messaging-company-options">
             {companyRecords.map((entry) => {
@@ -3284,7 +3288,7 @@ export default function MessagingWidget() {
               return <option key={id} value={id}>{resolveCompanyLabel(id)}</option>;
             })}
           </datalist>
-          <span style={{ fontSize: 11, color: '#cbd5e1' }}>Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}</span>
+          <span style={{ fontSize: 11, color: '#cbd5e1', flex: isMobileLayout ? '1 1 100%' : '0 1 auto' }}>Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}</span>
           <button
             type="button"
             onClick={() => dispatch({ type: 'widget/close' })}
@@ -3296,8 +3300,8 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', minHeight: 0, flex: 1 }}>
-        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', background: '#ffffff', display: 'grid', gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+        <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', borderBottom: isNarrowLayout ? '1px solid #e2e8f0' : 'none', background: '#ffffff', display: 'grid', gridTemplateRows: isNarrowLayout ? 'minmax(120px, 1fr) minmax(120px, 1fr)' : 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
             <input
