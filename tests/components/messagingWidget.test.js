@@ -72,4 +72,67 @@ if (!haveReact) {
 
     root.unmount();
   });
+
+  test('MessagingWidget opens latest conversation by activity', async (t) => {
+    const contextMod = await import('../../src/erp.mgt.mn/context/AuthContext.jsx');
+    const AuthContext = contextMod.AuthContext;
+    global.fetch = async (url) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes('/messaging/conversations/') && requestUrl.includes('/messages')) {
+        return { ok: true, async json() { return { conversationId: 20, items: [], pageInfo: { hasMore: false } }; } };
+      }
+      if (requestUrl.includes('/messaging/conversations')) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              items: [
+                { id: 10, topic: 'Older thread', last_message_at: '2026-01-01T09:00:00.000Z' },
+                { id: 20, topic: 'Latest thread', last_message_at: '2026-01-02T10:00:00.000Z' },
+              ],
+              pageInfo: { hasMore: false },
+            };
+          },
+        };
+      }
+      if (requestUrl.includes('/messaging/presence')) {
+        return { ok: true, async json() { return { users: [] }; } };
+      }
+      return { ok: true, async json() { return { items: [] }; } };
+    };
+
+    const { default: MessagingWidget } = await t.mock.import('../../src/erp.mgt.mn/components/MessagingWidget.jsx', {
+      '../utils/socket.js': {
+        connectSocket: () => ({ on: () => {}, off: () => {} }),
+        disconnectSocket: () => {},
+      },
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          AuthContext.Provider,
+          { value: { session: { id: 'sess-2', company_id: '1' }, user: { empid: 'E001' }, permissions: {}, company: '1' } },
+          React.createElement(MessagingWidget),
+        ),
+      );
+    });
+
+    const openButton = container.querySelector('[aria-label="Open messaging widget"]');
+    assert.ok(openButton);
+
+    await act(async () => {
+      openButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.match(container.textContent || '', /Latest thread —/);
+
+    root.unmount();
+  });
+
 }
