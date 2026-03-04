@@ -143,6 +143,17 @@ function GeneralSettingsTab() {
                     setWebPushStatus(t('web_push_permission_success', 'Browser notification permission granted.'));
                   } else if (result?.reason === 'permission_not_granted') {
                     setWebPushStatus(t('web_push_permission_denied', 'Browser notification permission was not granted.'));
+                  } else if (result?.reason === 'notifications_unsupported') {
+                    setWebPushStatus(
+                      t(
+                        'web_push_notifications_unsupported',
+                        'This browser does not support notifications on this device.',
+                      ),
+                    );
+                  } else if (result?.reason === 'insecure_context') {
+                    setWebPushStatus(
+                      t('web_push_insecure_context', 'Notifications require a secure HTTPS connection.'),
+                    );
                   } else if (result?.reason === 'push_unsupported') {
                     setWebPushStatus(
                       t(
@@ -152,7 +163,17 @@ function GeneralSettingsTab() {
                     );
                   } else if (result?.reason === 'vapid_not_configured') {
                     setWebPushStatus(t('web_push_vapid_missing', 'VAPID keys are not configured on the server.'));
-                  } else if (result?.reason === 'status_failed') {
+                  } else if (
+                    result?.reason === 'status_failed' ||
+                    result?.reason === 'status_request_failed' ||
+                    result?.reason === 'service_worker_not_found' ||
+                    result?.reason === 'service_worker_bad_mime' ||
+                    result?.reason === 'service_worker_check_failed' ||
+                    result?.reason === 'subscription_failed' ||
+                    result?.reason === 'subscription_missing_endpoint' ||
+                    result?.reason === 'subscribe_failed' ||
+                    result?.reason === 'subscribe_request_failed'
+                  ) {
                     setWebPushStatus(
                       t(
                         'web_push_status_failed_after_permission',

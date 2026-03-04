@@ -48,7 +48,11 @@ function normalizeMutedKinds(userSettings) {
 
 export async function requestWebPushPermission({ userSettings, promptForPermission = true } = {}) {
   if (!('Notification' in window)) {
-    return { ok: false, reason: 'unsupported' };
+    return { ok: false, reason: 'notifications_unsupported' };
+  }
+
+  if (!window.isSecureContext) {
+    return { ok: false, reason: 'insecure_context' };
   }
 
   async function askPermission() {
@@ -56,9 +60,30 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
       return Notification.permission;
     }
 
-    const maybePromise = Notification.requestPermission((legacyPermission) => legacyPermission);
-    if (maybePromise && typeof maybePromise.then === 'function') {
-      return maybePromise;
+    try {
+      const maybePromise = Notification.requestPermission();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        return maybePromise;
+      }
+      if (typeof maybePromise === 'string') {
+        return maybePromise;
+      }
+    } catch (error) {
+      // Fall through to callback-based legacy API.
+    }
+
+    try {
+      return await new Promise((resolve) => {
+        Notification.requestPermission((legacyPermission) => {
+          if (typeof legacyPermission === 'string') {
+            resolve(legacyPermission);
+            return;
+          }
+          resolve(Notification.permission);
+        });
+      });
+    } catch (error) {
+      return Notification.permission;
     }
 
     return Notification.permission;
@@ -74,39 +99,58 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
     return { ok: false, reason: 'push_unsupported', permission };
   }
 
-  const statusRes = await fetch(`${API_BASE}/web_push/status`, {
-    credentials: 'include',
-    skipErrorToast: true,
-  });
-  if (!statusRes.ok) return { ok: false, reason: 'status_failed', statusCode: statusRes.status };
+  let status;
+  try {
+    const statusRes = await fetch(`${API_BASE}/web_push/status`, {
+      credentials: 'include',
+      skipErrorToast: true,
+    });
+    if (!statusRes.ok) return { ok: false, reason: 'status_failed', statusCode: statusRes.status };
+    status = await statusRes.json();
+  } catch (error) {
+    return { ok: false, reason: 'status_request_failed', error };
+  }
 
-  const status = await statusRes.json();
   if (!status?.vapidConfigured || !status?.publicKey) return { ok: false, reason: 'vapid_not_configured' };
 
-  const registration = await navigator.serviceWorker.register('/sw-webpush.js');
-  const existing = await registration.pushManager.getSubscription();
-  const subscription =
-    existing ||
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(status.publicKey),
-    }));
+  const swCheck = await isServiceWorkerScriptAvailable('/sw-webpush.js');
+  if (!swCheck?.ok) {
+    return swCheck;
+  }
+
+  let subscription;
+  try {
+    const registration = await navigator.serviceWorker.register('/sw-webpush.js');
+    const existing = await registration.pushManager.getSubscription();
+    subscription =
+      existing ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(status.publicKey),
+      }));
+  } catch (error) {
+    return { ok: false, reason: 'subscription_failed', error };
+  }
 
   if (!subscription?.endpoint) return { ok: false, reason: 'subscription_missing_endpoint' };
 
-  const saveRes = await fetch(`${API_BASE}/web_push/subscribe`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      subscription: subscription.toJSON(),
-      notificationTypes: normalizeMutedKinds(userSettings),
-      muteStartHour: userSettings?.webPushMuteStartHour ?? null,
-      muteEndHour: userSettings?.webPushMuteEndHour ?? null,
-    }),
-    skipErrorToast: true,
-  });
-  if (!saveRes.ok) return { ok: false, reason: 'subscribe_failed', statusCode: saveRes.status };
+  try {
+    const saveRes = await fetch(`${API_BASE}/web_push/subscribe`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription: subscription.toJSON(),
+        notificationTypes: normalizeMutedKinds(userSettings),
+        muteStartHour: userSettings?.webPushMuteStartHour ?? null,
+        muteEndHour: userSettings?.webPushMuteEndHour ?? null,
+      }),
+      skipErrorToast: true,
+    });
+    if (!saveRes.ok) return { ok: false, reason: 'subscribe_failed', statusCode: saveRes.status };
+  } catch (error) {
+    return { ok: false, reason: 'subscribe_request_failed', error };
+  }
 
   return { ok: true, endpoint: subscription.endpoint, permission };
 }
