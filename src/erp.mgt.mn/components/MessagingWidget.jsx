@@ -3179,6 +3179,11 @@ export default function MessagingWidget() {
       return;
     }
 
+    if (activeConversationParticipants.length <= 2) {
+      setComposerAnnouncement('A conversation must keep at least 2 participants. Add someone first before removing a participant.');
+      return;
+    }
+
     const activeCompany = state.activeCompanyId || companyId;
     const label = resolveEmployeeLabel(participantEmpid);
     const confirmed = globalThis.confirm(`Remove ${label} from this conversation?`);
@@ -3304,7 +3309,7 @@ export default function MessagingWidget() {
               style={{ border: '1px solid rgba(148, 163, 184, 0.7)', borderRadius: 8, background: 'transparent', color: '#e2e8f0', padding: '6px 10px', fontSize: 12 }}
               aria-label={isLeftPaneCollapsed ? 'Show users and conversations' : 'Hide users and conversations'}
             >
-              {isLeftPaneCollapsed ? 'Show users & chats' : 'Hide users & chats'}
+              {isLeftPaneCollapsed ? 'Show users/chats' : 'Hide users/chats'}
             </button>
           )}
           <button
@@ -3318,7 +3323,7 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? (showLeftPane ? 'minmax(0, 50%) minmax(0, 50%)' : 'minmax(0, 1fr)') : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? (showLeftPane ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)') : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
         {showLeftPane && (
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', borderBottom: isNarrowLayout ? '1px solid #e2e8f0' : 'none', background: '#ffffff', display: 'grid', gridTemplateRows: isNarrowLayout ? 'minmax(120px, 1fr) minmax(120px, 1fr)' : 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: isNarrowLayout ? 6 : 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'grid', gridTemplateRows: 'auto auto auto minmax(0, 1fr) auto', rowGap: isNarrowLayout ? 6 : 8 }}>
@@ -3763,7 +3768,22 @@ export default function MessagingWidget() {
                           <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(status) }} />
                           <span style={{ fontSize: 13, color: '#0f172a' }}>{label}</span>
                           <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{empid}</span>
-                          <button type="button" onClick={() => onRemoveConversationParticipant(empid)} style={{ border: '1px solid #fecaca', borderRadius: 6, background: '#fff1f2', color: '#b91c1c', padding: '2px 8px', fontSize: 12 }}>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveConversationParticipant(empid)}
+                            disabled={activeConversationParticipants.length <= 2}
+                            title={activeConversationParticipants.length <= 2 ? 'At least 2 participants are required' : 'Remove participant'}
+                            style={{
+                              border: '1px solid #fecaca',
+                              borderRadius: 6,
+                              background: '#fff1f2',
+                              color: '#b91c1c',
+                              padding: '2px 8px',
+                              fontSize: 12,
+                              opacity: activeConversationParticipants.length <= 2 ? 0.5 : 1,
+                              cursor: activeConversationParticipants.length <= 2 ? 'not-allowed' : 'pointer',
+                            }}
+                          >
                             Remove
                           </button>
                         </div>
