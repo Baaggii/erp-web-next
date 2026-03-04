@@ -14,6 +14,7 @@ const {
   deleteConversation,
   patchConversationTopic,
   addConversationParticipant,
+  removeConversationParticipant,
 } = await import('./messagingService.js');
 
 class MockDb {
@@ -235,6 +236,42 @@ test('sending message requires participant access and validates message_class en
   const thread = await getConversationMessages({ user: creator, companyId: 1, conversationId: created.conversation.id, db, getSession });
   assert.equal(sent.message.body, 'Allowed');
   assert.equal(thread.items.length, 2);
+});
+
+
+
+test('removeConversationParticipant marks participant as left and removes conversation access', async () => {
+  const db = new MockDb();
+  const creator = { empid: 'E1', companyId: 1 };
+  const created = await createConversationRoot({
+    user: creator,
+    companyId: 1,
+    db,
+    getSession,
+    payload: { type: 'private', participants: ['E2'], topic: 'Start', body: 'First message' },
+  });
+
+  const removed = await removeConversationParticipant({
+    user: creator,
+    companyId: 1,
+    conversationId: created.conversation.id,
+    payload: { empid: 'E2' },
+    db,
+    getSession,
+  });
+
+  assert.equal(removed.ok, true);
+  await assert.rejects(
+    () => postConversationMessage({
+      user: { empid: 'E2', companyId: 1 },
+      companyId: 1,
+      conversationId: created.conversation.id,
+      payload: { body: 'Can no longer post' },
+      db,
+      getSession,
+    }),
+    /Conversation not found/,
+  );
 });
 
 test('posting message enqueues web push for recipients except sender', async () => {

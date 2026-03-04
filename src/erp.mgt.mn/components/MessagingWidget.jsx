@@ -387,6 +387,7 @@ async function requestRemoveConversationParticipant({ conversationId, companyId,
   const payload = JSON.stringify({ companyId, empid });
   const attempts = [
     { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participants` },
+    { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/members` },
     { method: 'DELETE', path: `${API_BASE}/messaging/conversations/${conversationId}/participant` },
     { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participants/remove` },
     { method: 'POST', path: `${API_BASE}/messaging/conversations/${conversationId}/participant/remove` },

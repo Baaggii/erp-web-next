@@ -384,6 +384,43 @@ export async function addConversationParticipant({ user, companyId, conversation
   };
 }
 
+export async function removeConversationParticipant({ user, companyId, conversationId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+
+  const normalizedConversationId = toId(conversationId);
+  if (!normalizedConversationId) throw createError(400, 'CONVERSATION_REQUIRED', 'conversationId is required');
+
+  const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+
+  if (String(conversation?.type || '').toLowerCase() === 'general') {
+    throw createError(400, 'GENERAL_CONVERSATION_IMMUTABLE', 'General conversation participants cannot be modified');
+  }
+
+  const participantEmpid = String(
+    payload?.empid
+    ?? payload?.participantEmpid
+    ?? payload?.participant_empid
+    ?? payload?.participantId
+    ?? payload?.participant_id
+    ?? payload?.userId
+    ?? payload?.user_id
+    ?? '',
+  ).trim();
+  if (!participantEmpid) throw createError(400, 'PARTICIPANT_REQUIRED', 'participant empid is required');
+
+  const removed = await removeParticipant(db, scopedCompanyId, normalizedConversationId, participantEmpid);
+  if (!removed) throw createError(404, 'PARTICIPANT_NOT_FOUND', 'Participant not found in conversation');
+
+  return {
+    correlationId,
+    ok: true,
+    conversation: { id: normalizedConversationId, company_id: scopedCompanyId },
+    participant: { empid: participantEmpid },
+  };
+}
+
 export async function deleteConversation({ user, companyId, conversationId, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
