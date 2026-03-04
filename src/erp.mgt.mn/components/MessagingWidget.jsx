@@ -3442,6 +3442,15 @@ export default function MessagingWidget() {
         </aside>
         )}
 
+        {mobileDrawerLayout && (
+          <button
+            type="button"
+            aria-label="Close users and conversations pane"
+            onClick={() => setIsLeftPaneCollapsed(true)}
+            style={{ position: 'absolute', inset: 0, border: 0, background: 'rgba(15, 23, 42, 0.35)', zIndex: 2, cursor: 'pointer' }}
+          />
+        )}
+
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: '4px 10px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
             <strong style={{ display: 'block', fontSize: 13, color: '#0f172a', lineHeight: 1.2, overflowWrap: 'anywhere' }}>
