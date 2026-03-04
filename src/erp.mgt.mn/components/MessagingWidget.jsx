@@ -3151,7 +3151,7 @@ export default function MessagingWidget() {
               aria-label="Search employees"
               style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '8px 10px', marginBottom: 8 }}
             />
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
               {STATUS_FILTERS.map((filter) => (
                 <button
                   key={filter.value}
@@ -3173,10 +3173,10 @@ export default function MessagingWidget() {
               {presenceEmployees.slice(0, 40).map((entry) => {
                 const selected = newConversationSelections.includes(entry.id);
                 return (
-                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 8, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 8px', textAlign: 'left' }}>
+                  <button key={entry.id} type="button" onClick={() => (selected ? setNewConversationSelections((prev) => prev.filter((id) => id !== entry.id)) : setNewConversationSelections((prev) => Array.from(new Set([...prev, entry.id]))))} style={{ display: 'flex', alignItems: 'center', gap: 6, border: selected ? '1px solid #2563eb' : '1px solid #e2e8f0', borderRadius: 8, background: selected ? '#eff6ff' : '#fff', padding: '6px 7px', textAlign: 'left', minWidth: 0 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceColor(entry.status) }} />
-                    <span style={{ fontSize: 12, color: '#0f172a' }}>{formatEmployeeOption(entry)}</span>
-                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 8px', background: '#f1f5f9' }}>{entry.status}</span>
+                    <span style={{ fontSize: 11, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatEmployeeOption(entry)}</span>
+                    <span style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 10, color: '#475569', borderRadius: 999, padding: '2px 6px', background: '#f1f5f9' }}>{entry.status}</span>
                   </button>
                 );
               })}
