@@ -22,8 +22,31 @@ function normalizeMutedKinds(userSettings) {
 }
 
 export async function requestWebPushPermission({ userSettings, promptForPermission = true } = {}) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+  if (!('Notification' in window)) {
     return { ok: false, reason: 'unsupported' };
+  }
+
+  async function askPermission() {
+    if (typeof Notification.requestPermission !== 'function') {
+      return Notification.permission;
+    }
+
+    const maybePromise = Notification.requestPermission((legacyPermission) => legacyPermission);
+    if (maybePromise && typeof maybePromise.then === 'function') {
+      return maybePromise;
+    }
+
+    return Notification.permission;
+  }
+
+  let permission = Notification.permission;
+  if (promptForPermission && permission !== 'granted') {
+    permission = await askPermission();
+  }
+  if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return { ok: false, reason: 'push_unsupported', permission };
   }
 
   const statusRes = await fetch(`${API_BASE}/web_push/status`, {
@@ -34,12 +57,6 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
 
   const status = await statusRes.json();
   if (!status?.vapidConfigured || !status?.publicKey) return { ok: false, reason: 'vapid_not_configured' };
-
-  let permission = Notification.permission;
-  if (promptForPermission) {
-    permission = await Notification.requestPermission();
-  }
-  if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
 
   const registration = await navigator.serviceWorker.register('/sw-webpush.js');
   const existing = await registration.pushManager.getSubscription();
