@@ -12,6 +12,31 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+
+async function isServiceWorkerScriptAvailable(scriptUrl) {
+  try {
+    const response = await fetch(scriptUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      return { ok: false, reason: 'service_worker_not_found', statusCode: response.status };
+    }
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const looksLikeJavaScript =
+      contentType.includes('javascript') ||
+      contentType.includes('ecmascript') ||
+      contentType.includes('application/x-javascript') ||
+      contentType.includes('text/plain');
+    if (!looksLikeJavaScript) {
+      return { ok: false, reason: 'service_worker_bad_mime', contentType };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: 'service_worker_check_failed', error };
+  }
+}
 function normalizeMutedKinds(userSettings) {
   return Array.isArray(userSettings?.webPushMutedKinds)
     ? userSettings.webPushMutedKinds
@@ -41,7 +66,21 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   }
   if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
 
-  const registration = await navigator.serviceWorker.register('/sw-webpush.js');
+  const serviceWorkerUrl = '/sw-webpush.js';
+  const swCheck = await isServiceWorkerScriptAvailable(serviceWorkerUrl);
+  if (!swCheck.ok) return { ok: false, ...swCheck };
+
+  let registration;
+  try {
+    registration = await navigator.serviceWorker.register(serviceWorkerUrl);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'service_worker_register_failed',
+      message: error?.message || 'Service worker registration failed',
+      name: error?.name || 'Error',
+    };
+  }
   const existing = await registration.pushManager.getSubscription();
   const subscription =
     existing ||

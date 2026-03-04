@@ -374,6 +374,7 @@ const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
 app.get('/sw-webpush.js', (req, res) => {
   const candidates = [
     path.join(buildDir, 'sw-webpush.js'),
+    path.resolve(__dirname, '../src/erp.mgt.mn/public/sw-webpush.js'),
     path.resolve(__dirname, '../src/erp.mgt.mn/sw-webpush.js'),
   ];
   const target = candidates.find((filePath) => fs.existsSync(filePath));
