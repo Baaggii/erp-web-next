@@ -2536,7 +2536,9 @@ export default function MessagingWidget() {
     if (!conversationRootId) return false;
     return messages.some((entry) => {
       const messageConversationId = normalizeConversationId(entry.conversation_id || entry.conversationId);
-      return messageConversationId === conversationRootId && Number(entry.id) !== Number(conversationRootId);
+      if (messageConversationId !== conversationRootId) return false;
+      if (Number(entry.id) === Number(conversationRootId)) return false;
+      return !isMessageDeleted(entry);
     });
   };
 
