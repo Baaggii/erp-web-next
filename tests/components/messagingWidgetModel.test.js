@@ -115,16 +115,27 @@ test('excludeGeneralConversationSummaries hides general channel entries', () => 
 });
 
 
-test('prioritizeConversationSummaries keeps general channel first and includes it without messages', () => {
+test('prioritizeConversationSummaries orders by latest activity and keeps draft on top', () => {
   const summaries = prioritizeConversationSummaries(
     [
-      { id: 'conversation:2', isGeneral: false, messages: [{ id: 2 }] },
-      { id: 'general', isGeneral: true, messages: [] },
-      { id: 'conversation:1', isGeneral: false, messages: [{ id: 1 }] },
+      { id: 'conversation:2', conversationId: '2', isGeneral: false, lastMessageAt: '2026-01-02T10:00:00.000Z', messages: [{ id: 2 }] },
+      { id: 'general', conversationId: '9', isGeneral: true, lastMessageAt: '2026-01-01T08:00:00.000Z', messages: [] },
+      { id: 'conversation:1', conversationId: '1', isGeneral: false, lastMessageAt: '2026-01-02T08:00:00.000Z', messages: [{ id: 1 }] },
       { id: 'conversation:empty', isGeneral: false, messages: [] },
     ],
     { id: '__new__', isDraft: true, isGeneral: false, messages: [] },
   );
 
-  assert.deepEqual(summaries.map((entry) => entry.id), ['general', '__new__', 'conversation:2', 'conversation:1']);
+  assert.deepEqual(summaries.map((entry) => entry.id), ['__new__', 'conversation:2', 'conversation:1', 'general']);
+});
+
+
+test('prioritizeConversationSummaries falls back to lastMessageId and keeps general first on equal activity', () => {
+  const summaries = prioritizeConversationSummaries([
+    { id: 'conversation:5', conversationId: '5', isGeneral: false, lastMessageAt: null, lastMessageId: '101' },
+    { id: 'general', conversationId: '9', isGeneral: true, lastMessageAt: null, lastMessageId: '101' },
+    { id: 'conversation:6', conversationId: '6', isGeneral: false, lastMessageAt: null, lastMessageId: '102' },
+  ]);
+
+  assert.deepEqual(summaries.map((entry) => entry.id), ['conversation:6', 'general', 'conversation:5']);
 });

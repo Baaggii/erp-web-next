@@ -1836,9 +1836,24 @@ export default function MessagingWidget() {
   const lastUserConversationId = useMemo(() => {
     if (!selfEmpid) return null;
     const latestByConversation = conversations
-      .map((conversation) => ({ id: conversation.id, at: new Date(conversation.lastMessageAt || 0).getTime() }))
-      .filter((entry) => Number.isFinite(entry.at) && entry.at > 0)
-      .sort((a, b) => b.at - a.at);
+      .map((conversation) => {
+        const timestamp = new Date(conversation.lastMessageAt || 0).getTime();
+        const lastMessageId = /^\d+$/.test(String(conversation.lastMessageId || '').trim())
+          ? Number(conversation.lastMessageId)
+          : 0;
+        return {
+          id: conversation.id,
+          sortKind: Number.isFinite(timestamp) && timestamp > 0 ? 'time' : (lastMessageId > 0 ? 'id' : 'none'),
+          at: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : lastMessageId,
+          conversationId: Number(normalizeConversationId(conversation.conversationId || conversation.id) || 0),
+        };
+      })
+      .filter((entry) => entry.sortKind !== 'none')
+      .sort((a, b) => {
+        if (a.sortKind !== b.sortKind) return a.sortKind === 'time' ? -1 : 1;
+        if (a.at !== b.at) return b.at - a.at;
+        return b.conversationId - a.conversationId;
+      });
     return latestByConversation[0]?.id || null;
   }, [conversations, selfEmpid]);
   const draftConversationSummary = state.activeConversationId === NEW_CONVERSATION_ID
@@ -1930,8 +1945,8 @@ export default function MessagingWidget() {
 
     if (!hasInitializedPreferredConversationRef.current) {
       hasInitializedPreferredConversationRef.current = true;
-      const preferredConversationId = lastUserConversationId
-        || conversations.find((conversation) => conversation.isGeneral)?.id
+      const preferredConversationId = conversations.find((conversation) => conversation.isGeneral)?.id
+        || lastUserConversationId
         || conversations[0]?.id
         || null;
       if (preferredConversationId && state.activeConversationId !== preferredConversationId) {
@@ -1941,8 +1956,8 @@ export default function MessagingWidget() {
     }
 
     if (state.activeConversationId) return;
-    const fallbackConversationId = lastUserConversationId
-      || conversations.find((conversation) => conversation.isGeneral)?.id
+    const fallbackConversationId = conversations.find((conversation) => conversation.isGeneral)?.id
+      || lastUserConversationId
       || conversations[0]?.id
       || null;
     if (!fallbackConversationId) return;

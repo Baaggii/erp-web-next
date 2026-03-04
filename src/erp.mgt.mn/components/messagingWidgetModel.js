@@ -83,22 +83,41 @@ export function excludeGeneralConversationSummaries(conversations = []) {
 }
 
 
+function getConversationActivityScore(conversation) {
+  const timestamp = new Date(conversation?.lastMessageAt || 0).getTime();
+  if (Number.isFinite(timestamp) && timestamp > 0) return { kind: 'time', value: timestamp };
+  const messageId = normalizeId(conversation?.lastMessageId);
+  if (/^\d+$/.test(messageId)) return { kind: 'id', value: Number(messageId) };
+  return { kind: 'none', value: 0 };
+}
+
 export function prioritizeConversationSummaries(conversations = [], draftConversationSummary = null) {
-  const generalConversation = Array.isArray(conversations)
-    ? conversations.find((conversation) => conversation?.isGeneral)
-    : null;
-  const nonGeneralConversations = Array.isArray(conversations)
+  const activeConversations = Array.isArray(conversations)
     ? conversations.filter((conversation) => {
-      if (conversation?.isGeneral) return false;
       if (Array.isArray(conversation?.messages) && conversation.messages.length > 0) return true;
       return Boolean(conversation?.lastMessageAt || conversation?.lastMessageId);
     })
     : [];
-  const summaries = [];
-  if (generalConversation) summaries.push(generalConversation);
-  if (draftConversationSummary) summaries.push(draftConversationSummary);
-  summaries.push(...nonGeneralConversations);
-  return summaries;
+
+  const sortedConversations = [...activeConversations].sort((a, b) => {
+    const aActivity = getConversationActivityScore(a);
+    const bActivity = getConversationActivityScore(b);
+
+    if (aActivity.kind === 'time' || bActivity.kind === 'time') {
+      if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'time' ? -1 : 1;
+      if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
+    } else if (aActivity.kind === 'id' || bActivity.kind === 'id') {
+      if (aActivity.kind !== bActivity.kind) return aActivity.kind === 'id' ? -1 : 1;
+      if (aActivity.value !== bActivity.value) return bActivity.value - aActivity.value;
+    }
+
+    if (a?.isGeneral !== b?.isGeneral) return a?.isGeneral ? -1 : 1;
+    return Number(normalizeConversationId(b?.conversationId || b?.id) || 0)
+      - Number(normalizeConversationId(a?.conversationId || a?.id) || 0);
+  });
+
+  if (!draftConversationSummary) return sortedConversations;
+  return [draftConversationSummary, ...sortedConversations];
 }
 
 export function createInitialWidgetState({ isOpen = false, activeConversationId = null, companyId = null } = {}) {
