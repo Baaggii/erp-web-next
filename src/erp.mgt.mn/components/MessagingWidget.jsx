@@ -1207,6 +1207,7 @@ export default function MessagingWidget() {
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [isLeftPaneCollapsed, setIsLeftPaneCollapsed] = useState(true);
   const [highlightedIds, setHighlightedIds] = useState(() => new Set());
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -1463,6 +1464,12 @@ export default function MessagingWidget() {
     globalThis.addEventListener('resize', applyResponsivePanels);
     return () => globalThis.removeEventListener('resize', applyResponsivePanels);
   }, []);
+
+  useEffect(() => {
+    setIsLeftPaneCollapsed(isNarrowLayout);
+  }, [isNarrowLayout]);
+
+  const showLeftPane = !isNarrowLayout || !isLeftPaneCollapsed;
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -3231,8 +3238,8 @@ export default function MessagingWidget() {
         borderRadius: 14,
         zIndex: 1200,
         overflow: 'hidden',
-        height: 'min(72vh, calc(100dvh - 32px))',
-        maxHeight: 'min(72vh, calc(100dvh - 32px))',
+        height: isMobileLayout ? 'calc(100dvh - 20px)' : 'min(72vh, calc(100dvh - 32px))',
+        maxHeight: isMobileLayout ? 'calc(100dvh - 20px)' : 'min(72vh, calc(100dvh - 32px))',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -3290,6 +3297,16 @@ export default function MessagingWidget() {
             })}
           </datalist>
           <span style={{ fontSize: 11, color: '#cbd5e1', flex: isMobileLayout ? '1 1 100%' : '0 1 auto' }}>Active: {resolveCompanyLabel(state.activeCompanyId || companyId)}</span>
+          {isNarrowLayout && (
+            <button
+              type="button"
+              onClick={() => setIsLeftPaneCollapsed((prev) => !prev)}
+              style={{ border: '1px solid rgba(148, 163, 184, 0.7)', borderRadius: 8, background: 'transparent', color: '#e2e8f0', padding: '6px 10px', fontSize: 12 }}
+              aria-label={isLeftPaneCollapsed ? 'Show users and conversations' : 'Hide users and conversations'}
+            >
+              {isLeftPaneCollapsed ? 'Show users/chats' : 'Hide users/chats'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => dispatch({ type: 'widget/close' })}
@@ -3301,7 +3318,8 @@ export default function MessagingWidget() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isNarrowLayout ? 'minmax(0, 1fr)' : '225px minmax(0,1fr)', gridTemplateRows: isNarrowLayout ? (showLeftPane ? 'minmax(220px, 42%) minmax(0, 1fr)' : 'minmax(0, 1fr)') : 'minmax(0, 1fr)', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+        {showLeftPane && (
         <aside style={{ borderRight: isNarrowLayout ? 'none' : '1px solid #e2e8f0', borderBottom: isNarrowLayout ? '1px solid #e2e8f0' : 'none', background: '#ffffff', display: 'grid', gridTemplateRows: isNarrowLayout ? 'minmax(120px, 1fr) minmax(120px, 1fr)' : 'minmax(0,1fr) minmax(0,1fr)', minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#0f172a' }}>Users</h3>
@@ -3358,6 +3376,7 @@ export default function MessagingWidget() {
                   onClick={() => {
                     closeOpenMessageMenus();
                     dispatch({ type: 'widget/setConversation', payload: conversation.id });
+                    if (isNarrowLayout) setIsLeftPaneCollapsed(true);
                     markConversationRead(conversation.conversationId || conversation.id, state.activeCompanyId || companyId);
                     dispatch({ type: 'composer/setTopic', payload: conversation.topic || '' });
                     dispatch({ type: 'composer/setRecipients', payload: [] });
@@ -3396,6 +3415,7 @@ export default function MessagingWidget() {
             ))}
           </div>
         </aside>
+        )}
 
         <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
           <div style={{ padding: '4px 10px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
