@@ -47,12 +47,12 @@ function normalizeMutedKinds(userSettings) {
 }
 
 export async function requestWebPushPermission({ userSettings, promptForPermission = true } = {}) {
-  if (!('Notification' in window)) {
-    return { ok: false, reason: 'notifications_unsupported' };
-  }
-
   if (!window.isSecureContext) {
     return { ok: false, reason: 'insecure_context' };
+  }
+
+  if (!('Notification' in window)) {
+    return { ok: false, reason: 'notifications_unsupported' };
   }
 
   async function askPermission() {
