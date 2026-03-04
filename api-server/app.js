@@ -140,6 +140,18 @@ app.use("/api/web_push", webPushRoutes);
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
+app.get('/sw-webpush.js', (req, res) => {
+  const candidates = [
+    path.join(buildDir, 'sw-webpush.js'),
+    path.resolve(__dirname, '../src/erp.mgt.mn/sw-webpush.js'),
+  ];
+  const target = candidates.find((filePath) => fs.existsSync(filePath));
+  if (!target) {
+    return res.sendStatus(404);
+  }
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  return res.sendFile(target);
+});
 app.use(express.static(buildDir));
 app.get("*", (req, res) => res.sendFile(path.join(buildDir, "index.html")));
 
