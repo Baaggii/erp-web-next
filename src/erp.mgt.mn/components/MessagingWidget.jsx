@@ -1091,7 +1091,6 @@ export default function MessagingWidget() {
   const [attachmentPreview, setAttachmentPreview] = useState(null);
   const [lastReadByCompany, setLastReadByCompany] = useState({});
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
-  const [conversationPagingByCompany, setConversationPagingByCompany] = useState({});
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [activityTick, setActivityTick] = useState(0);
@@ -1170,54 +1169,25 @@ export default function MessagingWidget() {
     }));
   };
 
-  const refreshConversationList = useCallback(async (activeCompany, { cursor = null, append = false, limit = 40 } = {}) => {
-    if (!activeCompany) return null;
-    const companyKey = getCompanyCacheKey(activeCompany);
-    setConversationPagingByCompany((prev) => ({
-      ...prev,
-      [companyKey]: { ...(prev[companyKey] || {}), isLoading: true },
-    }));
+  const refreshConversationList = useCallback(async (activeCompany) => {
+    if (!activeCompany) return;
     try {
-      const params = new URLSearchParams({ companyId: String(activeCompany), limit: String(limit) });
-      if (cursor) params.set('cursor', String(cursor));
+      const params = new URLSearchParams({ companyId: String(activeCompany), limit: '100' });
       const listRes = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
-      if (!listRes.ok) return null;
+      if (!listRes.ok) return;
       const listData = await listRes.json();
       const adaptedConversations = adaptConversationListResponse(listData);
-      setConversationPagingByCompany((prev) => ({
-        ...prev,
-        [companyKey]: {
-          ...(prev[companyKey] || {}),
-          isLoading: false,
-          hasMore: Boolean(adaptedConversations.pageInfo?.hasMore),
-          nextCursor: adaptedConversations.pageInfo?.nextCursor || null,
-        },
-      }));
-      const previousItems = append ? (state.conversationsByCompany[companyKey] || []) : [];
-      const dedupedItems = Array.from(new Map(
-        [...previousItems, ...adaptedConversations.items].map((entry) => [entry.id, entry]),
-      ).values());
       dispatch({
         type: 'conversations/loadSuccess',
         payload: {
-          companyKey,
-          items: prioritizeConversationSummaries(dedupedItems),
+          companyKey: getCompanyCacheKey(activeCompany),
+          items: adaptedConversations.items,
         },
       });
-      return adaptedConversations;
     } catch {
       // Non-blocking refresh only.
-      return null;
-    } finally {
-      setConversationPagingByCompany((prev) => ({
-        ...prev,
-        [companyKey]: {
-          ...(prev[companyKey] || {}),
-          isLoading: false,
-        },
-      }));
     }
-  }, [state.conversationsByCompany]);
+  }, []);
 
   const fetchThreadMessages = async (rootMessageId, activeCompany, { cursor = null, limit = 60 } = {}) => {
     if (!rootMessageId || !activeCompany) return;
@@ -1382,9 +1352,19 @@ export default function MessagingWidget() {
     const loadMessages = async () => {
       try {
         setNetworkState('loading');
-        const adaptedConversations = await refreshConversationList(activeCompany, { limit: 40 });
-        if (!adaptedConversations) throw new Error('Failed to fetch conversations');
+        const params = new URLSearchParams({ companyId: activeCompany, limit: '100' });
+        const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
+        if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+        const data = await res.json();
         if (disposed) return;
+        const adaptedConversations = adaptConversationListResponse(data);
+        dispatch({
+          type: 'conversations/loadSuccess',
+          payload: {
+            companyKey: getCompanyCacheKey(activeCompany),
+            items: adaptedConversations.items,
+          },
+        });
 
         const visibleConversationIds = new Set(adaptedConversations.items.map((conversation) => conversation.id));
         const rawStoredConversationId = globalThis.sessionStorage?.getItem(sessionConversationKey);
@@ -1534,7 +1514,7 @@ export default function MessagingWidget() {
     return () => {
       disposed = true;
     };
-  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId, refreshConversationList]);
+  }, [companyId, selfEmpid, sessionConversationKey, state.activeCompanyId]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -1955,10 +1935,6 @@ export default function MessagingWidget() {
     const key = `${companyKey}:${activeConversationNumericId || ''}`;
     return threadPagingByCompany?.[key] || { hasMore: false, nextCursor: null, isLoading: false };
   }, [activeConversationNumericId, companyId, state.activeCompanyId, threadPagingByCompany]);
-  const conversationPageState = useMemo(() => {
-    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
-    return conversationPagingByCompany?.[companyKey] || { hasMore: false, nextCursor: null, isLoading: false };
-  }, [companyId, conversationPagingByCompany, state.activeCompanyId]);
 
   const markConversationRead = useCallback((conversationId, activeCompany) => {
     const normalizedConversationId = normalizeConversationId(conversationId);
@@ -2007,7 +1983,8 @@ export default function MessagingWidget() {
 
     if (!hasInitializedPreferredConversationRef.current) {
       hasInitializedPreferredConversationRef.current = true;
-      const preferredConversationId = lastUserConversationId
+      const preferredConversationId = conversations.find((conversation) => conversation.isGeneral)?.id
+        || lastUserConversationId
         || conversations[0]?.id
         || null;
       if (preferredConversationId && state.activeConversationId !== preferredConversationId) {
@@ -2017,7 +1994,8 @@ export default function MessagingWidget() {
     }
 
     if (state.activeConversationId) return;
-    const fallbackConversationId = lastUserConversationId
+    const fallbackConversationId = conversations.find((conversation) => conversation.isGeneral)?.id
+      || lastUserConversationId
       || conversations[0]?.id
       || null;
     if (!fallbackConversationId) return;
@@ -3209,27 +3187,7 @@ export default function MessagingWidget() {
             </button>
           </div>
 
-          <div
-            style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, alignContent: 'start', gridAutoRows: 'max-content' }}
-            onScroll={async (event) => {
-              const container = event.currentTarget;
-              if (container.scrollTop > 120) return;
-              if (!conversationPageState?.hasMore || conversationPageState?.isLoading || !conversationPageState?.nextCursor) return;
-              const activeCompany = state.activeCompanyId || companyId;
-              if (!activeCompany) return;
-              const beforeHeight = container.scrollHeight;
-              await refreshConversationList(activeCompany, {
-                cursor: conversationPageState.nextCursor,
-                append: true,
-                limit: 40,
-              });
-              requestAnimationFrame(() => {
-                const afterHeight = container.scrollHeight;
-                const delta = Math.max(0, afterHeight - beforeHeight);
-                container.scrollTop = container.scrollTop + delta;
-              });
-            }}
-          >
+          <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', padding: 8, display: 'grid', gap: 6, minHeight: 0, alignContent: 'start', gridAutoRows: 'max-content' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: 14, color: '#0f172a' }}>Conversations</h3>
             {conversationSummaries.length === 0 && <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No conversations yet.</p>}
             {conversationSummaries.map((conversation) => (
@@ -3275,8 +3233,6 @@ export default function MessagingWidget() {
                 </div>
               </div>
             ))}
-            {conversationPageState?.isLoading && <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>Loading older conversations…</p>}
-
           </div>
         </aside>
 
