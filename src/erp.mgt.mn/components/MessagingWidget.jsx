@@ -1410,7 +1410,7 @@ export default function MessagingWidget() {
         const hasDirectAccess = canViewerAccessMessage(nextMessage, selfEmpid);
         if (!hasDirectAccess) {
           const rootMessageId = normalizeId(getMessageConversationId(nextMessage));
-          if (rootMessageId) {
+          if (rootMessageId && state.isOpen) {
             fetchThreadMessages(rootMessageId, state.activeCompanyId || companyId);
           }
           return;
@@ -1422,7 +1422,12 @@ export default function MessagingWidget() {
 
         const selectedRootId = normalizeConversationId(state.activeConversationId);
         const incomingConversationId = normalizeConversationId(getMessageConversationId(nextMessage));
-        if (incomingConversationId && selectedRootId && Number(selectedRootId) === Number(incomingConversationId)) {
+        if (
+          state.isOpen
+          && incomingConversationId
+          && selectedRootId
+          && Number(selectedRootId) === Number(incomingConversationId)
+        ) {
           fetchThreadMessages(incomingConversationId, state.activeCompanyId || companyId);
         }
         return;
@@ -1455,13 +1460,18 @@ export default function MessagingWidget() {
         }
         return { ...prev, [key]: mergeMessageList(current, normalizedMessage) };
       });
-      if (fallbackThreadRefreshId) {
+      if (fallbackThreadRefreshId && state.isOpen) {
         fetchThreadMessages(fallbackThreadRefreshId, state.activeCompanyId || companyId);
         return;
       }
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
-      if (!resolvedRootId || !selectedRootId || Number(selectedRootId) !== Number(resolvedRootId)) return;
+      if (
+        !state.isOpen
+        || !resolvedRootId
+        || !selectedRootId
+        || Number(selectedRootId) !== Number(resolvedRootId)
+      ) return;
       fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
     };
     const onPresence = (payload) => {
@@ -1559,7 +1569,12 @@ export default function MessagingWidget() {
       });
 
       const selectedRootId = normalizeConversationId(state.activeConversationId);
-      if (resolvedRootId && selectedRootId && Number(selectedRootId) === Number(resolvedRootId)) {
+      if (
+        state.isOpen
+        && resolvedRootId
+        && selectedRootId
+        && Number(selectedRootId) === Number(resolvedRootId)
+      ) {
         fetchThreadMessages(resolvedRootId, state.activeCompanyId || companyId);
       }
       refreshConversationList(state.activeCompanyId || companyId);
@@ -1579,7 +1594,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       disconnectSocket();
     };
-  }, [state.activeCompanyId, state.activeConversationId, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
+  }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
@@ -1591,7 +1606,7 @@ export default function MessagingWidget() {
       await refreshConversationList(activeCompany);
       if (disposed) return;
       const selectedConversationId = normalizeConversationId(state.activeConversationId);
-      if (!selectedConversationId) return;
+      if (!state.isOpen || !selectedConversationId) return;
       await fetchThreadMessages(selectedConversationId, activeCompany);
     };
 
@@ -1601,7 +1616,7 @@ export default function MessagingWidget() {
       disposed = true;
       globalThis.clearInterval(intervalId);
     };
-  }, [companyId, selfEmpid, state.activeCompanyId, state.activeConversationId, refreshConversationList]);
+  }, [companyId, selfEmpid, state.activeCompanyId, state.activeConversationId, state.isOpen, refreshConversationList]);
 
   useEffect(() => {
     const onStartMessage = (event) => {
