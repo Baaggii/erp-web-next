@@ -140,13 +140,8 @@ function GeneralSettingsTab() {
                 setWebPushStatus('');
                 try {
                   const result = await requestWebPushPermission({ userSettings, promptForPermission: true });
-                  if (result?.reason === 'ios_home_screen_required') {
-                    setWebPushStatus(
-                      t(
-                        'web_push_ios_home_screen_required',
-                        'On iPhone/iPad, install this app to your Home Screen and open it from there before allowing notifications.',
-                      ),
-                    );
+                  if (result?.ok) {
+                    setWebPushStatus(t('web_push_permission_success', 'Browser notification permission granted.'));
                   } else if (result?.reason === 'permission_not_granted') {
                     setWebPushStatus(t('web_push_permission_denied', 'Browser notification permission was not granted.'));
                   } else if (result?.reason === 'notifications_unsupported') {
@@ -167,8 +162,6 @@ function GeneralSettingsTab() {
                         'Browser notification permission was granted, but this mobile browser does not support web push subscriptions.',
                       ),
                     );
-                  } else if (result?.ok) {
-                    setWebPushStatus(t('web_push_permission_success', 'Browser notification permission granted.'));
                   } else if (result?.reason === 'vapid_not_configured') {
                     setWebPushStatus(t('web_push_vapid_missing', 'VAPID keys are not configured on the server.'));
                   } else if (
