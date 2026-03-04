@@ -442,6 +442,15 @@ function numericMessageId(value) {
   return Number(normalized);
 }
 
+function isUnreadCandidateMessage(message, selfEmpid) {
+  if (!message) return false;
+  if (isMessageDeleted(message)) return false;
+  const messageId = numericMessageId(message.id);
+  if (!messageId) return false;
+  if (normalizeId(message.author_empid) === normalizeId(selfEmpid)) return false;
+  return true;
+}
+
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 
 function normalizeReactionList(message) {
@@ -1880,9 +1889,8 @@ export default function MessagingWidget() {
     const companyKey = getCompanyCacheKey(activeCompany);
     const candidateIds = (messagesByCompany[companyKey] || [])
       .filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === normalizedConversationId)
-      .filter((msg) => normalizeId(msg.author_empid) !== selfEmpid)
-      .map((msg) => numericMessageId(msg.id))
-      .filter((id) => Number.isFinite(id));
+      .filter((msg) => isUnreadCandidateMessage(msg, selfEmpid))
+      .map((msg) => numericMessageId(msg.id));
     if (candidateIds.length === 0) return;
     const highestSeenId = Math.max(...candidateIds);
     setLastReadByCompany((prev) => ({
@@ -1910,9 +1918,8 @@ export default function MessagingWidget() {
     const readState = lastReadByCompany?.[companyKey] || {};
     return messages.filter((msg) => {
       const conversationId = normalizeConversationId(msg?.conversation_id || msg?.conversationId);
+      if (!conversationId || !isUnreadCandidateMessage(msg, selfEmpid)) return false;
       const messageId = numericMessageId(msg.id);
-      if (!conversationId || !messageId) return false;
-      if (normalizeId(msg.author_empid) === selfEmpid) return false;
       const lastReadId = Number(readState[conversationId] || 0);
       return messageId > lastReadId;
     }).length;
@@ -2148,9 +2155,8 @@ export default function MessagingWidget() {
       ...conversation,
       messages: conversationMessages,
       unread: conversationMessages.filter((msg) => {
+        if (!isUnreadCandidateMessage(msg, selfEmpid)) return false;
         const messageId = numericMessageId(msg.id);
-        if (!messageId) return false;
-        if (normalizeId(msg.author_empid) === selfEmpid) return false;
         return messageId > lastReadId;
       }).length,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
