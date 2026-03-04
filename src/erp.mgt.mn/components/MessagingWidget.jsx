@@ -755,6 +755,7 @@ function canViewTransaction(transactionId, userId, permissions) {
 }
 
 function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+  const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
@@ -775,8 +776,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
-      open: openMenuId === normalizedMessageId,
-      onToggle: (event) => onMenuOpenChange(normalizedMessageId, event.currentTarget.open),
+      open: isMenuOpen,
+      onToggle: (event) => onMenuOpenChange(event.currentTarget.open),
     }
     : {};
   const metadataFontSize = toScaledFontSize(12, textScale);
@@ -858,7 +859,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={(event) => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onReply(message.id);
                 }}
@@ -872,7 +873,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onEdit(message);
                 }}
@@ -888,7 +889,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onOpenLinkedTransaction(linked.linkedId);
                 }}
@@ -902,7 +903,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
                 }}
@@ -913,12 +914,12 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {!isDeleted && canDeleteMessage(message) && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
