@@ -3525,6 +3525,7 @@ export default function MessagingWidget() {
                   );
                 })}
               </div>
+              )}
               {!isDraftConversation && !activeConversation?.isGeneral && (
               <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {activeConversationParticipants.map((empid) => {
