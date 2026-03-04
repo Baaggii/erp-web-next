@@ -12,6 +12,31 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+
+async function isServiceWorkerScriptAvailable(scriptUrl) {
+  try {
+    const response = await fetch(scriptUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    if (!response.ok) {
+      return { ok: false, reason: 'service_worker_not_found', statusCode: response.status };
+    }
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const looksLikeJavaScript =
+      contentType.includes('javascript') ||
+      contentType.includes('ecmascript') ||
+      contentType.includes('application/x-javascript') ||
+      contentType.includes('text/plain');
+    if (!looksLikeJavaScript) {
+      return { ok: false, reason: 'service_worker_bad_mime', contentType };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: 'service_worker_check_failed', error };
+  }
+}
 function normalizeMutedKinds(userSettings) {
   return Array.isArray(userSettings?.webPushMutedKinds)
     ? userSettings.webPushMutedKinds
@@ -31,24 +56,12 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
       return Notification.permission;
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        if (Notification.requestPermission.length > 0) {
-          Notification.requestPermission((legacyPermission) => resolve(legacyPermission));
-          return;
-        }
+    const maybePromise = Notification.requestPermission((legacyPermission) => legacyPermission);
+    if (maybePromise && typeof maybePromise.then === 'function') {
+      return maybePromise;
+    }
 
-        const permissionResult = Notification.requestPermission();
-        if (permissionResult && typeof permissionResult.then === 'function') {
-          permissionResult.then(resolve).catch(reject);
-          return;
-        }
-
-        resolve(Notification.permission);
-      } catch (error) {
-        reject(error);
-      }
-    });
+    return Notification.permission;
   }
 
   let permission = Notification.permission;
