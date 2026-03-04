@@ -304,20 +304,8 @@ function extractMessageActionTrace(message, resolveEmployeeLabel) {
   history.forEach((entry, idx) => {
     const action = sanitizeMessageText(entry?.action || entry?.type || '').toLowerCase();
     if (!action) return;
-    const historyActor = normalizeId(entry?.empid || entry?.emp_id || entry?.userId || entry?.user_id || entry?.by || entry?.actor_empid || entry?.actorEmpid);
-    if (action === 'reaction') {
-      const reacted = entry?.reacted !== false;
-      const emoji = String(entry?.emoji || '').trim() || '👍';
-      traces.push({
-        key: `${action}-${idx}`,
-        label: reacted ? `Reacted ${emoji}` : `Removed reaction ${emoji}`,
-        by: historyActor ? resolveEmployeeLabel(historyActor) : null,
-        at: entry?.at || entry?.created_at || entry?.createdAt || null,
-        variant: 'reaction',
-      });
-      return;
-    }
     if (action !== 'edited' && action !== 'deleted') return;
+    const historyActor = normalizeId(entry?.empid || entry?.emp_id || entry?.userId || entry?.user_id || entry?.by);
     traces.push({
       key: `${action}-${idx}`,
       label: action === 'edited' ? 'Edited' : 'Deleted',
@@ -585,60 +573,9 @@ function numericMessageId(value) {
   return Number(normalized);
 }
 
-function isReactionEventMessage(message) {
-  const messageClass = sanitizeMessageText(message?.message_class || message?.messageClass || '').toLowerCase();
-  if (messageClass === 'reaction') return true;
-  return Boolean(message?.reaction && (message?.related_message_id || message?.relatedMessageId || message?.reaction?.message_id || message?.reaction?.messageId));
-}
-
-function extractReactionEventPayload(message) {
-  if (!isReactionEventMessage(message)) return null;
-  const relatedMessageId = normalizeId(
-    message?.related_message_id
-    || message?.relatedMessageId
-    || message?.reaction?.message_id
-    || message?.reaction?.messageId,
-  );
-  if (!relatedMessageId) return null;
-  return {
-    key: `reaction-${normalizeId(message?.id) || `${relatedMessageId}-${Date.now()}`}`,
-    action: 'reaction',
-    emoji: String(message?.reaction?.emoji || '').trim() || null,
-    reacted: message?.reaction?.reacted !== false,
-    empid: normalizeId(message?.reaction?.actor_empid || message?.reaction?.actorEmpid || message?.author_empid),
-    at: message?.created_at || message?.createdAt || new Date().toISOString(),
-    message_id: relatedMessageId,
-  };
-}
-
-function appendReactionTrace(message, reactionEvent) {
-  if (!message || !reactionEvent) return message;
-  const current = Array.isArray(message.actions_trace)
-    ? message.actions_trace
-    : Array.isArray(message.action_trace)
-      ? message.action_trace
-      : Array.isArray(message.history)
-        ? message.history
-        : [];
-  const exists = current.some((entry) => (
-    String(entry?.action || '').toLowerCase() === 'reaction'
-    && normalizeId(entry?.message_id || entry?.messageId || message?.id) === normalizeId(reactionEvent.message_id)
-    && normalizeId(entry?.empid || entry?.actor_empid || entry?.actorEmpid) === normalizeId(reactionEvent.empid)
-    && String(entry?.emoji || '').trim() === String(reactionEvent.emoji || '').trim()
-    && String(entry?.at || entry?.created_at || '') === String(reactionEvent.at || '')
-    && Boolean(entry?.reacted !== false) === Boolean(reactionEvent.reacted !== false)
-  ));
-  if (exists) return message;
-  return {
-    ...message,
-    actions_trace: [...current, reactionEvent],
-  };
-}
-
 function isUnreadCandidateMessage(message, selfEmpid) {
   if (!message) return false;
   if (isMessageDeleted(message)) return false;
-  if (isReactionEventMessage(message)) return false;
   const messageId = numericMessageId(message.id);
   if (!messageId) return false;
   if (normalizeId(message.author_empid) === normalizeId(selfEmpid)) return false;
@@ -1108,26 +1045,15 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         {highlightMentions(safeBody)}
       </div>
       {actionTrace.length > 0 && (
-        <div style={{ marginTop: 4, display: 'grid', gap: 4 }}>
+        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {actionTrace.map((entry) => {
             const byText = entry.by ? ` by ${entry.by}` : '';
             const atText = entry.at ? ` · ${new Date(entry.at).toLocaleString()}` : '';
-            if (entry.variant === 'reaction') {
-              return (
-                <div
-                  key={entry.key}
-                  title={`${entry.label}${byText}${atText}`}
-                  style={{ fontSize: metadataFontSize, color: '#64748b', fontStyle: 'italic' }}
-                >
-                  {entry.label}{byText}{atText}
-                </div>
-              );
-            }
             return (
               <span
                 key={entry.key}
                 title={`${entry.label}${byText}${atText}`}
-                style={{ fontSize: metadataFontSize, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px', width: 'fit-content' }}
+                style={{ fontSize: metadataFontSize, color: entry.label === 'Deleted' ? '#b91c1c' : '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '1px 8px' }}
               >
                 {entry.label}{byText}{atText}
               </span>
@@ -1805,30 +1731,6 @@ export default function MessagingWidget() {
       const payloadCompanyId = normalizeId(nextMessage?.company_id || nextMessage?.companyId);
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
       if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
-
-      const reactionEvent = extractReactionEventPayload(nextMessage);
-      if (reactionEvent) {
-        const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
-        const normalizedRelatedId = normalizeId(reactionEvent.message_id);
-        let foundRelatedMessage = false;
-        setMessagesByCompany((prev) => {
-          const current = prev[companyKey] || [];
-          const nextItems = current.map((entry) => {
-            if (normalizeId(entry.id) !== normalizedRelatedId) return entry;
-            foundRelatedMessage = true;
-            return appendReactionTrace(entry, reactionEvent);
-          });
-          return { ...prev, [companyKey]: nextItems };
-        });
-
-        refreshConversationList(state.activeCompanyId || companyId);
-        if (state.isOpen && !foundRelatedMessage) {
-          const conversationId = normalizeConversationId(nextMessage?.conversation_id || nextMessage?.conversationId);
-          const fallbackConversationId = conversationId || normalizeConversationId(state.activeConversationId);
-          if (fallbackConversationId) fetchThreadMessages(fallbackConversationId, state.activeCompanyId || companyId);
-        }
-        return;
-      }
 
       const normalizedMessageId = normalizeId(nextMessage?.id);
       const authoredBySelf = normalizeId(nextMessage?.author_empid) === selfEmpid;
