@@ -50,6 +50,22 @@ function toActivityScore(lastMessageAt, lastMessageId) {
   return { kind: 'none', value: 0 };
 }
 
+function deriveConversationPreview(entry) {
+  const directPreview = sanitizeMessageText(
+    entry?.last_message_body
+    ?? entry?.lastMessageBody
+    ?? entry?.last_message_text
+    ?? entry?.lastMessageText
+    ?? entry?.latest_message_body
+    ?? entry?.latestMessageBody
+    ?? entry?.last_message?.body
+    ?? entry?.lastMessage?.body
+    ?? '',
+  );
+  if (!directPreview) return '';
+  return directPreview.replace(/\n\[attachments-json\][\s\S]*$/i, '').trim().slice(0, 160);
+}
+
 export function adaptConversationListResponse(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
 
@@ -90,6 +106,7 @@ export function adaptConversationListResponse(data) {
           visibilityScope: visibilityScope || null,
           unread: 0,
           createdByEmpid: normalizeId(entry?.created_by_empid ?? entry?.createdByEmpid) || null,
+          preview: deriveConversationPreview(entry),
           raw: entry,
         };
       })
