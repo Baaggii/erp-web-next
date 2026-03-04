@@ -740,7 +740,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, openMenuId = null, onMenuOpenChange = null }) {
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
@@ -758,16 +758,18 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
   const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
+  const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
+  const normalizedMessageId = normalizeId(message.id);
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
-      open: isMenuOpen,
-      onToggle: (event) => onMenuOpenChange(event.currentTarget.open),
+      open: openMenuId === normalizedMessageId,
+      onToggle: (event) => onMenuOpenChange(normalizedMessageId, event.currentTarget.open),
     }
     : {};
 
   if (isDeleted) {
     return (
-      <div style={{ marginBottom: 6, marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0), marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0, maxWidth: '92%', width: 'fit-content', minWidth: 'min(70%, 520px)', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+      <div style={{ marginBottom: 6, marginLeft: isAuthoredBySelf ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0), marginRight: isAuthoredBySelf ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0, maxWidth: '92%', width: 'fit-content', minWidth: 'min(70%, 520px)', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
         This message was deleted.
         {!isCollapsed && message.replies.map((child) => (
           <MessageNode
@@ -790,8 +792,10 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onPreviewAttachment={onPreviewAttachment}
             onToggleReaction={onToggleReaction}
             selfEmpid={selfEmpid}
-            isOwnMessage={isOwnMessage}
+            isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
             onAnyAction={onAnyAction}
+            openMenuId={openMenuId}
+            onMenuOpenChange={onMenuOpenChange}
           />
         ))}
       </div>
@@ -809,8 +813,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
         boxShadow: isHighlighted ? '0 0 0 1px #22d3ee inset' : 'none',
         padding: '6px 8px',
         marginBottom: 6,
-        marginLeft: isOwnMessage ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
-        marginRight: isOwnMessage ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
+        marginLeft: isAuthoredBySelf ? 'auto' : (depth > 0 ? Math.min(depth * 12, 48) : 0),
+        marginRight: isAuthoredBySelf ? (depth > 0 ? Math.min(depth * 12, 48) : 0) : 0,
         maxWidth: '92%',
         width: 'fit-content',
         minWidth: 'min(70%, 520px)',
@@ -839,7 +843,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={(event) => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onReply(message.id);
                 }}
@@ -849,11 +853,11 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 Reply
               </button>
             )}
-            {isOwnMessage && !isDeleted && (
+            {isAuthoredBySelf && !isDeleted && (
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onEdit(message);
                 }}
@@ -869,7 +873,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                 disabled={!canOpenContextLink(permissions, 'transaction')}
                 aria-label={`Open transaction ${linked.linkedId}`}
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onOpenLinkedTransaction(linked.linkedId);
                 }}
@@ -883,7 +887,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false);
+                  if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false);
                   if (typeof onAnyAction === 'function') onAnyAction();
                   onJumpToParent(normalizeId(message.parent_message_id || message.parentMessageId));
                 }}
@@ -894,12 +898,12 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
               </button>
             )}
             {hasReplies && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onToggleReplies(message.id); }} aria-label={isCollapsed ? 'Expand replies' : 'Collapse replies'} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px' }}>
                 {isCollapsed ? `Show replies (${message.replies.length})` : 'Hide replies'}
               </button>
             )}
             {!isDeleted && canDeleteMessage(message) && (
-              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
+              <button type="button" onClick={() => { if (typeof onMenuOpenChange === 'function') onMenuOpenChange(normalizedMessageId, false); if (typeof onAnyAction === 'function') onAnyAction(); onDeleteMessage(message.id); }} aria-label={`Delete message ${message.id}`} style={{ border: 0, background: 'transparent', textAlign: 'left', padding: '6px 8px', color: '#b91c1c' }}>Delete message</button>
             )}
           </div>
         </details>
@@ -1007,8 +1011,10 @@ ${hoverUsers}`
           onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
           selfEmpid={selfEmpid}
-          isOwnMessage={isOwnMessage}
+          isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
           onAnyAction={onAnyAction}
+          openMenuId={openMenuId}
+          onMenuOpenChange={onMenuOpenChange}
         />
       ))}
     </article>
@@ -3244,8 +3250,8 @@ export default function MessagingWidget() {
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
                 isOwnMessage={normalizeId(message.author_empid) === selfEmpid}
                 onAnyAction={closeOpenMessageMenus}
-                isMenuOpen={openMessageMenuId === normalizeId(message.id)}
-                onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
+                openMenuId={openMessageMenuId}
+                onMenuOpenChange={(messageId, isOpen) => setOpenMessageMenuId(isOpen ? messageId : null)}
               />
             ))}
 
