@@ -220,6 +220,12 @@ async function enqueueConversationMessageWebPush({
   }
 }
 
+function buildReactionNotificationText({ actorEmpid, emoji }) {
+  const actor = String(actorEmpid || '').trim() || 'Someone';
+  const reactionEmoji = String(emoji || '').trim() || '👍';
+  return `${actor} reacted ${reactionEmoji}`;
+}
+
 export async function createConversationRoot({
   user,
   companyId,
@@ -623,16 +629,25 @@ async function getAccessibleMessageForReaction({ user, companyId, messageId, db 
   if (!message) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
   const conversation = await getConversationById(db, companyId, message.conversation_id);
   await assertConversationAccess(db, companyId, conversation, user?.empid);
-  return { id, message };
+  return { id, message, conversation };
 }
 
-export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+export async function addMessageReaction({
+  user,
+  companyId,
+  messageId,
+  payload,
+  correlationId,
+  db = pool,
+  getSession = getEmploymentSession,
+  notifyWebPush = enqueueWebPushNotification,
+}) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message, conversation } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   await db.query(
     `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
@@ -640,7 +655,25 @@ export async function addMessageReaction({ user, companyId, messageId, payload, 
      ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
-  return { correlationId, ok: true, messageId: id, emoji, reacted: true };
+  await enqueueConversationMessageWebPush({
+    db,
+    companyId: scopedCompanyId,
+    conversationId: message.conversation_id,
+    conversationType: conversation?.type,
+    authorEmpid: actorEmpid,
+    messageBody: buildReactionNotificationText({ actorEmpid, emoji }),
+    notifyWebPush,
+  });
+  return {
+    correlationId,
+    ok: true,
+    companyId: scopedCompanyId,
+    conversationId: message.conversation_id,
+    messageId: id,
+    emoji,
+    reacted: true,
+    actorEmpid,
+  };
 }
 
 export async function removeMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
@@ -649,7 +682,7 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   await db.query(
     `UPDATE erp_message_reactions
@@ -657,16 +690,34 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
       WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
-  return { correlationId, ok: true, messageId: id, emoji, reacted: false };
+  return {
+    correlationId,
+    ok: true,
+    companyId: scopedCompanyId,
+    conversationId: message.conversation_id,
+    messageId: id,
+    emoji,
+    reacted: false,
+    actorEmpid,
+  };
 }
 
-export async function toggleMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+export async function toggleMessageReaction({
+  user,
+  companyId,
+  messageId,
+  payload,
+  correlationId,
+  db = pool,
+  getSession = getEmploymentSession,
+  notifyWebPush = enqueueWebPushNotification,
+}) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message, conversation } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   const [rows] = await db.query(
     `SELECT deleted_at
@@ -684,6 +735,15 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
        ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
+    await enqueueConversationMessageWebPush({
+      db,
+      companyId: scopedCompanyId,
+      conversationId: message.conversation_id,
+      conversationType: conversation?.type,
+      authorEmpid: actorEmpid,
+      messageBody: buildReactionNotificationText({ actorEmpid, emoji }),
+      notifyWebPush,
+    });
   } else {
     await db.query(
       `UPDATE erp_message_reactions
@@ -692,7 +752,16 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
       [id, scopedCompanyId, actorEmpid, emoji],
     );
   }
-  return { correlationId, ok: true, messageId: id, emoji, reacted };
+  return {
+    correlationId,
+    ok: true,
+    companyId: scopedCompanyId,
+    conversationId: message.conversation_id,
+    messageId: id,
+    emoji,
+    reacted,
+    actorEmpid,
+  };
 }
 
 export async function patchMessage({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
