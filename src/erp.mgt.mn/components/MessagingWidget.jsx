@@ -1471,6 +1471,7 @@ export default function MessagingWidget() {
 
   const showLeftPane = !isNarrowLayout || !isLeftPaneCollapsed;
   const narrowSplitPaneLayout = isNarrowLayout && showLeftPane && !isMobileLayout;
+  const mobileDrawerLayout = isMobileLayout && showLeftPane;
 
   useEffect(() => {
     const activeCompany = state.activeCompanyId || companyId;
