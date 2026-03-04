@@ -12,6 +12,63 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+function normalizeMutedKinds(userSettings) {
+  return Array.isArray(userSettings?.webPushMutedKinds)
+    ? userSettings.webPushMutedKinds
+    : String(userSettings?.webPushMutedKinds || '')
+        .split(',')
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean);
+}
+
+export async function requestWebPushPermission({ userSettings, promptForPermission = true } = {}) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return { ok: false, reason: 'unsupported' };
+  }
+
+  const statusRes = await fetch(`${API_BASE}/web_push/status`, {
+    credentials: 'include',
+    skipErrorToast: true,
+  });
+  if (!statusRes.ok) return { ok: false, reason: 'status_failed', statusCode: statusRes.status };
+
+  const status = await statusRes.json();
+  if (!status?.vapidConfigured || !status?.publicKey) return { ok: false, reason: 'vapid_not_configured' };
+
+  let permission = Notification.permission;
+  if (promptForPermission) {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted', permission };
+
+  const registration = await navigator.serviceWorker.register('/sw-webpush.js');
+  const existing = await registration.pushManager.getSubscription();
+  const subscription =
+    existing ||
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(status.publicKey),
+    }));
+
+  if (!subscription?.endpoint) return { ok: false, reason: 'subscription_missing_endpoint' };
+
+  const saveRes = await fetch(`${API_BASE}/web_push/subscribe`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      subscription: subscription.toJSON(),
+      notificationTypes: normalizeMutedKinds(userSettings),
+      muteStartHour: userSettings?.webPushMuteStartHour ?? null,
+      muteEndHour: userSettings?.webPushMuteEndHour ?? null,
+    }),
+    skipErrorToast: true,
+  });
+  if (!saveRes.ok) return { ok: false, reason: 'subscribe_failed', statusCode: saveRes.status };
+
+  return { ok: true, endpoint: subscription.endpoint, permission };
+}
+
 export default function useWebPushNotifications({ user, userSettings, generalConfig }) {
   const lastEndpointRef = useRef('');
 
@@ -31,54 +88,14 @@ export default function useWebPushNotifications({ user, userSettings, generalCon
 
     async function register() {
       try {
-        const statusRes = await fetch(`${API_BASE}/web_push/status`, {
-          credentials: 'include',
-          skipErrorToast: true,
+        if (Notification.permission !== 'granted') return;
+        const result = await requestWebPushPermission({
+          userSettings,
+          promptForPermission: false,
         });
-        if (!statusRes.ok) return;
-        const status = await statusRes.json();
-        if (!status?.vapidConfigured || !status?.publicKey) return;
-
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return;
-
-        const registration = await navigator.serviceWorker.register('/sw-webpush.js');
-        const existing = await registration.pushManager.getSubscription();
-        const subscription =
-          existing ||
-          (await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(status.publicKey),
-          }));
-
-        if (cancelled || !subscription?.endpoint) return;
-        if (subscription.endpoint === lastEndpointRef.current) return;
-
-        const mutedKinds = Array.isArray(userSettings?.webPushMutedKinds)
-          ? userSettings.webPushMutedKinds
-          : String(userSettings?.webPushMutedKinds || '')
-              .split(',')
-              .map((entry) => entry.trim().toLowerCase())
-              .filter(Boolean);
-
-        const body = {
-          subscription: subscription.toJSON(),
-          notificationTypes: mutedKinds,
-          muteStartHour: userSettings?.webPushMuteStartHour ?? null,
-          muteEndHour: userSettings?.webPushMuteEndHour ?? null,
-        };
-
-        const saveRes = await fetch(`${API_BASE}/web_push/subscribe`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          skipErrorToast: true,
-        });
-
-        if (saveRes.ok) {
-          lastEndpointRef.current = subscription.endpoint;
-        }
+        if (cancelled || !result?.ok || !result.endpoint) return;
+        if (result.endpoint === lastEndpointRef.current) return;
+        lastEndpointRef.current = result.endpoint;
       } catch (err) {
         console.warn('Web push registration failed', err);
       }
