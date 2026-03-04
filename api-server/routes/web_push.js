@@ -4,6 +4,7 @@ import {
   getWebPushStatus,
   upsertWebPushSubscription,
   removeWebPushSubscription,
+  enqueueTestWebPush,
 } from '../services/webPushService.js';
 
 const router = Router();
@@ -32,6 +33,22 @@ router.post('/subscribe', async (req, res, next) => {
       notificationTypes: req.body?.notificationTypes,
       muteStartHour: req.body?.muteStartHour,
       muteEndHour: req.body?.muteEndHour,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+router.post('/test-send', async (req, res, next) => {
+  try {
+    const result = await enqueueTestWebPush({
+      companyId: req.user.companyId,
+      empid: req.user.empid,
+      title: req.body?.title,
+      body: req.body?.body,
+      url: req.body?.url,
     });
     res.json(result);
   } catch (err) {

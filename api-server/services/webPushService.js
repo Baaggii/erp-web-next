@@ -356,6 +356,38 @@ export function enqueueWebPushNotification(job = {}) {
   });
 }
 
+
+export async function enqueueTestWebPush({ companyId, empid, title, body, url } = {}) {
+  const normalizedEmpid = normalizeEmpid(empid);
+  const normalizedCompanyId = Number(companyId);
+  if (!normalizedCompanyId || !normalizedEmpid) {
+    throw new Error('companyId and empid are required');
+  }
+
+  await ensureSubscriptionTable();
+  const [rows] = await dbPool.query(
+    `SELECT COUNT(*) AS total
+       FROM web_push_subscriptions
+      WHERE company_id = ?
+        AND empid = ?
+        AND is_active = 1`,
+    [normalizedCompanyId, normalizedEmpid],
+  );
+  const activeSubscriptions = Number(rows?.[0]?.total || 0);
+
+  enqueueWebPushNotification({
+    companyId: normalizedCompanyId,
+    empid: normalizedEmpid,
+    kind: 'test',
+    relatedId: null,
+    message: String(body || '').trim() || 'This is a test web push notification.',
+    title: String(title || '').trim() || 'ERP test notification',
+    url: String(url || '').trim() || '/#/',
+  });
+
+  return { ok: true, queued: true, activeSubscriptions };
+}
+
 export function getWebPushPublicKey() {
   const { publicKey } = getVapidConfig();
   return publicKey || '';
