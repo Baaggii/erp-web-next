@@ -119,6 +119,27 @@ function extractMessageAttachments(message) {
   return { ...decoded, attachments: fallbackAttachments };
 }
 
+
+function normalizePollData(message) {
+  const poll = message?.poll;
+  if (!poll || typeof poll !== 'object') return null;
+  const options = Array.isArray(poll.options) ? poll.options : [];
+  return {
+    id: Number(poll.id) || null,
+    voter_visibility: String(poll.voter_visibility || 'visible').toLowerCase() === 'hidden' ? 'hidden' : 'visible',
+    allow_multiple_choices: Boolean(poll.allow_multiple_choices),
+    allow_user_options: Boolean(poll.allow_user_options),
+    viewer_has_voted: Boolean(poll.viewer_has_voted),
+    total_votes: Number(poll.total_votes) || 0,
+    options: options.map((entry) => ({
+      id: Number(entry?.id) || null,
+      text: sanitizeMessageText(entry?.text || ''),
+      vote_count: Number(entry?.vote_count) || 0,
+      votes: Array.isArray(entry?.votes) ? entry.votes : [],
+    })).filter((entry) => entry.id),
+  };
+}
+
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: PRESENCE.ONLINE, label: 'Online' },
@@ -905,11 +926,12 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, onVotePoll, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
+  const poll = normalizePollData(message);
   const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
@@ -1083,6 +1105,32 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
+
+      {poll && (
+        <div style={{ marginTop: 8, border: '1px solid #cbd5e1', borderRadius: 10, padding: 8, background: '#f8fafc' }}>
+          <div style={{ fontSize: chipFontSize, color: '#334155', marginBottom: 6 }}>
+            Poll · Voters {poll.voter_visibility === 'visible' ? 'visible after you vote' : 'hidden'} · {poll.allow_multiple_choices ? 'Multiple choices allowed' : 'Single choice'} · {poll.allow_user_options ? 'Users can add options' : 'Fixed options'}
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>
+            {poll.options.map((option) => (
+              <button
+                key={`${poll.id}-${option.id}`}
+                type="button"
+                onClick={() => onVotePoll(poll, option.id)}
+                style={{ textAlign: 'left', border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', background: '#fff' }}
+              >
+                <strong style={{ fontSize: bodyFontSize }}>{option.text}</strong>
+                <span style={{ marginLeft: 8, fontSize: chipFontSize, color: '#64748b' }}>({option.vote_count})</span>
+                {poll.viewer_has_voted && poll.voter_visibility === 'visible' && option.votes.length > 0 && (
+                  <span style={{ display: 'block', fontSize: chipFontSize, color: '#475569', marginTop: 2 }}>
+                    Voters: {option.votes.map((entry) => resolveEmployeeLabel(entry.empid)).join(', ')}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {resolvedReactionActivities.length > 0 && (
         <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
           {resolvedReactionActivities.map((entry) => (
@@ -1266,6 +1314,11 @@ export default function MessagingWidget() {
   const [composerAnnouncement, setComposerAnnouncement] = useState('');
   const [dragOverComposer, setDragOverComposer] = useState(false);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [pollComposerOpen, setPollComposerOpen] = useState(false);
+  const [pollOptionsInput, setPollOptionsInput] = useState('');
+  const [pollVotersVisible, setPollVotersVisible] = useState(true);
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
+  const [pollAllowUserOptions, setPollAllowUserOptions] = useState(false);
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
@@ -2542,6 +2595,7 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText((isDraftConversation ? state.composer.topic : activeConversation?.topic) || '');
   const safeBody = sanitizeMessageText(state.composer.body);
+  const pollOptionCandidates = pollOptionsInput.split('\n').map((entry) => sanitizeMessageText(entry)).filter(Boolean);
   const requiresRecipient = false;
   const requiresTopic = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
@@ -2818,7 +2872,11 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Topic is required.');
       return;
     }
-    if (!safeBody) {
+    if (pollComposerOpen && isDraftConversation) {
+      setComposerAnnouncement('Create the conversation first, then send a poll.');
+      return;
+    }
+    if (!safeBody && !pollComposerOpen) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
@@ -2922,21 +2980,37 @@ export default function MessagingWidget() {
 
     dispatch({ type: 'composer/setReplyTo', payload: null });
 
-    const payload = {
-      idempotencyKey: createIdempotencyKey(),
-      clientTempId,
-      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
-      messageClass: 'general',
-      companyId: normalizedCompanyId,
-      ...(linkedType ? { linkedType } : {}),
-      ...(linkedId ? { linkedId: String(linkedId) } : {}),
-      ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
-    };
+    const payload = pollComposerOpen
+      ? {
+        idempotencyKey: createIdempotencyKey(),
+        companyId: normalizedCompanyId,
+        body: safeBody || 'Poll',
+        options: pollOptionCandidates,
+        voterVisibility: pollVotersVisible,
+        allowMultipleChoices: pollAllowMultiple,
+        allowUserOptions: pollAllowUserOptions,
+        messageClass: 'general',
+      }
+      : {
+        idempotencyKey: createIdempotencyKey(),
+        clientTempId,
+        body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+        messageClass: 'general',
+        companyId: normalizedCompanyId,
+        ...(linkedType ? { linkedType } : {}),
+        ...(linkedId ? { linkedId: String(linkedId) } : {}),
+        ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
+      };
 
     if (isDraftConversation) {
       payload.type = 'private';
       payload.topic = safeTopic;
       payload.participants = allParticipants;
+    }
+
+    if (pollComposerOpen && pollOptionCandidates.length < 2) {
+      setComposerAnnouncement('A poll requires at least two options (one per line).');
+      return;
     }
 
     if (selectedIsGeneral && !targetConversationId) {
@@ -2945,11 +3019,13 @@ export default function MessagingWidget() {
     }
 
     const shouldCreateConversationRoot = isDraftConversation;
-    const targetUrl = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
-      ? `${API_BASE}/messaging/conversations/${targetConversationId}/messages`
-      : (shouldCreateConversationRoot
-        ? `${API_BASE}/messaging/conversations`
-        : `${API_BASE}/messaging/conversations/${targetConversationId}/messages`);
+    const targetUrl = pollComposerOpen
+      ? `${API_BASE}/messaging/conversations/${targetConversationId}/polls`
+      : ((!isDraftConversation && shouldSendReply && explicitReplyTargetId)
+        ? `${API_BASE}/messaging/conversations/${targetConversationId}/messages`
+        : (shouldCreateConversationRoot
+          ? `${API_BASE}/messaging/conversations`
+          : `${API_BASE}/messaging/conversations/${targetConversationId}/messages`));
 
     const optimisticConversationId = targetConversationId || null;
     const optimisticParentMessageId = (!isDraftConversation && shouldSendReply && explicitReplyTargetId)
@@ -2958,7 +3034,7 @@ export default function MessagingWidget() {
     const optimisticMessage = {
       id: clientTempId,
       company_id: normalizedCompanyId,
-      body: payload.body,
+      body: payload.body || '',
       message_class: payload.messageClass,
       author_empid: selfEmpid,
       recipient_empids: !isGeneralChannel ? allParticipants : null,
@@ -3029,6 +3105,11 @@ export default function MessagingWidget() {
       }
       await refreshConversationList(activeCompany);
       dispatch({ type: 'composer/reset' });
+      setPollComposerOpen(false);
+      setPollOptionsInput('');
+      setPollVotersVisible(true);
+      setPollAllowMultiple(false);
+      setPollAllowUserOptions(false);
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
@@ -3040,6 +3121,38 @@ export default function MessagingWidget() {
       console.error('Messaging send failed', { status: res.status, errorPayload, payload });
       setComposerAnnouncement(errorPayload?.error?.message || errorPayload?.message || 'Failed to send message.');
     }
+  };
+
+  const onVotePoll = async (poll, optionId) => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const normalizedCompanyId = Number(activeCompany);
+    if (!poll?.id || !optionId || !Number.isFinite(normalizedCompanyId)) return;
+    const payload = poll.allow_multiple_choices
+      ? { optionIds: [optionId], companyId: normalizedCompanyId }
+      : { optionIds: [optionId], companyId: normalizedCompanyId };
+    const res = await fetch(`${API_BASE}/messaging/polls/${poll.id}/votes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errorPayload = await res.json().catch(() => null);
+      setComposerAnnouncement(errorPayload?.error?.message || errorPayload?.message || 'Failed to vote in poll.');
+      return;
+    }
+    const success = await res.json().catch(() => null);
+    const updatedPoll = success?.poll;
+    if (!updatedPoll) return;
+    setMessagesByCompany((prev) => {
+      const key = getCompanyCacheKey(activeCompany);
+      const nextMessages = (prev[key] || []).map((entry) => (
+        Number(entry?.poll?.id) === Number(updatedPoll.id)
+          ? { ...entry, poll: updatedPoll }
+          : entry
+      ));
+      return { ...prev, [key]: nextMessages };
+    });
   };
 
   const addFiles = (incomingFiles) => {
@@ -3618,6 +3731,7 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
+                onVotePoll={onVotePoll}
                 reactionActivitiesByMessage={reactionActivityByMessage}
                 selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
@@ -3689,6 +3803,20 @@ export default function MessagingWidget() {
                 })}
               </div>
               )}
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setPollComposerOpen((prev) => !prev)} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: pollComposerOpen ? '#eff6ff' : '#fff', color: '#334155', padding: '4px 8px', fontSize: 12 }}>
+                {pollComposerOpen ? 'Disable poll' : 'Create poll'}
+              </button>
+            </div>
+            {pollComposerOpen && (
+              <div style={{ marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 8, padding: 8, background: '#f8fafc', display: 'grid', gap: 6 }}>
+                <label style={{ fontSize: 12, color: '#334155' }}>Poll options (one per line)</label>
+                <textarea value={pollOptionsInput} onChange={(event) => setPollOptionsInput(event.target.value)} rows={3} style={{ borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }} />
+                <label style={{ fontSize: 12 }}><input type="checkbox" checked={pollVotersVisible} onChange={(event) => setPollVotersVisible(event.target.checked)} /> Show voter names (after user votes)</label>
+                <label style={{ fontSize: 12 }}><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} /> Allow multiple option selecting</label>
+                <label style={{ fontSize: 12 }}><input type="checkbox" checked={pollAllowUserOptions} onChange={(event) => setPollAllowUserOptions(event.target.checked)} /> Users can add options</label>
+              </div>
+            )}
             <label htmlFor="messaging-composer" style={{ marginTop: 6, display: 'block', fontSize: 12, fontWeight: 600, color: '#334155' }}>
               Message
             </label>
