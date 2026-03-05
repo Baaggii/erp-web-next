@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 
+function isIosUserAgent(ua = '') {
+  return /iPad|iPhone|iPod/.test(ua);
+}
+
+function isLikelyAppleTouchDevice() {
+  const ua = navigator?.userAgent || '';
+  const platform = navigator?.platform || '';
+  const maxTouchPoints = Number(navigator?.maxTouchPoints || 0);
+  return isIosUserAgent(ua) || (platform === 'MacIntel' && maxTouchPoints > 1);
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -59,10 +70,6 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
       (typeof globalThis.ServiceWorkerRegistration !== 'undefined' &&
         'pushManager' in ServiceWorkerRegistration.prototype));
 
-  if (!hasNotificationApi && !hasPushApi) {
-    return { ok: false, reason: 'notifications_unsupported' };
-  }
-
   async function askPermission() {
     if (!hasNotificationApi) {
       return 'default';
@@ -107,6 +114,13 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   }
   if (hasNotificationApi && permission !== 'granted') {
     return { ok: false, reason: 'permission_not_granted', permission };
+  }
+
+  if (!hasNotificationApi && !hasPushApi) {
+    if (isLikelyAppleTouchDevice()) {
+      return { ok: false, reason: 'pwa_install_required', permission };
+    }
+    return { ok: false, reason: 'notifications_unsupported', permission };
   }
 
   let status;
