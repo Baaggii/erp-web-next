@@ -691,24 +691,12 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
   const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
-  const [result] = await db.query(
+  await db.query(
     `UPDATE erp_message_reactions
         SET deleted_at = CURRENT_TIMESTAMP
       WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
-  if (!result?.affectedRows) {
-    const [ownershipRows] = await db.query(
-      `SELECT empid
-         FROM erp_message_reactions
-        WHERE message_id = ? AND company_id = ? AND emoji = ? AND deleted_at IS NULL
-        LIMIT 1`,
-      [id, scopedCompanyId, emoji],
-    );
-    if (ownershipRows?.[0] && String(ownershipRows[0].empid || '').trim() !== actorEmpid) {
-      throw createError(403, 'REACTION_NOT_OWNED', 'You can only remove your own reaction');
-    }
-  }
   return { correlationId, ok: true, messageId: id, emoji, reacted: false };
 }
 
