@@ -111,6 +111,111 @@ async function ensureGeneralConversation(db, companyId, empid) {
   return createdRows[0];
 }
 
+function getSessionScope(session, scope) {
+  if (scope === 'department') {
+    return {
+      id: toId(session?.department_id ?? session?.departmentId),
+      name: String(session?.department_name ?? session?.departmentName ?? '').trim() || 'Department',
+    };
+  }
+  return {
+    id: toId(session?.branch_id ?? session?.branchId),
+    name: String(session?.branch_name ?? session?.branchName ?? '').trim() || 'Branch',
+  };
+}
+
+async function ensureScopedConversation(db, { companyId, session, actorEmpid, scope }) {
+  const scopeMeta = getSessionScope(session, scope);
+  if (!scopeMeta.id) return null;
+  const linkedType = scope;
+  const linkedId = String(scopeMeta.id);
+
+  const [rows] = await db.query(
+    `SELECT *
+       FROM erp_conversations
+      WHERE company_id = ?
+        AND type = 'linked'
+        AND linked_type = ?
+        AND linked_id = ?
+        AND deleted_at IS NULL
+      ORDER BY id ASC
+      LIMIT 1`,
+    [companyId, linkedType, linkedId],
+  );
+
+  let conversation = rows[0] || null;
+  if (!conversation) {
+    const [inserted] = await db.query(
+      `INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)
+       VALUES (?, 'linked', ?, ?, ?, ?)`,
+      [companyId, `${scopeMeta.name} channel`, linkedType, linkedId, String(actorEmpid || 'system')],
+    );
+    const [createdRows] = await db.query('SELECT * FROM erp_conversations WHERE id = ? LIMIT 1', [inserted.insertId]);
+    conversation = createdRows[0] || null;
+  }
+  if (!conversation) return null;
+
+  const [existingRows] = await db.query(
+    `SELECT empid
+       FROM erp_conversation_participants
+      WHERE company_id = ?
+        AND conversation_id = ?
+        AND left_at IS NULL`,
+    [companyId, conversation.id],
+  );
+  const existingActive = new Set((existingRows || []).map((row) => String(row?.empid || '').trim()).filter(Boolean));
+
+  const employmentScopeColumn = scope === 'department' ? 'employment_department_id' : 'employment_branch_id';
+  const [scopeUserRows] = await db.query(
+    `SELECT u.empid,
+            COALESCE(e.employment_date, te.emp_hiredate, u.created_at, CURRENT_DATE) AS hire_date
+       FROM users u
+       JOIN tbl_employment e
+         ON e.company_id = u.company_id
+        AND e.deleted_at IS NULL
+        AND e.employment_emp_id = u.empid
+        AND e.id = (
+          SELECT MAX(e2.id)
+            FROM tbl_employment e2
+           WHERE e2.company_id = u.company_id
+             AND e2.deleted_at IS NULL
+             AND e2.employment_emp_id = u.empid
+        )
+       LEFT JOIN tbl_employee te
+         ON te.Company_id = u.company_id
+        AND te.deleted_at IS NULL
+        AND te.emp_id = u.empid
+      WHERE u.company_id = ?
+        AND TRIM(COALESCE(u.empid, '')) <> ''
+        AND e.${employmentScopeColumn} = ?`,
+    [companyId, scopeMeta.id],
+  );
+
+  const participants = [];
+  const joinedAtByEmpid = new Map();
+  for (const row of scopeUserRows || []) {
+    const empid = String(row?.empid || '').trim();
+    if (!empid) continue;
+    participants.push(empid);
+    const hireDate = row?.hire_date ? new Date(row.hire_date) : null;
+    joinedAtByEmpid.set(empid, Number.isNaN(hireDate?.getTime()) ? null : hireDate.toISOString().slice(0, 19).replace('T', ' '));
+  }
+
+  const addedParticipants = await insertParticipants(db, companyId, conversation.id, participants, { joinedAtByEmpid });
+  const newlyAdded = addedParticipants.filter((empid) => !existingActive.has(empid));
+  for (const empid of newlyAdded) {
+    await createMessage(db, {
+      companyId,
+      conversationId: conversation.id,
+      authorEmpid: 'system',
+      body: `Welcome ${empid}!`,
+      messageClass: 'general',
+    });
+  }
+
+  return conversation;
+}
+
 async function getConversationById(db, companyId, conversationId) {
   const [rows] = await db.query(
     'SELECT * FROM erp_conversations WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1',
@@ -136,14 +241,21 @@ async function assertConversationAccess(db, companyId, conversation, empid) {
   if (!allowed) throw createError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found');
 }
 
-async function insertParticipants(db, companyId, conversationId, participants) {
+async function insertParticipants(db, companyId, conversationId, participants, { joinedAtByEmpid = null } = {}) {
   const unique = Array.from(new Set((participants || []).map((entry) => String(entry || '').trim()).filter(Boolean)));
   for (const empid of unique) {
+    const joinedAt = joinedAtByEmpid instanceof Map ? joinedAtByEmpid.get(empid) : null;
     await db.query(
-      `INSERT INTO erp_conversation_participants (conversation_id, company_id, empid, role)
-       VALUES (?, ?, ?, 'member')
-       ON DUPLICATE KEY UPDATE left_at = NULL`,
-      [conversationId, companyId, empid],
+      `INSERT INTO erp_conversation_participants (conversation_id, company_id, empid, role, joined_at)
+       VALUES (?, ?, ?, 'member', COALESCE(?, CURRENT_TIMESTAMP))
+       ON DUPLICATE KEY UPDATE
+         left_at = NULL,
+         joined_at = CASE
+           WHEN VALUES(joined_at) IS NULL THEN joined_at
+           WHEN joined_at IS NULL THEN VALUES(joined_at)
+           ELSE LEAST(joined_at, VALUES(joined_at))
+         END`,
+      [conversationId, companyId, empid, joinedAt],
     );
   }
   return unique;
@@ -638,6 +750,8 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   await ensureGeneralConversation(db, scopedCompanyId, user?.empid);
+  await ensureScopedConversation(db, { companyId: scopedCompanyId, session, actorEmpid: user?.empid, scope: 'department' });
+  await ensureScopedConversation(db, { companyId: scopedCompanyId, session, actorEmpid: user?.empid, scope: 'branch' });
 
   const parsedLimit = Math.min(Math.max(toId(limit) ?? CURSOR_PAGE_SIZE, 1), 200);
   const cursorId = toId(cursor);
@@ -653,6 +767,10 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
     `SELECT c.*,
             lm.body AS last_message_body,
             (c.type = 'general') AS is_general,
+            (
+              c.type = 'general'
+              OR (c.type = 'linked' AND c.linked_type IN ('department', 'branch'))
+            ) AS is_pinned,
             (
               SELECT GROUP_CONCAT(p.empid ORDER BY p.empid SEPARATOR ',')
                 FROM erp_conversation_participants p
@@ -679,7 +797,7 @@ export async function listConversations({ user, companyId, cursor, limit = CURSO
           )
         )
         ${cursorClause}
-      ORDER BY is_general DESC, c.last_message_at DESC, c.id DESC
+      ORDER BY is_pinned DESC, c.last_message_at DESC, c.id DESC
       LIMIT ?`,
     params,
   );
@@ -697,6 +815,21 @@ export async function getConversationMessages({ user, companyId, conversationId,
 
   const conversation = await getConversationById(db, scopedCompanyId, normalizedConversationId);
   await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+  const viewerEmpid = String(user?.empid || '').trim();
+  let joinedAtFilter = null;
+  if (viewerEmpid && ['department', 'branch'].includes(String(conversation?.linked_type || '').toLowerCase())) {
+    const [participantRows] = await db.query(
+      `SELECT joined_at
+         FROM erp_conversation_participants
+        WHERE company_id = ?
+          AND conversation_id = ?
+          AND empid = ?
+          AND left_at IS NULL
+        LIMIT 1`,
+      [scopedCompanyId, normalizedConversationId, viewerEmpid],
+    );
+    joinedAtFilter = participantRows?.[0]?.joined_at || null;
+  }
 
   const parsedLimit = Math.min(Math.max(toId(limit) ?? CURSOR_PAGE_SIZE, 1), 200);
   const cursorId = toId(cursor);
@@ -704,18 +837,19 @@ export async function getConversationMessages({ user, companyId, conversationId,
     `SELECT * FROM erp_messages
       WHERE company_id = ?
         AND conversation_id = ?
+        AND deleted_at IS NULL
+        ${joinedAtFilter ? 'AND created_at >= ?' : ''}
         ${cursorId ? 'AND id < ?' : ''}
       ORDER BY id DESC
       LIMIT ?`,
     cursorId
-      ? [scopedCompanyId, normalizedConversationId, cursorId, parsedLimit + 1]
-      : [scopedCompanyId, normalizedConversationId, parsedLimit + 1],
+      ? [scopedCompanyId, normalizedConversationId, ...(joinedAtFilter ? [joinedAtFilter] : []), cursorId, parsedLimit + 1]
+      : [scopedCompanyId, normalizedConversationId, ...(joinedAtFilter ? [joinedAtFilter] : []), parsedLimit + 1],
   );
 
   const hasMore = rows.length > parsedLimit;
   const items = hasMore ? rows.slice(0, parsedLimit) : rows;
 
-  const viewerEmpid = String(user?.empid || '').trim();
   const readableMessageIds = items
     .filter((row) => !row?.deleted_at)
     .filter((row) => String(row?.author_empid || '') !== viewerEmpid)
