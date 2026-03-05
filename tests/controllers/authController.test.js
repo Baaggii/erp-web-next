@@ -108,3 +108,17 @@ test('login succeeds without workplace assignments', async () => {
   assert.equal(res.body.session.workplace_id, null);
   assert.deepEqual(res.body.session.workplace_assignments, []);
 });
+
+
+test('login rejects employee outside active date window', async () => {
+  const restorePos = mockPosSessionLogger();
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed', emp_hiredate: '2022-05-03', emp_outdate: '2000-01-01' }]],
+  ]);
+  const res = createRes();
+  await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
+  restore();
+  restorePos();
+  assert.equal(res.code, 403);
+  assert.equal(res.body.message, 'Employee is not active for the current date');
+});

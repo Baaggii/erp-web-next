@@ -1234,9 +1234,13 @@ export async function testConnection() {
  */
 export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
-    `SELECT *
-     FROM users
-     WHERE empid = ?
+    `SELECT
+       u.*,
+       emp.emp_hiredate,
+       emp.emp_outdate
+     FROM users u
+     LEFT JOIN tbl_employee emp ON emp.emp_id = u.empid
+     WHERE u.empid = ?
      LIMIT 1`,
     [empid],
   );
