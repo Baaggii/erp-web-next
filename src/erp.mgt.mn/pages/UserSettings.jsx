@@ -155,11 +155,11 @@ function GeneralSettingsTab() {
                     setWebPushStatus(
                       t('web_push_insecure_context', 'Notifications require a secure HTTPS connection.'),
                     );
-                  } else if (result?.reason === 'push_unsupported') {
+                  } else if (result?.reason === 'push_unsupported' || result?.reason === 'pwa_install_required') {
                     setWebPushStatus(
                       t(
                         'web_push_push_unsupported',
-                        'Browser notification permission was granted, but this mobile browser does not support web push subscriptions.',
+                        'Browser notification permission was granted, but push subscriptions are unavailable. Install this app to your home screen (PWA) and enable notifications, then try again.',
                       ),
                     );
                   } else if (result?.reason === 'vapid_not_configured') {

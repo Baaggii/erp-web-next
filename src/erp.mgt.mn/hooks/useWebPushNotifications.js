@@ -53,7 +53,11 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
 
   const notificationApi = globalThis.Notification;
   const hasNotificationApi = typeof notificationApi !== 'undefined';
-  const hasPushApi = 'serviceWorker' in navigator && 'PushManager' in window;
+  const hasPushApi =
+    'serviceWorker' in navigator &&
+    (typeof window.PushManager !== 'undefined' ||
+      (typeof globalThis.ServiceWorkerRegistration !== 'undefined' &&
+        'pushManager' in ServiceWorkerRegistration.prototype));
 
   if (!hasNotificationApi && !hasPushApi) {
     return { ok: false, reason: 'notifications_unsupported' };
@@ -105,10 +109,6 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
     return { ok: false, reason: 'permission_not_granted', permission };
   }
 
-  if (!hasPushApi) {
-    return { ok: false, reason: 'push_unsupported', permission };
-  }
-
   let status;
   try {
     const statusRes = await fetch(`${API_BASE}/web_push/status`, {
@@ -132,7 +132,7 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   try {
     const registration = await navigator.serviceWorker.register('/sw-webpush.js');
     if (!registration?.pushManager || typeof registration.pushManager.subscribe !== 'function') {
-      return { ok: false, reason: 'push_unsupported', permission };
+      return { ok: false, reason: 'pwa_install_required', permission };
     }
     const existing = await registration.pushManager.getSubscription();
     subscription =
@@ -188,7 +188,12 @@ export default function useWebPushNotifications({ user, userSettings, generalCon
 
   useEffect(() => {
     if (!enabled) return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const hasPushApi =
+      'serviceWorker' in navigator &&
+      (typeof window.PushManager !== 'undefined' ||
+        (typeof globalThis.ServiceWorkerRegistration !== 'undefined' &&
+          'pushManager' in ServiceWorkerRegistration.prototype));
+    if (!hasPushApi) return;
 
     let cancelled = false;
 
