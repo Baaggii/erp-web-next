@@ -1000,6 +1000,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onDeleteMessage={onDeleteMessage}
             onPreviewAttachment={onPreviewAttachment}
             onToggleReaction={onToggleReaction}
+            onVotePoll={onVotePoll}
             reactionActivitiesByMessage={reactionActivitiesByMessage}
             selfEmpid={selfEmpid}
             isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
@@ -1272,6 +1273,7 @@ ${hoverUsers}`
           onDeleteMessage={onDeleteMessage}
           onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
+          onVotePoll={onVotePoll}
           reactionActivitiesByMessage={reactionActivitiesByMessage}
           selfEmpid={selfEmpid}
           isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
@@ -2363,6 +2365,34 @@ export default function MessagingWidget() {
     }
   }, [companyId, selfEmpid, state.activeCompanyId]);
 
+
+  const onVotePoll = useCallback(async (messageId, optionIndex) => {
+    const normalizedMessageId = normalizeId(messageId);
+    if (!normalizedMessageId || !Number.isInteger(Number(optionIndex))) return;
+    const activeCompany = state.activeCompanyId || companyId;
+    const res = await fetch(`${API_BASE}/messaging/messages/${normalizedMessageId}/poll-vote`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: activeCompany, optionIndex: Number(optionIndex) }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Unable to vote on poll.');
+      return;
+    }
+    const payload = await res.json().catch(() => null);
+    if (!payload?.poll) return;
+    setMessagesByCompany((prev) => {
+      const key = getCompanyCacheKey(activeCompany);
+      const current = prev[key] || [];
+      return {
+        ...prev,
+        [key]: current.map((entry) => (normalizeId(entry.id) === normalizedMessageId ? { ...entry, poll: payload.poll } : entry)),
+      };
+    });
+  }, [companyId, state.activeCompanyId]);
+
   useEffect(() => {
     const handleActivityChange = () => setActivityTick((value) => value + 1);
     window.addEventListener('focus', handleActivityChange);
@@ -2864,6 +2894,7 @@ export default function MessagingWidget() {
         messageId: editingMessage.id,
         conversationId: editingMessage.conversationId,
         body: editedBody,
+        ...(hasValidPoll ? { poll: { question: safePollQuestion, options: safePollOptions, voterVisibility: pollDraft.voterVisibility === 'hidden' ? 'hidden' : 'visible' } } : { poll: null }),
         companyId: normalizedCompanyId,
       });
       if (!response?.ok) {
@@ -3046,6 +3077,12 @@ export default function MessagingWidget() {
       conversation_id: optimisticConversationId,
       parent_message_id: optimisticParentMessageId,
       created_at: new Date().toISOString(),
+      poll: hasValidPoll ? {
+        question: safePollQuestion,
+        voterVisibility: pollDraft.voterVisibility === 'hidden' ? 'hidden' : 'visible',
+        viewerVoteIndex: null,
+        options: safePollOptions.map((label, index) => ({ index, label, votes: 0, voters: [] })),
+      } : null,
       _optimistic: true,
     };
 
@@ -3698,6 +3735,7 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
+                onVotePoll={onVotePoll}
                 reactionActivitiesByMessage={reactionActivityByMessage}
                 selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
