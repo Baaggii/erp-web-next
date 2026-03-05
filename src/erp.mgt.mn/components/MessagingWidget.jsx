@@ -913,7 +913,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, onVotePoll, onAddPollOption, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, onVotePoll, onAddPollOption, onEditPollOption, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
@@ -947,13 +947,36 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const bodyFontSize = toScaledFontSize(14, textScale);
   const chipFontSize = toScaledFontSize(12, textScale);
   const poll = message?.poll && typeof message.poll === 'object' ? message.poll : null;
+  const canEditPollOptions = Boolean(poll?.canEditOptions || poll?.canEdit || isAuthoredBySelf);
   const [selectedPollOptionIds, setSelectedPollOptionIds] = useState([]);
   const [newPollOptionText, setNewPollOptionText] = useState('');
+  const [editingPollOptionTexts, setEditingPollOptionTexts] = useState({});
 
   useEffect(() => {
     setSelectedPollOptionIds([]);
     setNewPollOptionText('');
-  }, [message?.id]);
+    const pollOptions = Array.isArray(poll?.options) ? poll.options : [];
+    setEditingPollOptionTexts(
+      pollOptions.reduce((acc, entry) => {
+        const optionId = Number(entry?.id);
+        if (Number.isFinite(optionId) && optionId > 0) {
+          acc[optionId] = entry?.text || '';
+        }
+        return acc;
+      }, {}),
+    );
+  }, [message?.id, poll]);
+
+  const handlePollOptionSelection = (optionId) => {
+    if (!poll || !optionId) return;
+    setSelectedPollOptionIds((prev) => {
+      const nextSelection = poll.allowMultipleSelections
+        ? (prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId])
+        : [optionId];
+      if (nextSelection.length > 0) onVotePoll?.(poll.id, nextSelection);
+      return nextSelection;
+    });
+  };
 
   if (isDeleted) {
     return (
@@ -981,6 +1004,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onToggleReaction={onToggleReaction}
             onVotePoll={onVotePoll}
             onAddPollOption={onAddPollOption}
+            onEditPollOption={onEditPollOption}
             reactionActivitiesByMessage={reactionActivitiesByMessage}
             selfEmpid={selfEmpid}
             isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
@@ -1116,16 +1140,29 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                   <input
                     type={poll.allowMultipleSelections ? 'checkbox' : 'radio'}
                     checked={checked}
-                    onChange={() => {
-                      setSelectedPollOptionIds((prev) => {
-                        if (poll.allowMultipleSelections) {
-                          return prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId];
-                        }
-                        return [optionId];
-                      });
-                    }}
+                    onChange={() => handlePollOptionSelection(optionId)}
                   />
-                  <span>{option?.text} ({Number(option?.votes) || 0})</span>
+                  {canEditPollOptions ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editingPollOptionTexts[optionId] ?? option?.text ?? ''}
+                        onChange={(event) => setEditingPollOptionTexts((prev) => ({ ...prev, [optionId]: event.target.value }))}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '2px 6px', fontSize: chipFontSize, minWidth: 180 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onEditPollOption?.(poll.id, optionId, editingPollOptionTexts[optionId] ?? option?.text ?? '')}
+                        disabled={(editingPollOptionTexts[optionId] ?? '').trim() === sanitizeMessageText(option?.text || '')}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: chipFontSize }}
+                      >
+                        Save
+                      </button>
+                      <span>({Number(option?.votes) || 0})</span>
+                    </>
+                  ) : (
+                    <span>{option?.text} ({Number(option?.votes) || 0})</span>
+                  )}
                   {poll.viewerHasVoted && poll.canViewVoters && Array.isArray(option?.voters) && option.voters.length > 0 && (
                     <span style={{ color: '#64748b' }}>— {option.voters.map((empid) => resolveEmployeeLabel(empid)).join(', ')}</span>
                   )}
@@ -1134,7 +1171,6 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             })}
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => onVotePoll?.(poll.id, selectedPollOptionIds)} style={{ border: '1px solid #93c5fd', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: chipFontSize }}>Vote</button>
             {poll.allowUserOptions && (
               <>
                 <input value={newPollOptionText} onChange={(event) => setNewPollOptionText(event.target.value)} placeholder="Add option" style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '2px 6px', fontSize: chipFontSize }} />
@@ -2873,6 +2909,27 @@ export default function MessagingWidget() {
     setComposerAnnouncement('Poll option added.');
   };
 
+  const editPollOption = async (pollId, optionId, optionText) => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const normalizedCompanyId = Number(activeCompany);
+    const normalizedOptionId = Number(optionId);
+    const cleanText = sanitizeMessageText(optionText || '');
+    if (!pollId || !Number.isFinite(normalizedOptionId) || normalizedOptionId <= 0 || !cleanText) return;
+    const res = await fetch(`${API_BASE}/messaging/polls/${pollId}/options/${normalizedOptionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: normalizedCompanyId, optionText: cleanText }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Failed to update poll option.');
+      return;
+    }
+    if (activeConversation?.conversationId) await fetchThreadMessages(activeConversation.conversationId, activeCompany);
+    setComposerAnnouncement('Poll option updated.');
+  };
+
   const sendMessage = async () => {
     if (editingMessage?.id) {
       const activeCompany = state.activeCompanyId || companyId;
@@ -3740,6 +3797,7 @@ export default function MessagingWidget() {
                 onToggleReaction={onToggleReaction}
                 onVotePoll={voteOnPoll}
                 onAddPollOption={addPollOption}
+                onEditPollOption={editPollOption}
                 reactionActivitiesByMessage={reactionActivityByMessage}
                 selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
@@ -3865,11 +3923,11 @@ export default function MessagingWidget() {
 
             <div style={{ marginTop: 8, border: '1px solid #dbeafe', borderRadius: 10, padding: 8, background: '#f8fbff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: 12, color: '#1e3a8a' }}>Poll</strong>
+                <strong style={{ fontSize: composerTextFontSize, color: '#1e3a8a' }}>Poll</strong>
                 <button
                   type="button"
                   onClick={() => dispatch({ type: 'composer/setPoll', payload: state.composer.poll ? null : { question: '', options: ['Option 1', 'Option 2'], votersVisible: false, allowMultipleSelections: false, allowUserOptions: false } })}
-                  style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '3px 8px', fontSize: 12 }}
+                  style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '3px 8px', fontSize: composerTextFontSize }}
                 >
                   {state.composer.poll ? 'Remove poll' : 'Add poll'}
                 </button>
@@ -3880,7 +3938,7 @@ export default function MessagingWidget() {
                     value={state.composer.poll.question || ''}
                     onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, question: event.target.value } })}
                     placeholder="Poll question"
-                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerTextFontSize }}
                   />
                   {(state.composer.poll.options || []).map((option, index) => (
                     <input
@@ -3892,14 +3950,14 @@ export default function MessagingWidget() {
                         dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: nextOptions } });
                       }}
                       placeholder={`Option ${index + 1}`}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}
+                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerTextFontSize }}
                     />
                   ))}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: [...(state.composer.poll.options || []), `Option ${(state.composer.poll.options || []).length + 1}`] } })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '2px 8px', fontSize: 12 }}>+ Option</button>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.votersVisible === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, votersVisible: event.target.checked } })} /> Voters visible</label>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.allowMultipleSelections === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowMultipleSelections: event.target.checked } })} /> Multiple select</label>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.allowUserOptions === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowUserOptions: event.target.checked } })} /> Users can add options</label>
+                    <button type="button" onClick={() => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: [...(state.composer.poll.options || []), `Option ${(state.composer.poll.options || []).length + 1}`] } })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '2px 8px', fontSize: composerTextFontSize }}>+ Option</button>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.votersVisible === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, votersVisible: event.target.checked } })} /> Voters visible</label>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.allowMultipleSelections === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowMultipleSelections: event.target.checked } })} /> Multiple select</label>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.allowUserOptions === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowUserOptions: event.target.checked } })} /> Users can add options</label>
                   </div>
                 </div>
               )}
