@@ -931,22 +931,6 @@ async function notifyMessageOwnerReactionEvent({
   };
   if (ioRef) {
     ioRef.to(`user:${ownerEmpid}`).emit('notification:new', payload);
-    ioRef.to(`user:${ownerEmpid}`).emit('message.reaction.activity', {
-      company_id: companyId,
-      companyId,
-      message_id: message?.id ?? null,
-      messageId: message?.id ?? null,
-      conversation_id: message?.conversation_id ?? null,
-      conversationId: message?.conversation_id ?? null,
-      actor_empid: actorEmpid,
-      actorEmpid,
-      owner_empid: ownerEmpid,
-      ownerEmpid,
-      emoji,
-      event_type: eventType,
-      eventType,
-      at: payload.created_at,
-    });
   }
 }
 
