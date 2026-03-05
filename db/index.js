@@ -1234,9 +1234,13 @@ export async function testConnection() {
  */
 export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
-    `SELECT *
-     FROM users
-     WHERE empid = ?
+    `SELECT
+       u.*,
+       emp.emp_hiredate,
+       emp.emp_outdate
+     FROM users u
+     LEFT JOIN tbl_employee emp ON emp.emp_id = u.empid
+     WHERE u.empid = ?
      LIMIT 1`,
     [empid],
   );
@@ -1973,9 +1977,12 @@ export async function listUsers() {
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT id, empid, created_at
-       FROM users
-      WHERE company_id = ?`,
+    `SELECT u.id, u.empid, u.created_at
+       FROM users u
+       LEFT JOIN tbl_employee emp ON emp.emp_id = u.empid
+      WHERE u.company_id = ?
+        AND (emp.emp_hiredate IS NULL OR emp.emp_hiredate <= CURRENT_DATE())
+        AND (emp.emp_outdate IS NULL OR emp.emp_outdate >= CURRENT_DATE())`,
     [companyId],
   );
   return rows;
