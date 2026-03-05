@@ -19,7 +19,9 @@ import { adaptConversationListResponse, adaptThreadResponse } from './messagingA
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
+const POLL_MARKER = '\n[poll-json]';
 const NEW_CONVERSATION_ID = '__new__';
+const POLL_OPTION_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣'];
 const MESSAGE_TEXT_SCALE_MIN = 1;
 const MESSAGE_TEXT_SCALE_MAX = 1.8;
 const MESSAGE_TEXT_SCALE_STEP = 0.1;
@@ -98,6 +100,39 @@ function encodeAttachmentPayload(items = []) {
     return `${ATTACHMENTS_MARKER}${encoded}`;
   } catch {
     return '';
+  }
+}
+
+function encodePollPayload(pollDraft) {
+  const question = sanitizeMessageText(pollDraft?.question || '').slice(0, 200);
+  const options = Array.isArray(pollDraft?.options)
+    ? pollDraft.options.map((entry) => sanitizeMessageText(entry).slice(0, 80)).filter(Boolean)
+    : [];
+  if (!question || options.length < 2) return '';
+  try {
+    return `${POLL_MARKER}${globalThis.btoa(JSON.stringify({ question, options: options.slice(0, POLL_OPTION_EMOJIS.length) }))}`;
+  } catch {
+    return '';
+  }
+}
+
+function decodePollPayload(text) {
+  const source = String(text || '');
+  const markerIndex = source.indexOf(POLL_MARKER);
+  if (markerIndex < 0) return { text: source, poll: null };
+  const visibleText = source.slice(0, markerIndex).trimEnd();
+  const encoded = source.slice(markerIndex + POLL_MARKER.length).trim();
+  if (!encoded) return { text: visibleText, poll: null };
+  try {
+    const parsed = JSON.parse(globalThis.atob(encoded));
+    const question = sanitizeMessageText(parsed?.question || '').slice(0, 200);
+    const options = Array.isArray(parsed?.options)
+      ? parsed.options.map((entry) => sanitizeMessageText(entry).slice(0, 80)).filter(Boolean).slice(0, POLL_OPTION_EMOJIS.length)
+      : [];
+    if (!question || options.length < 2) return { text: visibleText, poll: null };
+    return { text: visibleText, poll: { question, options } };
+  } catch {
+    return { text: visibleText, poll: null };
   }
 }
 
@@ -905,12 +940,14 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE, hideQuickReactionEmojis = [] }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
-  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
+  const pollDecoded = decodePollPayload(decoded.text);
+  const poll = pollDecoded.poll;
+  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(pollDecoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -1083,6 +1120,39 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
+      {poll && (
+        <div style={{ marginTop: 8, border: '1px solid #cbd5e1', borderRadius: 10, background: '#f8fafc', padding: 8 }}>
+          <p style={{ margin: 0, fontSize: metadataFontSize, color: '#334155', fontWeight: 700 }}>📊 Poll · {poll.question}</p>
+          <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+            {poll.options.map((option, index) => {
+              const emoji = POLL_OPTION_EMOJIS[index];
+              const reactionEntry = reactions.find((entry) => entry.emoji === emoji);
+              const optionVotes = reactionEntry?.count || 0;
+              const reactedBySelf = Boolean(reactionEntry?.users?.includes(normalizeId(selfEmpid)));
+              return (
+                <button
+                  key={`${message.id}-poll-${emoji}`}
+                  type="button"
+                  onClick={() => onToggleReaction(message.id, emoji)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    border: `1px solid ${reactedBySelf ? '#93c5fd' : '#cbd5e1'}`,
+                    borderRadius: 8,
+                    background: reactedBySelf ? '#eff6ff' : '#fff',
+                    padding: '5px 8px',
+                    fontSize: chipFontSize,
+                  }}
+                >
+                  <span>{emoji} {option}</span>
+                  <strong>{optionVotes}</strong>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {resolvedReactionActivities.length > 0 && (
         <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
           {resolvedReactionActivities.map((entry) => (
@@ -1170,7 +1240,7 @@ ${hoverUsers}`
             </button>
           );
         })}
-        {QUICK_REACTIONS.map((emoji) => (
+        {QUICK_REACTIONS.filter((emoji) => !hideQuickReactionEmojis.includes(emoji)).map((emoji) => (
           <button
             key={`${message.id}-${emoji}`}
             type="button"
@@ -1277,6 +1347,7 @@ export default function MessagingWidget() {
   const [typingByConversation, setTypingByConversation] = useState({});
   const [reactionActivityByMessage, setReactionActivityByMessage] = useState({});
   const [reactionBadgeByConversation, setReactionBadgeByConversation] = useState({});
+  const [pollDraft, setPollDraft] = useState({ enabled: false, question: '', options: ['', ''] });
   const typingEmitRef = useRef({ key: null, ts: 0 });
   const typingTimerRef = useRef(new Map());
   const closeOpenMessageMenus = useCallback(() => {
@@ -2542,11 +2613,14 @@ export default function MessagingWidget() {
 
   const safeTopic = sanitizeMessageText((isDraftConversation ? state.composer.topic : activeConversation?.topic) || '');
   const safeBody = sanitizeMessageText(state.composer.body);
+  const safePollQuestion = sanitizeMessageText(pollDraft.question).slice(0, 200);
+  const safePollOptions = pollDraft.options.map((entry) => sanitizeMessageText(entry).slice(0, 80)).filter(Boolean).slice(0, POLL_OPTION_EMOJIS.length);
+  const hasValidPoll = pollDraft.enabled && safePollQuestion && safePollOptions.length >= 2;
   const requiresRecipient = false;
   const requiresTopic = isDraftConversation;
   const hasRecipients = (state.composer.recipients || []).some((entry) => normalizeId(entry));
   const hasConversationTarget = Boolean(isDraftConversation || activeConversationId || state.activeConversationId);
-  const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
+  const canSendMessage = Boolean((safeBody || hasValidPoll) && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
   const messageTextScalePercent = Math.round(clampMessageTextScale(messageTextScale) * 100);
   const composerTextFontSize = toScaledFontSize(14, messageTextScale);
 
@@ -2611,9 +2685,13 @@ export default function MessagingWidget() {
     const targetId = normalizeId(message?.id);
     if (!targetId) return;
     const decoded = extractMessageAttachments(message);
+    const pollDecoded = decodePollPayload(decoded.text);
     dispatch({ type: 'composer/setReplyTo', payload: null });
-    dispatch({ type: 'composer/setBody', payload: sanitizeMessageText(decoded.text || '') });
+    dispatch({ type: 'composer/setBody', payload: sanitizeMessageText(pollDecoded.text || '') });
     dispatch({ type: 'composer/setAttachments', payload: [] });
+    setPollDraft(pollDecoded.poll
+      ? { enabled: true, question: pollDecoded.poll.question, options: pollDecoded.poll.options }
+      : { enabled: false, question: '', options: ['', ''] });
     setEditingMessage({
       id: targetId,
       conversationId: normalizeConversationId(message?.conversation_id || message?.conversationId),
@@ -2626,6 +2704,7 @@ export default function MessagingWidget() {
   const cancelEditingMessage = () => {
     setEditingMessage(null);
     dispatch({ type: 'composer/setBody', payload: '' });
+    setPollDraft({ enabled: false, question: '', options: ['', ''] });
     setComposerAnnouncement('Stopped editing message.');
   };
 
@@ -2776,11 +2855,11 @@ export default function MessagingWidget() {
         setComposerAnnouncement('Invalid company context. Refresh and try again.');
         return;
       }
-      if (!safeBody) {
+      if (!safeBody && !hasValidPoll) {
         setComposerAnnouncement('Cannot save an empty message.');
         return;
       }
-      const editedBody = `${safeBody}${editingMessage.attachmentPayload || ''}`;
+      const editedBody = `${safeBody}${encodePollPayload({ question: safePollQuestion, options: safePollOptions })}${editingMessage.attachmentPayload || ''}`;
       const response = await persistEditedMessage({
         messageId: editingMessage.id,
         conversationId: editingMessage.conversationId,
@@ -2818,7 +2897,7 @@ export default function MessagingWidget() {
       setComposerAnnouncement('Topic is required.');
       return;
     }
-    if (!safeBody) {
+    if (!safeBody && !hasValidPoll) {
       setComposerAnnouncement('Cannot send an empty message.');
       return;
     }
@@ -2925,7 +3004,7 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
+      body: `${safeBody}${encodePollPayload({ question: safePollQuestion, options: safePollOptions })}${encodeAttachmentPayload(uploadedAttachments)}`,
       messageClass: 'general',
       companyId: normalizedCompanyId,
       ...(linkedType ? { linkedType } : {}),
@@ -3029,6 +3108,7 @@ export default function MessagingWidget() {
       }
       await refreshConversationList(activeCompany);
       dispatch({ type: 'composer/reset' });
+      setPollDraft({ enabled: false, question: '', options: ['', ''] });
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
@@ -3626,6 +3706,7 @@ export default function MessagingWidget() {
                 isMenuOpen={openMessageMenuId === normalizeId(message.id)}
                 onMenuOpenChange={(isOpen) => setOpenMessageMenuId(isOpen ? normalizeId(message.id) : null)}
                 textScale={messageTextScale}
+                hideQuickReactionEmojis={POLL_OPTION_EMOJIS}
               />
             ))}
 
@@ -3653,6 +3734,48 @@ export default function MessagingWidget() {
           >
             <div style={{ overflowY: 'auto', minHeight: 0, paddingRight: 2 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={pollDraft.enabled}
+                    onChange={(event) => setPollDraft((prev) => ({ ...prev, enabled: event.target.checked }))}
+                  />
+                  Create poll
+                </label>
+                {pollDraft.enabled && (
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Votes use numbered reactions.</span>
+                )}
+              </div>
+              {pollDraft.enabled && (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+                  <input
+                    value={pollDraft.question}
+                    onChange={(event) => setPollDraft((prev) => ({ ...prev, question: event.target.value }))}
+                    placeholder="Poll question"
+                    style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
+                  />
+                  <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+                    {pollDraft.options.map((option, index) => (
+                      <input
+                        key={`poll-option-${index}`}
+                        value={option}
+                        onChange={(event) => setPollDraft((prev) => ({ ...prev, options: prev.options.map((entry, idx) => (idx === index ? event.target.value : entry)) }))}
+                        placeholder={`Option ${index + 1}`}
+                        style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={() => setPollDraft((prev) => ({ ...prev, options: prev.options.length >= POLL_OPTION_EMOJIS.length ? prev.options : [...prev.options, ''] }))} style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: 11 }}>
+                      Add option
+                    </button>
+                    <button type="button" onClick={() => setPollDraft((prev) => ({ ...prev, options: prev.options.length <= 2 ? prev.options : prev.options.slice(0, -1) }))} style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: 11 }}>
+                      Remove option
+                    </button>
+                  </div>
+                </div>
+              )}
               {isDraftConversation && (
                 <div>
                   <label htmlFor="messaging-topic" style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Topic</label>
