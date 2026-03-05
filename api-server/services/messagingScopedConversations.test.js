@@ -180,18 +180,3 @@ test('department and branch channels only return messages from participant joine
   const threadAfterPost = await getConversationMessages({ user: { empid: 'E4', companyId: 6 }, companyId: 6, conversationId: 99, db, getSession });
   assert.equal(threadAfterPost.items.some((entry) => entry.body === 'post-hire'), true);
 });
-
-
-test('listConversations keeps scoped channels visible for actor even when scope sync returns no rows', async () => {
-  const db = new ScopedMockDb();
-  const getSession = async () => ({ permissions: { messaging: true }, department_id: 12, branch_id: 22 });
-
-  const result = await listConversations({ user: { empid: 'ACT1', companyId: 9 }, companyId: 9, db, getSession });
-
-  assert.equal(result.items.some((entry) => entry.linked_type === 'department'), true);
-  assert.equal(result.items.some((entry) => entry.linked_type === 'branch'), true);
-  const deptConversation = db.conversations.find((entry) => entry.linked_type === 'department');
-  const branchConversation = db.conversations.find((entry) => entry.linked_type === 'branch');
-  assert.equal(db.participants.some((p) => p.conversation_id === deptConversation?.id && p.empid === 'ACT1' && !p.left_at), true);
-  assert.equal(db.participants.some((p) => p.conversation_id === branchConversation?.id && p.empid === 'ACT1' && !p.left_at), true);
-});

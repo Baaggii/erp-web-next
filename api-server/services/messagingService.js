@@ -201,12 +201,6 @@ async function ensureScopedConversation(db, { companyId, session, actorEmpid, sc
     joinedAtByEmpid.set(empid, Number.isNaN(hireDate?.getTime()) ? null : hireDate.toISOString().slice(0, 19).replace('T', ' '));
   }
 
-  const actor = String(actorEmpid || '').trim();
-  if (actor && !participants.includes(actor)) {
-    participants.push(actor);
-    if (!joinedAtByEmpid.has(actor)) joinedAtByEmpid.set(actor, null);
-  }
-
   const addedParticipants = await insertParticipants(db, companyId, conversation.id, participants, { joinedAtByEmpid });
   const newlyAdded = addedParticipants.filter((empid) => !existingActive.has(empid));
   for (const empid of newlyAdded) {
