@@ -7,6 +7,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import {
   createCorrelationId,
   createConversationRoot,
+  createConversationPoll,
   addMessageReaction,
   deleteConversation,
   deleteMessage,
@@ -18,6 +19,7 @@ import {
   addConversationParticipant,
   removeConversationParticipant,
   postConversationMessage,
+  voteConversationPoll,
   presenceHeartbeat,
   removeMessageReaction,
   switchCompanyContext,
@@ -145,6 +147,32 @@ const removeConversationParticipantSchema = {
   },
 };
 
+
+const createPollSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['options'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 255 } },
+    voterVisibility: { anyOf: [{ type: 'boolean' }, { type: 'integer' }, { type: 'string' }] },
+    allowMultipleChoices: { anyOf: [{ type: 'boolean' }, { type: 'integer' }, { type: 'string' }] },
+    allowUserOptions: { anyOf: [{ type: 'boolean' }, { type: 'integer' }, { type: 'string' }] },
+    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+  },
+};
+
+const votePollSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    optionIds: { type: 'array', minItems: 1, items: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] } },
+    addOption: { type: 'string', minLength: 1, maxLength: 255 },
+  },
+};
+
 const messageReactionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -170,6 +198,8 @@ const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema)
 const validateAddConversationParticipant = ajv.compile(addConversationParticipantSchema);
 const validateRemoveConversationParticipant = ajv.compile(removeConversationParticipantSchema);
 const validateMessageReaction = ajv.compile(messageReactionSchema);
+const validateCreatePoll = ajv.compile(createPollSchema);
+const validateVotePoll = ajv.compile(votePollSchema);
 
 function validateBody(validator, message) {
   return (req, res, next) => {
@@ -233,6 +263,37 @@ router.post('/conversations/:conversationId/messages', validateBody(validatePost
     emitMessagingEvent(req, data?.message?.company_id, 'message.created', { message: data?.message, conversation: data?.conversation });
     return data;
   }, 201));
+
+
+router.post('/conversations/:conversationId/polls', validateBody(validateCreatePoll, 'Invalid poll payload'), (req, res) =>
+  handle(res, req, async () => {
+    const data = await createConversationPoll({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      conversationId: Number(req.params.conversationId),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, data?.message?.company_id, 'message.created', { message: data?.message, conversation: data?.conversation });
+    return data;
+  }, 201));
+
+router.post('/polls/:pollId/votes', validateBody(validateVotePoll, 'Invalid poll vote payload'), (req, res) =>
+  handle(res, req, async () => {
+    const data = await voteConversationPoll({
+      user: req.user,
+      companyId: req.body?.companyId ?? req.query.companyId,
+      pollId: Number(req.params.pollId),
+      payload: req.body,
+      correlationId: req.correlationId,
+    });
+    emitMessagingEvent(req, req.body?.companyId ?? req.query.companyId ?? req.user?.companyId, 'poll.updated', {
+      poll: data?.poll,
+      poll_id: data?.pollId,
+      pollId: data?.pollId,
+    });
+    return data;
+  }));
 
 router.patch('/conversations/:conversationId/topic', validateBody(validatePatchConversationTopic, 'Invalid topic payload'), (req, res) =>
   handle(res, req, async () => {
