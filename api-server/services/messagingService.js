@@ -9,6 +9,8 @@ const CONVERSATION_TYPE_ALLOWLIST = new Set(['general', 'private', 'linked']);
 
 let ioRef = null;
 const onlineByCompany = new Map();
+const reactionNotifyDebounce = new Map();
+const REACTION_NOTIFY_DEBOUNCE_MS = 60 * 1000;
 
 function createError(status, code, message, details) {
   const err = new Error(message);
@@ -626,13 +628,79 @@ async function getAccessibleMessageForReaction({ user, companyId, messageId, db 
   return { id, message };
 }
 
+function shouldDebounceReactionNotify({ companyId, messageId, actorEmpid, emoji, eventType }) {
+  const key = [companyId, messageId, actorEmpid, emoji, eventType].join(':');
+  const now = Date.now();
+  const previous = reactionNotifyDebounce.get(key);
+  if (previous && (now - previous) < REACTION_NOTIFY_DEBOUNCE_MS) return true;
+  reactionNotifyDebounce.set(key, now);
+  if (reactionNotifyDebounce.size > 1000) {
+    for (const [storedKey, ts] of reactionNotifyDebounce.entries()) {
+      if ((now - ts) > REACTION_NOTIFY_DEBOUNCE_MS * 2) reactionNotifyDebounce.delete(storedKey);
+    }
+  }
+  return false;
+}
+
+async function notifyMessageOwnerReactionEvent({
+  db,
+  companyId,
+  message,
+  actorEmpid,
+  emoji,
+  eventType,
+}) {
+  const ownerEmpid = String(message?.author_empid || '').trim();
+  if (!ownerEmpid) return;
+  if (ownerEmpid === actorEmpid) return;
+  const conversation = await getConversationById(db, companyId, message?.conversation_id);
+  if (!conversation) return;
+  if (String(conversation.type || '').toLowerCase() !== 'general') {
+    const ownerAllowed = await isConversationParticipant(db, companyId, conversation.id, ownerEmpid);
+    if (!ownerAllowed) return;
+  }
+  if (shouldDebounceReactionNotify({ companyId, messageId: message?.id, actorEmpid, emoji, eventType })) return;
+
+  const isAdded = eventType === 'reaction_added';
+  const notificationMessage = isAdded
+    ? `${actorEmpid} reacted ${emoji} to your message`
+    : `${actorEmpid} removed ${emoji} reaction from your message`;
+  const [result] = await db.query(
+    `INSERT INTO notifications
+      (company_id, recipient_empid, type, related_id, message, created_by, created_at)
+     VALUES (?, ?, 'request', ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [companyId, ownerEmpid, message?.id ?? null, notificationMessage, actorEmpid],
+  );
+
+  const payload = {
+    id: result?.insertId ?? null,
+    type: 'request',
+    kind: isAdded ? 'messaging.reaction.added' : 'messaging.reaction.removed',
+    message: notificationMessage,
+    related_id: message?.id ?? null,
+    created_at: new Date().toISOString(),
+    sender: actorEmpid,
+    metadata: {
+      messageId: message?.id ?? null,
+      conversationId: message?.conversation_id ?? null,
+      channelId: null,
+      actorEmpid,
+      emoji,
+      eventType,
+    },
+  };
+  if (ioRef) {
+    ioRef.to(`user:${ownerEmpid}`).emit('notification:new', payload);
+  }
+}
+
 export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   await db.query(
     `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
@@ -640,6 +708,7 @@ export async function addMessageReaction({ user, companyId, messageId, payload, 
      ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
+  await notifyMessageOwnerReactionEvent({ db, companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_added' });
   return { correlationId, ok: true, messageId: id, emoji, reacted: true };
 }
 
@@ -649,14 +718,17 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
-  await db.query(
+  const [result] = await db.query(
     `UPDATE erp_message_reactions
         SET deleted_at = CURRENT_TIMESTAMP
       WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
+  if (result?.affectedRows > 0) {
+    await notifyMessageOwnerReactionEvent({ db, companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_removed' });
+  }
   return { correlationId, ok: true, messageId: id, emoji, reacted: false };
 }
 
@@ -666,7 +738,7 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   const [rows] = await db.query(
     `SELECT deleted_at
@@ -684,13 +756,17 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
        ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
+    await notifyMessageOwnerReactionEvent({ db, companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_added' });
   } else {
-    await db.query(
+    const [result] = await db.query(
       `UPDATE erp_message_reactions
           SET deleted_at = CURRENT_TIMESTAMP
         WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
+    if (result?.affectedRows > 0) {
+      await notifyMessageOwnerReactionEvent({ db, companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_removed' });
+    }
   }
   return { correlationId, ok: true, messageId: id, emoji, reacted };
 }
