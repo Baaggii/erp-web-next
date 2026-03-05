@@ -626,13 +626,26 @@ async function getAccessibleMessageForReaction({ user, companyId, messageId, db 
   return { id, message };
 }
 
+function emitReactionActivityEvent({ companyId, message, actorEmpid, emoji, eventType }) {
+  if (!ioRef) return;
+  ioRef.to(`messaging:${companyId}`).emit('message.reaction.activity', {
+    company_id: companyId,
+    messageId: message?.id ?? null,
+    conversationId: message?.conversation_id ?? null,
+    actorEmpid,
+    emoji,
+    eventType,
+    createdAt: new Date().toISOString(),
+  });
+}
+
 export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   await db.query(
     `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
@@ -640,6 +653,7 @@ export async function addMessageReaction({ user, companyId, messageId, payload, 
      ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
+  emitReactionActivityEvent({ companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_added' });
   return { correlationId, ok: true, messageId: id, emoji, reacted: true };
 }
 
@@ -649,14 +663,17 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
-  await db.query(
+  const [result] = await db.query(
     `UPDATE erp_message_reactions
         SET deleted_at = CURRENT_TIMESTAMP
       WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
+  if (result?.affectedRows > 0) {
+    emitReactionActivityEvent({ companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_removed' });
+  }
   return { correlationId, ok: true, messageId: id, emoji, reacted: false };
 }
 
@@ -666,7 +683,7 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   const [rows] = await db.query(
     `SELECT deleted_at
@@ -684,13 +701,17 @@ export async function toggleMessageReaction({ user, companyId, messageId, payloa
        ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
+    emitReactionActivityEvent({ companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_added' });
   } else {
-    await db.query(
+    const [result] = await db.query(
       `UPDATE erp_message_reactions
           SET deleted_at = CURRENT_TIMESTAMP
         WHERE message_id = ? AND company_id = ? AND empid = ? AND emoji = ? AND deleted_at IS NULL`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
+    if (result?.affectedRows > 0) {
+      emitReactionActivityEvent({ companyId: scopedCompanyId, message, actorEmpid, emoji, eventType: 'reaction_removed' });
+    }
   }
   return { correlationId, ok: true, messageId: id, emoji, reacted };
 }

@@ -605,6 +605,40 @@ function normalizeReactionList(message) {
     .filter(Boolean);
 }
 
+
+function normalizeReactionActivityEvent(payload) {
+  if (!payload) return null;
+  const messageId = normalizeId(payload.messageId || payload.message_id);
+  const conversationId = normalizeConversationId(payload.conversationId || payload.conversation_id);
+  const actorEmpid = normalizeId(payload.actorEmpid || payload.actor_empid || payload.empid);
+  const emoji = sanitizeMessageText(payload.emoji || '').trim();
+  const eventType = sanitizeMessageText(payload.eventType || payload.event_type).toLowerCase();
+  if (!messageId || !conversationId || !actorEmpid || !emoji) return null;
+  if (!['reaction_added', 'reaction_removed'].includes(eventType)) return null;
+  return {
+    messageId,
+    conversationId,
+    actorEmpid,
+    emoji,
+    eventType,
+    createdAt: payload.createdAt || payload.created_at || new Date().toISOString(),
+  };
+}
+
+function applyReactionActivityLog(previous, event) {
+  const key = normalizeId(event?.messageId);
+  if (!key) return previous;
+  const list = Array.isArray(previous?.[key]) ? previous[key] : [];
+  const entry = {
+    key: `${event.createdAt}:${event.actorEmpid}:${event.emoji}:${event.eventType}`,
+    text: event.eventType === 'reaction_added'
+      ? `${event.actorEmpid} reacted ${event.emoji}`
+      : `${event.actorEmpid} removed ${event.emoji}`,
+    createdAt: event.createdAt,
+  };
+  return { ...previous, [key]: [...list, entry].slice(-3) };
+}
+
 function withToggledReaction(message, emoji, viewerEmpid) {
   const normalizedViewer = normalizeId(viewerEmpid);
   if (!message?.id || !emoji || !normalizedViewer) return message;
@@ -871,7 +905,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
@@ -890,6 +924,10 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const readTooltip = readerLabels.length > 0 ? `Read by: ${readerLabels.join(', ')}` : 'No readers yet';
   const reactions = normalizeReactionList(message);
   const actionTrace = extractMessageActionTrace(message, resolveEmployeeLabel);
+  const resolvedReactionActivities = (reactionActivitiesByMessage?.[normalizedMessageId] || []).map((entry) => ({
+    ...entry,
+    label: entry?.text?.replace(/^([^\s]+)/, (_, empid) => resolveEmployeeLabel(empid)),
+  }));
   const isAuthoredBySelf = normalizeId(message.author_empid) === normalizeId(selfEmpid) || isOwnMessage;
   const menuControlProps = typeof onMenuOpenChange === 'function'
     ? {
@@ -925,6 +963,7 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onDeleteMessage={onDeleteMessage}
             onPreviewAttachment={onPreviewAttachment}
             onToggleReaction={onToggleReaction}
+            reactionActivitiesByMessage={reactionActivitiesByMessage}
             selfEmpid={selfEmpid}
             isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
             onAnyAction={onAnyAction}
@@ -1044,6 +1083,15 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
+      {resolvedReactionActivities.length > 0 && (
+        <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
+          {resolvedReactionActivities.map((entry) => (
+            <span key={entry.key} style={{ fontSize: Math.max(10, metadataFontSize - 1), color: '#64748b' }}>
+              {entry.label} · {new Date(entry.createdAt).toLocaleTimeString()}
+            </span>
+          ))}
+        </div>
+      )}
       {actionTrace.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {actionTrace.map((entry) => {
@@ -1154,6 +1202,7 @@ ${hoverUsers}`
           onDeleteMessage={onDeleteMessage}
           onPreviewAttachment={onPreviewAttachment}
           onToggleReaction={onToggleReaction}
+          reactionActivitiesByMessage={reactionActivitiesByMessage}
           selfEmpid={selfEmpid}
           isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
           onAnyAction={onAnyAction}
@@ -1226,6 +1275,8 @@ export default function MessagingWidget() {
   const [editingMessage, setEditingMessage] = useState(null);
   const [activityTick, setActivityTick] = useState(0);
   const [typingByConversation, setTypingByConversation] = useState({});
+  const [reactionActivityByMessage, setReactionActivityByMessage] = useState({});
+  const [reactionBadgeByConversation, setReactionBadgeByConversation] = useState({});
   const typingEmitRef = useRef({ key: null, ts: 0 });
   const typingTimerRef = useRef(new Map());
   const closeOpenMessageMenus = useCallback(() => {
@@ -1917,6 +1968,24 @@ export default function MessagingWidget() {
       }, 3500);
       typingTimerRef.current.set(timerKey, timeoutId);
     };
+
+    const onReactionActivity = (payload) => {
+      const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
+      const payloadCompanyId = normalizeId(payload?.company_id || payload?.companyId);
+      if (payloadCompanyId && activeCompanyId && payloadCompanyId !== activeCompanyId) return;
+      const event = normalizeReactionActivityEvent(payload);
+      if (!event) return;
+      setReactionActivityByMessage((prev) => applyReactionActivityLog(prev, event));
+      const selectedConversationId = normalizeConversationId(state.activeConversationId);
+      const isActiveConversation = selectedConversationId && Number(selectedConversationId) === Number(event.conversationId);
+      if (!isActiveConversation) {
+        setReactionBadgeByConversation((prev) => ({
+          ...prev,
+          [event.conversationId]: Number(prev[event.conversationId] || 0) + 1,
+        }));
+      }
+    };
+
     const onUpdated = (payload) => {
       const nextMessage = payload?.message || payload;
       const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
@@ -1953,6 +2022,7 @@ export default function MessagingWidget() {
     socket.on('conversation.updated', onConversationUpdated);
     socket.on('message.typing', onTyping);
     socket.on('typing', onTyping);
+    socket.on('message.reaction.activity', onReactionActivity);
     return () => {
       typingTimerRef.current.forEach((timeoutId) => {
         globalThis.clearTimeout(timeoutId);
@@ -1966,6 +2036,7 @@ export default function MessagingWidget() {
       socket.off('conversation.updated', onConversationUpdated);
       socket.off('message.typing', onTyping);
       socket.off('typing', onTyping);
+      socket.off('message.reaction.activity', onReactionActivity);
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
@@ -2104,6 +2175,13 @@ export default function MessagingWidget() {
       });
       return next;
     });
+    setReactionBadgeByConversation((prev) => {
+      const key = normalizeConversationId(normalizedConversationId);
+      if (!key || !prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }, [companyId, messagesByCompany, selfEmpid, state.activeCompanyId]);
 
   const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
@@ -2119,6 +2197,12 @@ export default function MessagingWidget() {
       return messageId > lastReadId;
     }).length;
   }, [companyId, lastReadByCompany, messages, selfEmpid, state.activeCompanyId]);
+
+  const reactionChangeCount = useMemo(
+    () => Object.values(reactionBadgeByConversation).reduce((sum, value) => sum + Number(value || 0), 0),
+    [reactionBadgeByConversation],
+  );
+  const widgetBadgeCount = unreadCount + reactionChangeCount;
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -2361,8 +2445,9 @@ export default function MessagingWidget() {
           ? `${conversation.linkedType} #${conversation.linkedId}`
           : `Conversation #${conversation.conversationId || normalizeConversationId(conversation.id)}`,
       lastActivity: previewMessage?.created_at || conversation.lastMessageAt || null,
+      reactionChanges: Number(reactionBadgeByConversation[convId] || 0),
     };
-  }), [activeThreadReadState, conversationSummariesSource, messages, selfEmpid]);
+  }), [activeThreadReadState, conversationSummariesSource, messages, reactionBadgeByConversation, selfEmpid]);
 
   const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
@@ -3220,9 +3305,9 @@ export default function MessagingWidget() {
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <span>💬 Messages</span>
-            {unreadCount > 0 && (
+            {widgetBadgeCount > 0 && (
               <span style={{ minWidth: 20, height: 20, borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 12, lineHeight: '20px', textAlign: 'center', padding: '0 6px', fontWeight: 700 }}>
-                {unreadCount > 99 ? '99+' : unreadCount}
+                {widgetBadgeCount > 99 ? '99+' : widgetBadgeCount}
               </span>
             )}
           </span>
@@ -3255,7 +3340,7 @@ export default function MessagingWidget() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileLayout ? 'stretch' : 'center', flexDirection: isMobileLayout ? 'column' : 'row', gap: 12, padding: '10px 14px', background: '#0f172a', color: '#fff' }}>
         <div style={{ minWidth: 0 }}>
           <strong style={{ fontSize: 16 }}>Messaging</strong>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread across all threads</p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>{unreadCount} unread · {reactionChangeCount} reaction changes</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: isMobileLayout ? 'flex-start' : 'flex-end' }}>
           <label htmlFor="messaging-text-size" style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>Text size</label>
@@ -3424,6 +3509,11 @@ export default function MessagingWidget() {
                       {conversation.unread}
                     </span>
                   )}
+                  {conversation.reactionChanges > 0 && (
+                    <span title="Reaction changes" style={{ minWidth: 18, textAlign: 'center', borderRadius: 999, background: '#7c3aed', color: '#fff', fontSize: 10, padding: '0 5px' }}>
+                      {conversation.reactionChanges}
+                    </span>
+                  )}
                   {!conversation.isGeneral && !conversation.isDraft && canDeleteConversation(conversation) && (
                     <button
                       type="button"
@@ -3528,6 +3618,7 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
+                reactionActivitiesByMessage={reactionActivityByMessage}
                 selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
                 isOwnMessage={normalizeId(message.author_empid) === selfEmpid}

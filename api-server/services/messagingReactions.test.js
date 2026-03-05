@@ -6,12 +6,22 @@ process.env.DB_ADMIN_PASS = process.env.DB_ADMIN_PASS || 'test';
 process.env.ERP_ADMIN_USER = process.env.ERP_ADMIN_USER || 'test';
 process.env.ERP_ADMIN_PASS = process.env.ERP_ADMIN_PASS || 'test';
 
-const { addMessageReaction, removeMessageReaction, toggleMessageReaction, getConversationMessages } = await import('./messagingService.js');
+const {
+  addMessageReaction,
+  removeMessageReaction,
+  toggleMessageReaction,
+  getConversationMessages,
+  setMessagingIo,
+} = await import('./messagingService.js');
 
 class ReactionDb {
   constructor() {
     this.conversations = [{ id: 1, company_id: 9, type: 'private', deleted_at: null }];
-    this.participants = [{ company_id: 9, conversation_id: 1, empid: 'E1', left_at: null }];
+    this.participants = [
+      { company_id: 9, conversation_id: 1, empid: 'E1', left_at: null },
+      { company_id: 9, conversation_id: 1, empid: 'E2', left_at: null },
+      { company_id: 9, conversation_id: 1, empid: 'E3', left_at: null },
+    ];
     this.messages = [{ id: 10, company_id: 9, conversation_id: 1, author_empid: 'E2', deleted_at: null }];
     this.reactions = [];
   }
@@ -79,13 +89,61 @@ test('message reactions can be added/toggled/removed and returned with message p
   const db = new ReactionDb();
   const user = { empid: 'E1', companyId: 9 };
 
-  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
+  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🧪' }, db, getSession });
   await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
   await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
-  await removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
+  await removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🧪' }, db, getSession });
   await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🎉' }, db, getSession });
 
   const response = await getConversationMessages({ user, companyId: 9, conversationId: 1, db, getSession });
   assert.equal(response.items.length, 1);
   assert.deepEqual(response.items[0].reactions, [{ emoji: '🎉', count: 1, users: ['E1'] }]);
+});
+
+test('add/remove reactions emit activity events and no owner notification events', async () => {
+  const db = new ReactionDb();
+  const events = [];
+  setMessagingIo({
+    to(room) {
+      return {
+        emit(event, payload) {
+          events.push({ room, event, payload });
+        },
+      };
+    },
+  });
+
+  await addMessageReaction({
+    user: { empid: 'E3', companyId: 9 },
+    companyId: 9,
+    messageId: 10,
+    payload: { emoji: '🧪' },
+    db,
+    getSession,
+  });
+  await removeMessageReaction({
+    user: { empid: 'E3', companyId: 9 },
+    companyId: 9,
+    messageId: 10,
+    payload: { emoji: '🧪' },
+    db,
+    getSession,
+  });
+
+  db.messages.push({ id: 11, company_id: 9, conversation_id: 1, author_empid: 'E3', deleted_at: null });
+  await addMessageReaction({
+    user: { empid: 'E3', companyId: 9 },
+    companyId: 9,
+    messageId: 11,
+    payload: { emoji: '🔥' },
+    db,
+    getSession,
+  });
+
+  assert.equal(events.length, 3);
+  assert.deepEqual(events.map((entry) => entry.room), ['messaging:9', 'messaging:9', 'messaging:9']);
+  assert.ok(events.every((entry) => entry.event === 'message.reaction.activity'));
+  assert.deepEqual(events.map((entry) => entry.payload.eventType), ['reaction_added', 'reaction_removed', 'reaction_added']);
+
+  setMessagingIo(null);
 });
