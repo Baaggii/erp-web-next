@@ -329,8 +329,6 @@ async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
     : [
       { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
       { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reaction`, body: JSON.stringify({ emoji }) },
-      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reactions/toggle`, body: JSON.stringify({ emoji }) },
-      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reaction/toggle`, body: JSON.stringify({ emoji }) },
       { method: 'DELETE', path: `${API_BASE}/messaging/reactions`, body: bodyPayload },
     ];
 
