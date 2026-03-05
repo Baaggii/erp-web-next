@@ -170,17 +170,6 @@ class MockDb {
       return [[], undefined];
     }
 
-
-    if (text.startsWith('SELECT id, company_id, conversation_id, message_id, created_by_empid, voter_visibility, allow_multiple_choices, allow_user_options, created_at FROM erp_message_polls')) {
-      return [[], undefined];
-    }
-    if (text.startsWith('SELECT id, poll_id, option_text, created_by_empid, created_at FROM erp_message_poll_options')) {
-      return [[], undefined];
-    }
-    if (text.startsWith('SELECT v.poll_id, v.option_id, v.empid, v.voted_at FROM erp_message_poll_votes v')) {
-      return [[], undefined];
-    }
-
     throw new Error(`Unhandled SQL: ${text}`);
   }
 }
