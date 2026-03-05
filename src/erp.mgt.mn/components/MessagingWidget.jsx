@@ -317,29 +317,19 @@ function extractMessageActionTrace(message, resolveEmployeeLabel) {
   return traces;
 }
 
-async function requestReactionUpdate({ messageId, emoji, shouldAddReaction, companyId }) {
-  const normalizedCompanyId = Number(companyId) || companyId;
-  const query = normalizedCompanyId ? `?companyId=${encodeURIComponent(String(normalizedCompanyId))}` : '';
-  const bodyPayload = JSON.stringify({
-    emoji,
-    messageId: Number(messageId) || messageId,
-    ...(normalizedCompanyId ? { companyId: normalizedCompanyId } : {}),
-  });
-  const bodyWithEmoji = JSON.stringify({
-    emoji,
-    ...(normalizedCompanyId ? { companyId: normalizedCompanyId } : {}),
-  });
+async function requestReactionUpdate({ messageId, emoji, shouldAddReaction }) {
+  const bodyPayload = JSON.stringify({ emoji, messageId: Number(messageId) || messageId });
   const attempts = shouldAddReaction
     ? [
-      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reactions${query}`, body: bodyWithEmoji },
-      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reaction${query}`, body: bodyWithEmoji },
-      { method: 'POST', path: `${API_BASE}/messaging/reactions${query}`, body: bodyPayload },
-      { method: 'PUT', path: `${API_BASE}/messaging/messages/${messageId}/reactions${query}`, body: bodyWithEmoji },
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/messages/${messageId}/reaction`, body: JSON.stringify({ emoji }) },
+      { method: 'POST', path: `${API_BASE}/messaging/reactions`, body: bodyPayload },
+      { method: 'PUT', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
     ]
     : [
-      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reactions${query}`, body: bodyWithEmoji },
-      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reaction${query}`, body: bodyWithEmoji },
-      { method: 'DELETE', path: `${API_BASE}/messaging/reactions${query}`, body: bodyPayload },
+      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reactions`, body: JSON.stringify({ emoji }) },
+      { method: 'DELETE', path: `${API_BASE}/messaging/messages/${messageId}/reaction`, body: JSON.stringify({ emoji }) },
+      { method: 'DELETE', path: `${API_BASE}/messaging/reactions`, body: bodyPayload },
     ];
 
   let lastError = null;
@@ -2340,7 +2330,6 @@ export default function MessagingWidget() {
         messageId: normalizedMessageId,
         emoji,
         shouldAddReaction,
-        companyId: state.activeCompanyId || companyId,
       });
     } catch {
       setMessagesByCompany((prev) => {
