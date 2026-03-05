@@ -2602,6 +2602,7 @@ export default function MessagingWidget() {
   const canSendMessage = Boolean(safeBody && (!requiresTopic || safeTopic) && (!requiresRecipient || hasRecipients) && hasConversationTarget);
   const messageTextScalePercent = Math.round(clampMessageTextScale(messageTextScale) * 100);
   const composerTextFontSize = toScaledFontSize(14, messageTextScale);
+  const composerPollFontSize = toScaledFontSize(12, messageTextScale);
 
   const adjustMessageTextScale = (nextValue) => {
     setMessageTextScale(clampMessageTextScale(nextValue));
@@ -3856,11 +3857,11 @@ export default function MessagingWidget() {
 
             <div style={{ marginTop: 8, border: '1px solid #dbeafe', borderRadius: 10, padding: 8, background: '#f8fbff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: 12, color: '#1e3a8a' }}>Poll</strong>
+                <strong style={{ fontSize: composerPollFontSize, color: '#1e3a8a' }}>Poll</strong>
                 <button
                   type="button"
                   onClick={() => dispatch({ type: 'composer/setPoll', payload: state.composer.poll ? null : { question: '', options: ['Option 1', 'Option 2'], votersVisible: false, allowMultipleSelections: false, allowUserOptions: false } })}
-                  style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '3px 8px', fontSize: 12 }}
+                  style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '3px 8px', fontSize: composerPollFontSize }}
                 >
                   {state.composer.poll ? 'Remove poll' : 'Add poll'}
                 </button>
@@ -3871,7 +3872,7 @@ export default function MessagingWidget() {
                     value={state.composer.poll.question || ''}
                     onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, question: event.target.value } })}
                     placeholder="Poll question"
-                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerPollFontSize }}
                   />
                   {(state.composer.poll.options || []).map((option, index) => (
                     <input
@@ -3883,14 +3884,14 @@ export default function MessagingWidget() {
                         dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: nextOptions } });
                       }}
                       placeholder={`Option ${index + 1}`}
-                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: 12 }}
+                      style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerPollFontSize }}
                     />
                   ))}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: [...(state.composer.poll.options || []), `Option ${(state.composer.poll.options || []).length + 1}`] } })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '2px 8px', fontSize: 12 }}>+ Option</button>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.votersVisible === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, votersVisible: event.target.checked } })} /> Voters visible</label>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.allowMultipleSelections === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowMultipleSelections: event.target.checked } })} /> Multiple select</label>
-                    <label style={{ fontSize: 12 }}><input type="checkbox" checked={state.composer.poll.allowUserOptions === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowUserOptions: event.target.checked } })} /> Users can add options</label>
+                    <button type="button" onClick={() => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: [...(state.composer.poll.options || []), `Option ${(state.composer.poll.options || []).length + 1}`] } })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '2px 8px', fontSize: composerPollFontSize }}>+ Option</button>
+                    <label style={{ fontSize: composerPollFontSize }}><input type="checkbox" checked={state.composer.poll.votersVisible === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, votersVisible: event.target.checked } })} /> Voters visible</label>
+                    <label style={{ fontSize: composerPollFontSize }}><input type="checkbox" checked={state.composer.poll.allowMultipleSelections === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowMultipleSelections: event.target.checked } })} /> Multiple select</label>
+                    <label style={{ fontSize: composerPollFontSize }}><input type="checkbox" checked={state.composer.poll.allowUserOptions === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowUserOptions: event.target.checked } })} /> Users can add options</label>
                   </div>
                 </div>
               )}
