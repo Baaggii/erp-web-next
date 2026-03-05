@@ -269,13 +269,20 @@ async function hydratePollsForMessages(db, { companyId, messageIds, viewerEmpid 
 
   const votesByOption = new Map();
   const viewerVotesByPoll = new Set();
+  const viewerOptionIdsByPoll = new Map();
   for (const row of voteRows || []) {
-    const key = `${toId(row?.poll_id)}:${toId(row?.option_id)}`;
+    const currentPollId = toId(row?.poll_id);
+    const currentOptionId = toId(row?.option_id);
+    const key = `${currentPollId}:${currentOptionId}`;
     if (!votesByOption.has(key)) votesByOption.set(key, []);
     const empid = String(row?.empid || '').trim();
     if (empid) {
       votesByOption.get(key).push(empid);
-      if (empid === String(viewerEmpid || '').trim()) viewerVotesByPoll.add(toId(row?.poll_id));
+      if (empid === String(viewerEmpid || '').trim()) {
+        viewerVotesByPoll.add(currentPollId);
+        if (!viewerOptionIdsByPoll.has(currentPollId)) viewerOptionIdsByPoll.set(currentPollId, new Set());
+        if (currentOptionId) viewerOptionIdsByPoll.get(currentPollId).add(currentOptionId);
+      }
     }
   }
 
@@ -284,6 +291,8 @@ async function hydratePollsForMessages(db, { companyId, messageIds, viewerEmpid 
     const poll = pollsById.get(pollId);
     const viewerHasVoted = viewerVotesByPoll.has(pollId);
     const canViewVoters = Boolean(poll?.voters_visible) && viewerHasVoted;
+    const totalVotes = (voteRows || []).filter((row) => toId(row?.poll_id) === pollId).length;
+    const canEditOptions = totalVotes === 0 && String(poll?.created_by_empid || '').trim() === String(viewerEmpid || '').trim();
     const optionItems = (optionRows || [])
       .filter((row) => toId(row?.poll_id) === pollId)
       .map((row) => {
@@ -304,9 +313,11 @@ async function hydratePollsForMessages(db, { companyId, messageIds, viewerEmpid 
       votersVisible: Boolean(poll?.voters_visible),
       allowMultipleSelections: Boolean(poll?.allow_multiple_selections),
       allowUserOptions: Boolean(poll?.allow_user_options),
-      totalVotes: optionItems.reduce((sum, entry) => sum + (Number(entry.votes) || 0), 0),
+      totalVotes,
       viewerHasVoted,
+      viewerOptionIds: Array.from(viewerOptionIdsByPoll.get(pollId) || []),
       canViewVoters,
+      canEditOptions,
       options: optionItems,
     });
   }
@@ -853,6 +864,49 @@ export async function addPollOption({ user, companyId, pollId, payload, correlat
      ON DUPLICATE KEY UPDATE deleted_at = NULL`,
     [scopedCompanyId, normalizedPollId, optionText, actorEmpid],
   );
+  return { correlationId, ok: true, pollId: normalizedPollId };
+}
+
+export async function editPollOptions({ user, companyId, pollId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedPollId = toId(pollId);
+  if (!normalizedPollId) throw createError(400, 'POLL_REQUIRED', 'pollId is required');
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+
+  const options = Array.from(new Set((Array.isArray(payload?.options) ? payload.options : [])
+    .map((option) => String(option || '').trim().slice(0, 255))
+    .filter(Boolean)));
+  if (options.length < 2) throw createError(400, 'POLL_OPTIONS_REQUIRED', 'At least two options are required');
+
+  const [pollRows] = await db.query('SELECT * FROM erp_message_polls WHERE id = ? AND company_id = ? LIMIT 1', [normalizedPollId, scopedCompanyId]);
+  const poll = pollRows[0];
+  if (!poll) throw createError(404, 'POLL_NOT_FOUND', 'Poll not found');
+  if (String(poll.created_by_empid || '').trim() !== actorEmpid) {
+    throw createError(403, 'POLL_EDIT_FORBIDDEN', 'Only poll creator can edit options');
+  }
+  const conversation = await getConversationById(db, scopedCompanyId, poll.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, actorEmpid);
+
+  const [voteRows] = await db.query(
+    `SELECT id FROM erp_message_poll_votes
+      WHERE company_id = ? AND poll_id = ? AND deleted_at IS NULL
+      LIMIT 1`,
+    [scopedCompanyId, normalizedPollId],
+  );
+  if ((voteRows || []).length > 0) throw createError(409, 'POLL_ALREADY_VOTED', 'Poll options cannot be edited after voting starts');
+
+  await db.query('UPDATE erp_message_poll_options SET deleted_at = CURRENT_TIMESTAMP WHERE company_id = ? AND poll_id = ? AND deleted_at IS NULL', [scopedCompanyId, normalizedPollId]);
+  for (const optionText of options) {
+    await db.query(
+      `INSERT INTO erp_message_poll_options (company_id, poll_id, option_text, created_by_empid)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE deleted_at = NULL`,
+      [scopedCompanyId, normalizedPollId, optionText, actorEmpid],
+    );
+  }
+
   return { correlationId, ok: true, pollId: normalizedPollId };
 }
 
