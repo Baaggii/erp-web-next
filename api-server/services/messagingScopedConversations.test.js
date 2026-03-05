@@ -43,12 +43,6 @@ class ScopedMockDb {
       const row = this.conversations.find((c) => c.company_id === Number(companyId) && c.type === 'linked' && c.linked_type === linkedType && c.linked_id === linkedId && !c.deleted_at);
       return [[row].filter(Boolean), undefined];
     }
-    if (text.startsWith('SELECT name FROM code_department')) {
-      return [[{ name: 'HR Department' }], undefined];
-    }
-    if (text.startsWith('SELECT name FROM code_branches')) {
-      return [[{ name: 'Ulaanbaatar Branch' }], undefined];
-    }
     if (text.startsWith('INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)')) {
       const [companyId, topic, linkedType, linkedId, empid] = params;
       const row = { id: this.nextConversationId++, company_id: Number(companyId), type: 'linked', linked_type: linkedType, linked_id: linkedId, topic, created_by_empid: empid, deleted_at: null, last_message_at: null, last_message_id: null };
@@ -168,10 +162,6 @@ test('listConversations creates pinned department/branch channels and welcome me
   assert.equal(result.items.some((entry) => entry.linked_type === 'department'), true);
   assert.equal(result.items.some((entry) => entry.linked_type === 'branch'), true);
   assert.equal(db.messages.some((message) => String(message.body || '').startsWith('Welcome ')), true);
-  const createdDept = db.conversations.find((entry) => entry.linked_type === 'department');
-  const createdBranch = db.conversations.find((entry) => entry.linked_type === 'branch');
-  assert.equal(createdDept?.topic, 'HR Department');
-  assert.equal(createdBranch?.topic, 'Ulaanbaatar Branch');
 });
 
 test('department and branch channels only return messages from participant joined_at time', async () => {
@@ -189,19 +179,4 @@ test('department and branch channels only return messages from participant joine
   await postConversationMessage({ user: { empid: 'E4', companyId: 6 }, companyId: 6, conversationId: 99, db, getSession, payload: { body: 'post-hire' } });
   const threadAfterPost = await getConversationMessages({ user: { empid: 'E4', companyId: 6 }, companyId: 6, conversationId: 99, db, getSession });
   assert.equal(threadAfterPost.items.some((entry) => entry.body === 'post-hire'), true);
-});
-
-
-test('listConversations keeps scoped channels visible for actor even when scope sync returns no rows', async () => {
-  const db = new ScopedMockDb();
-  const getSession = async () => ({ permissions: { messaging: true }, department_id: 12, branch_id: 22 });
-
-  const result = await listConversations({ user: { empid: 'ACT1', companyId: 9 }, companyId: 9, db, getSession });
-
-  assert.equal(result.items.some((entry) => entry.linked_type === 'department'), true);
-  assert.equal(result.items.some((entry) => entry.linked_type === 'branch'), true);
-  const deptConversation = db.conversations.find((entry) => entry.linked_type === 'department');
-  const branchConversation = db.conversations.find((entry) => entry.linked_type === 'branch');
-  assert.equal(db.participants.some((p) => p.conversation_id === deptConversation?.id && p.empid === 'ACT1' && !p.left_at), true);
-  assert.equal(db.participants.some((p) => p.conversation_id === branchConversation?.id && p.empid === 'ACT1' && !p.left_at), true);
 });

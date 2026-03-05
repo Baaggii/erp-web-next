@@ -115,56 +115,18 @@ function getSessionScope(session, scope) {
   if (scope === 'department') {
     return {
       id: toId(session?.department_id ?? session?.departmentId),
-      name: String(session?.department_name ?? session?.departmentName ?? '').trim() || '',
+      name: String(session?.department_name ?? session?.departmentName ?? '').trim() || 'Department',
     };
   }
   return {
     id: toId(session?.branch_id ?? session?.branchId),
-    name: String(session?.branch_name ?? session?.branchName ?? '').trim() || '',
+    name: String(session?.branch_name ?? session?.branchName ?? '').trim() || 'Branch',
   };
-}
-
-async function resolveScopeName(db, { companyId, scope, scopeId, fallback = '' }) {
-  if (!scopeId) return fallback || '';
-  try {
-    if (scope === 'department') {
-      const [rows] = await db.query(
-        `SELECT name
-           FROM code_department
-          WHERE company_id IN (0, ?)
-            AND (id = ? OR department_id = ?)
-          ORDER BY company_id DESC, id DESC
-          LIMIT 1`,
-        [companyId, scopeId, scopeId],
-      );
-      const resolved = String(rows?.[0]?.name || '').trim();
-      return resolved || fallback || 'Department';
-    }
-    const [rows] = await db.query(
-      `SELECT name
-         FROM code_branches
-        WHERE company_id IN (0, ?)
-          AND (id = ? OR branch_id = ?)
-        ORDER BY company_id DESC, id DESC
-        LIMIT 1`,
-      [companyId, scopeId, scopeId],
-    );
-    const resolved = String(rows?.[0]?.name || '').trim();
-    return resolved || fallback || 'Branch';
-  } catch {
-    return fallback || (scope === 'department' ? 'Department' : 'Branch');
-  }
 }
 
 async function ensureScopedConversation(db, { companyId, session, actorEmpid, scope }) {
   const scopeMeta = getSessionScope(session, scope);
   if (!scopeMeta.id) return null;
-  const scopeName = await resolveScopeName(db, {
-    companyId,
-    scope,
-    scopeId: scopeMeta.id,
-    fallback: scopeMeta.name,
-  });
   const linkedType = scope;
   const linkedId = String(scopeMeta.id);
 
@@ -186,7 +148,7 @@ async function ensureScopedConversation(db, { companyId, session, actorEmpid, sc
     const [inserted] = await db.query(
       `INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)
        VALUES (?, 'linked', ?, ?, ?, ?)`,
-      [companyId, scopeName, linkedType, linkedId, String(actorEmpid || 'system')],
+      [companyId, `${scopeMeta.name} channel`, linkedType, linkedId, String(actorEmpid || 'system')],
     );
     const [createdRows] = await db.query('SELECT * FROM erp_conversations WHERE id = ? LIMIT 1', [inserted.insertId]);
     conversation = createdRows[0] || null;
@@ -211,15 +173,13 @@ async function ensureScopedConversation(db, { companyId, session, actorEmpid, sc
        JOIN tbl_employment e
          ON e.company_id = u.company_id
         AND e.deleted_at IS NULL
+        AND e.employment_emp_id = u.empid
         AND e.id = (
           SELECT MAX(e2.id)
             FROM tbl_employment e2
            WHERE e2.company_id = u.company_id
              AND e2.deleted_at IS NULL
-             AND (
-               e2.employment_emp_id = u.empid
-               OR TRIM(LEADING '0' FROM e2.employment_emp_id) = TRIM(LEADING '0' FROM u.empid)
-             )
+             AND e2.employment_emp_id = u.empid
         )
        LEFT JOIN tbl_employee te
          ON te.Company_id = u.company_id
@@ -239,12 +199,6 @@ async function ensureScopedConversation(db, { companyId, session, actorEmpid, sc
     participants.push(empid);
     const hireDate = row?.hire_date ? new Date(row.hire_date) : null;
     joinedAtByEmpid.set(empid, Number.isNaN(hireDate?.getTime()) ? null : hireDate.toISOString().slice(0, 19).replace('T', ' '));
-  }
-
-  const actor = String(actorEmpid || '').trim();
-  if (actor && !participants.includes(actor)) {
-    participants.push(actor);
-    if (!joinedAtByEmpid.has(actor)) joinedAtByEmpid.set(actor, null);
   }
 
   const addedParticipants = await insertParticipants(db, companyId, conversation.id, participants, { joinedAtByEmpid });
