@@ -24,6 +24,7 @@ import {
   toggleMessageReaction,
   votePoll,
   addPollOption,
+  editPollOptions,
   toStructuredError,
 } from '../services/messagingService.js';
 
@@ -192,6 +193,16 @@ const pollOptionSchema = {
     optionText: { type: 'string', minLength: 1, maxLength: 255 },
   },
 };
+
+const pollOptionsEditSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['options'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 255 } },
+  },
+};
 const messageReactionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -219,6 +230,7 @@ const validateRemoveConversationParticipant = ajv.compile(removeConversationPart
 const validateMessageReaction = ajv.compile(messageReactionSchema);
 const validatePollVote = ajv.compile(pollVoteSchema);
 const validatePollOption = ajv.compile(pollOptionSchema);
+const validatePollOptionsEdit = ajv.compile(pollOptionsEditSchema);
 
 function validateBody(validator, message) {
   return (req, res, next) => {
@@ -509,6 +521,15 @@ router.post('/polls/:pollId/votes', validateBody(validatePollVote, 'Invalid poll
 
 router.post('/polls/:pollId/options', validateBody(validatePollOption, 'Invalid poll option payload'), (req, res) =>
   handle(res, req, () => addPollOption({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    pollId: Number(req.params.pollId),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.patch('/polls/:pollId/options', validateBody(validatePollOptionsEdit, 'Invalid poll options update payload'), (req, res) =>
+  handle(res, req, () => editPollOptions({
     user: req.user,
     companyId: req.body?.companyId ?? req.query.companyId,
     pollId: Number(req.params.pollId),
