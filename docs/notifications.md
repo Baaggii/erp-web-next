@@ -93,3 +93,13 @@ Use this checklist to confirm whether **notifications** and **messaging** both t
   - Check muted settings: `webPushMutedKinds`, `webPushMuteStartHour`, `webPushMuteEndHour`.
   - Re-subscribe by toggling web push off/on and clicking **Allow browser notifications**.
 - If logs show `send-failed` with `404/410`, the device/browser subscription is invalid; user must re-subscribe.
+
+### Platform limitations (especially iOS/iPadOS)
+
+- Web push requires a secure context (`https://` or localhost).
+- On iOS/iPadOS, Safari only exposes web push to Home Screen apps (PWA) on iOS/iPadOS 16.4+.
+- If users can enable web push on desktop but not mobile Safari, instruct them to:
+  1. Update iOS/iPadOS to 16.4 or newer.
+  2. Open the app in Safari and use **Share → Add to Home Screen**.
+  3. Launch the installed Home Screen app and re-run **Allow browser notifications** in User Settings.
+- Outside an installed iOS/iPadOS PWA, notification APIs may appear unavailable even though the device/browser can support push once installed.

@@ -145,12 +145,21 @@ function GeneralSettingsTab() {
                   } else if (result?.reason === 'permission_not_granted') {
                     setWebPushStatus(t('web_push_permission_denied', 'Browser notification permission was not granted.'));
                   } else if (result?.reason === 'notifications_unsupported') {
-                    setWebPushStatus(
-                      t(
-                        'web_push_notifications_unsupported',
-                        'This browser does not support notifications on this device.',
-                      ),
-                    );
+                    if (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '')) {
+                      setWebPushStatus(
+                        t(
+                          'web_push_push_unsupported',
+                          'Browser notification permission was granted, but push subscriptions are unavailable. Install this app to your home screen (PWA) and enable notifications, then try again.',
+                        ),
+                      );
+                    } else {
+                      setWebPushStatus(
+                        t(
+                          'web_push_notifications_unsupported',
+                          'This browser does not support notifications on this device.',
+                        ),
+                      );
+                    }
                   } else if (result?.reason === 'insecure_context') {
                     setWebPushStatus(
                       t('web_push_insecure_context', 'Notifications require a secure HTTPS connection.'),
