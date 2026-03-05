@@ -205,6 +205,31 @@ function isDocumentActive() {
   return true;
 }
 
+
+function toDateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return null;
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isEmployeeDateActive(employee, referenceDate = new Date()) {
+  const currentDate = toDateOnly(referenceDate);
+  if (!currentDate) return true;
+  const hireDate = toDateOnly(employee?.emp_hiredate);
+  const outDate = toDateOnly(employee?.emp_outdate);
+  if (hireDate && currentDate < hireDate) return false;
+  if (outDate && currentDate > outDate) return false;
+  return true;
+}
+
 function normalizeReadByEntries(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -1674,19 +1699,33 @@ export default function MessagingWidget() {
           ? displayFieldConfig.displayFields.filter((field) => typeof field === 'string' && field.trim())
           : [];
 
-        const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
-        const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
-        if (!employmentRes.ok) return;
-        const employmentData = await employmentRes.json();
-        const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
-        const idsFromEmployment = Array.from(
+        const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
+        const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
+        if (!usersRes.ok) {
+          setEmployees([]);
+          return;
+        }
+        const usersData = await usersRes.json();
+        const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
+        const userIds = Array.from(
           new Set(
-            employmentRows
-              .map((row) => normalizeId(row.employment_emp_id || row.emp_id || row.empid || row.id))
+            usersRows
+              .map((row) => normalizeId(row.empid || row.emp_id || row.employee_id || row.id))
               .filter(Boolean),
           ),
         );
-        if (idsFromEmployment.length === 0) {
+        if (!disposed) {
+          setUserDirectory(() => usersRows.reduce((acc, userRow) => {
+            const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+            if (!empid) return acc;
+            acc[empid] = {
+              displayName: sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid,
+              employeeCode: sanitizeMessageText(userRow.username || userRow.empid || userRow.employee_code || empid) || empid,
+            };
+            return acc;
+          }, {}));
+        }
+        if (userIds.length === 0) {
           setEmployees([]);
           return;
         }
@@ -1695,6 +1734,11 @@ export default function MessagingWidget() {
         const employeeRes = await fetch(`${API_BASE}/tables/tbl_employee?${employeeParams.toString()}`, { credentials: 'include' });
         const employeeData = employeeRes.ok ? await employeeRes.json() : { rows: [] };
         const employeeRows = Array.isArray(employeeData?.rows) ? employeeData.rows : Array.isArray(employeeData) ? employeeData : [];
+        const employeeRowsById = new Map(
+          employeeRows.map((row) => [normalizeId(row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
+        );
+        const activeUserIds = userIds.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid)));
+
         const profileMap = new Map(employeeRows.map((row) => [
           normalizeId(row.emp_id || row.empid || row.id),
           {
@@ -1712,42 +1756,18 @@ export default function MessagingWidget() {
           },
         ]));
 
-        const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
-        if (missingEmpids.length > 0) {
-          try {
-            const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
-            const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
-            if (usersRes.ok) {
-              const usersData = await usersRes.json();
-              const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
-              if (!disposed) {
-                setUserDirectory(() => usersRows.reduce((acc, userRow) => {
-                  const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
-                  if (!empid) return acc;
-                  acc[empid] = {
-                    displayName: sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid,
-                    employeeCode: sanitizeMessageText(userRow.username || userRow.empid || userRow.employee_code || empid) || empid,
-                  };
-                  return acc;
-                }, {}));
-              }
-              usersRows.forEach((userRow) => {
-                const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
-                if (!empid || !missingEmpids.includes(empid)) return;
-                const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
-                const current = profileMap.get(empid) || {};
-                profileMap.set(empid, {
-                  displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
-                  employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
-                });
-              });
-            }
-          } catch {
-            // Best effort only; leave existing values.
-          }
-        }
+        usersRows.forEach((userRow) => {
+          const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+          if (!empid) return;
+          const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
+          const current = profileMap.get(empid) || {};
+          profileMap.set(empid, {
+            displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
+            employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
+          });
+        });
 
-        const uniqueEmployees = Array.from(new Map(idsFromEmployment.map((empid) => {
+        const uniqueEmployees = Array.from(new Map(activeUserIds.map((empid) => {
           const profile = profileMap.get(empid) || {};
           return [empid, {
             empid,

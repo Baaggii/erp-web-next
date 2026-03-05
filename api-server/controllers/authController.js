@@ -20,16 +20,45 @@ import {
   recordLogoutSession,
 } from '../services/posSessionLogger.js';
 
+function formatDateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return null;
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isEmployeeActiveOnDate(user, effectiveDate = new Date()) {
+  const currentDate = formatDateOnly(effectiveDate);
+  if (!currentDate) return true;
+  const hireDate = formatDateOnly(user?.emp_hiredate);
+  const outDate = formatDateOnly(user?.emp_outdate);
+  if (hireDate && currentDate < hireDate) return false;
+  if (outDate && currentDate > outDate) return false;
+  return true;
+}
+
 export async function login(req, res, next) {
   try {
     const { empid, password, companyId } = req.body;
+    const effectiveDate = new Date();
     const warnings = [];
     const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+    if (!isEmployeeActiveOnDate(user, effectiveDate)) {
+      return res.status(403).json({
+        message: 'Employee is not active for the current date',
+      });
+    }
 
-    const effectiveDate = new Date();
     let sessions = [];
     let sessionFetchFailed = false;
     try {
