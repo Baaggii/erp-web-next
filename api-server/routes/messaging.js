@@ -15,6 +15,7 @@ import {
   getPresence,
   patchMessage,
   patchConversationTopic,
+  castMessagePollVote,
   addConversationParticipant,
   removeConversationParticipant,
   postConversationMessage,
@@ -78,7 +79,7 @@ function validateSchema(schema, value) {
 const createConversationSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['type', 'participants', 'body', 'topic'],
+  required: ['type', 'participants', 'topic'],
   properties: {
     idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
     clientTempId: { type: 'string', minLength: 1, maxLength: 255 },
@@ -86,7 +87,17 @@ const createConversationSchema = {
     type: { type: 'string', enum: ['private', 'linked'] },
     participants: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1, maxLength: 64 } },
     topic: { type: 'string', minLength: 1, maxLength: 255 },
-    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    body: { type: 'string', maxLength: 4000 },
+    poll: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['question', 'options'],
+      properties: {
+        question: { type: 'string', minLength: 1, maxLength: 255 },
+        options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 160 } },
+        voterVisibility: { type: 'string', enum: ['visible', 'hidden'] },
+      },
+    },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
   },
 };
@@ -94,14 +105,24 @@ const createConversationSchema = {
 const postConversationMessageSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['body'],
+  required: [],
   properties: {
     idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
     clientTempId: { type: 'string', minLength: 1, maxLength: 255 },
     companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
-    body: { type: 'string', minLength: 1, maxLength: 4000 },
+    body: { type: 'string', maxLength: 4000 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    poll: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['question', 'options'],
+      properties: {
+        question: { type: 'string', minLength: 1, maxLength: 255 },
+        options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 160 } },
+        voterVisibility: { type: 'string', enum: ['visible', 'hidden'] },
+      },
+    },
   },
 };
 
@@ -112,6 +133,32 @@ const patchConversationTopicSchema = {
   properties: {
     companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
     topic: { type: 'string', minLength: 1, maxLength: 255 },
+  },
+};
+
+
+const patchMessageSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    body: { type: 'string', maxLength: 4000 },
+    messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    poll: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['question', 'options'],
+          properties: {
+            question: { type: 'string', minLength: 1, maxLength: 255 },
+            options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 160 } },
+            voterVisibility: { type: 'string', enum: ['visible', 'hidden'] },
+          },
+        },
+        { type: 'string', enum: [''] },
+      ],
+    },
   },
 };
 
@@ -145,6 +192,16 @@ const removeConversationParticipantSchema = {
   },
 };
 
+const messagePollVoteSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['optionIndex'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    optionIndex: { type: 'integer' },
+  },
+};
+
 const messageReactionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -169,6 +226,8 @@ const validatePostConversationMessage = ajv.compile(postConversationMessageSchem
 const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema);
 const validateAddConversationParticipant = ajv.compile(addConversationParticipantSchema);
 const validateRemoveConversationParticipant = ajv.compile(removeConversationParticipantSchema);
+const validatePatchMessage = ajv.compile(patchMessageSchema);
+const validateMessagePollVote = ajv.compile(messagePollVoteSchema);
 const validateMessageReaction = ajv.compile(messageReactionSchema);
 
 function validateBody(validator, message) {
@@ -342,7 +401,16 @@ router.get('/uploads/:companyId/:storedName', async (req, res) => {
   }
 });
 
-router.patch('/messages/:id', (req, res) =>
+router.post('/messages/:id/poll-vote', validateBody(validateMessagePollVote, 'Invalid poll vote payload'), (req, res) =>
+  handle(res, req, () => castMessagePollVote({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    messageId: Number(req.params.id),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.patch('/messages/:id', validateBody(validatePatchMessage, 'Invalid patch payload'), (req, res) =>
   handle(res, req, async () => {
     const data = await patchMessage({
       user: req.user,

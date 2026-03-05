@@ -25,6 +25,11 @@ class MockDb {
     this.participants = [];
     this.messages = [];
     this.employees = [];
+    this.nextPollId = 1;
+    this.nextPollOptionId = 1;
+    this.polls = [];
+    this.pollOptions = [];
+    this.pollVotes = [];
   }
 
   async query(sql, params = []) {
@@ -168,6 +173,61 @@ class MockDb {
     }
     if (text.startsWith('SELECT message_id, emoji, empid FROM erp_message_reactions')) {
       return [[], undefined];
+    }
+
+    if (text.startsWith('DELETE FROM erp_message_polls WHERE company_id = ? AND message_id = ?')) {
+      const [companyId, messageId] = params;
+      const poll = this.polls.find((entry) => entry.company_id === Number(companyId) && entry.message_id === Number(messageId));
+      if (poll) {
+        this.polls = this.polls.filter((entry) => entry.id !== poll.id);
+        this.pollOptions = this.pollOptions.filter((entry) => entry.poll_id !== poll.id);
+        this.pollVotes = this.pollVotes.filter((entry) => entry.poll_id !== poll.id);
+      }
+      return [{ affectedRows: 1 }, undefined];
+    }
+    if (text.startsWith('INSERT INTO erp_message_polls (company_id, message_id, question, voter_visibility, created_by_empid)')) {
+      const [companyId, messageId, question, voterVisibility, createdByEmpid] = params;
+      const row = { id: this.nextPollId++, company_id: Number(companyId), message_id: Number(messageId), question, voter_visibility: voterVisibility, created_by_empid: createdByEmpid };
+      this.polls.push(row);
+      return [{ insertId: row.id }, undefined];
+    }
+    if (text.startsWith('INSERT INTO erp_message_poll_options (poll_id, company_id, option_index, label)')) {
+      const [pollId, companyId, optionIndex, label] = params;
+      const row = { id: this.nextPollOptionId++, poll_id: Number(pollId), company_id: Number(companyId), option_index: Number(optionIndex), label };
+      this.pollOptions.push(row);
+      return [{ insertId: row.id }, undefined];
+    }
+    if (text.startsWith('SELECT p.id, p.message_id, p.question, p.voter_visibility')) {
+      const [companyId, ...messageIds] = params.map((entry) => Number(entry));
+      const rows = [];
+      this.polls
+        .filter((poll) => poll.company_id === companyId && messageIds.includes(poll.message_id))
+        .forEach((poll) => {
+          const options = this.pollOptions.filter((opt) => opt.poll_id === poll.id).sort((a, b) => a.option_index - b.option_index);
+          options.forEach((opt) => {
+            const votes = this.pollVotes.filter((vote) => vote.poll_id === poll.id && vote.option_id === opt.id);
+            if (votes.length === 0) {
+              rows.push({ ...poll, option_id: opt.id, option_index: opt.option_index, label: opt.label, voter_empid: null });
+            } else {
+              votes.forEach((vote) => rows.push({ ...poll, option_id: opt.id, option_index: opt.option_index, label: opt.label, voter_empid: vote.voter_empid }));
+            }
+          });
+        });
+      return [rows, undefined];
+    }
+    if (text.startsWith('SELECT p.id AS poll_id, po.id AS option_id')) {
+      const [companyId, messageId, optionIndex] = params;
+      const poll = this.polls.find((entry) => entry.company_id === Number(companyId) && entry.message_id === Number(messageId));
+      if (!poll) return [[], undefined];
+      const option = this.pollOptions.find((entry) => entry.poll_id === poll.id && entry.option_index === Number(optionIndex));
+      return [[option ? { poll_id: poll.id, option_id: option.id } : null].filter(Boolean), undefined];
+    }
+    if (text.startsWith('INSERT INTO erp_message_poll_votes (poll_id, option_id, company_id, message_id, voter_empid)')) {
+      const [pollId, optionId, companyId, messageId, voterEmpid] = params;
+      const existing = this.pollVotes.find((entry) => entry.poll_id === Number(pollId) && entry.voter_empid === voterEmpid);
+      if (existing) existing.option_id = Number(optionId);
+      else this.pollVotes.push({ poll_id: Number(pollId), option_id: Number(optionId), company_id: Number(companyId), message_id: Number(messageId), voter_empid: voterEmpid });
+      return [{ affectedRows: 1 }, undefined];
     }
 
     throw new Error(`Unhandled SQL: ${text}`);

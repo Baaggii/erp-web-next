@@ -7,6 +7,124 @@ const CURSOR_PAGE_SIZE = 50;
 const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 const CONVERSATION_TYPE_ALLOWLIST = new Set(['general', 'private', 'linked']);
 
+const POLL_VOTER_VISIBILITY_ALLOWLIST = new Set(['visible', 'hidden']);
+
+function sanitizePollPayload(value) {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw createError(400, 'POLL_INVALID', 'poll must be an object');
+  const question = String(value.question || '').trim().slice(0, 255);
+  const optionLabels = Array.isArray(value.options) ? value.options : [];
+  const options = optionLabels
+    .map((entry) => String(entry ?? '').trim().slice(0, 160))
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!question || options.length < 2) {
+    throw createError(400, 'POLL_INVALID', 'poll question and at least two options are required');
+  }
+  const voterVisibility = String(value.voterVisibility || value.voter_visibility || 'visible').trim().toLowerCase();
+  if (!POLL_VOTER_VISIBILITY_ALLOWLIST.has(voterVisibility)) {
+    throw createError(400, 'POLL_VISIBILITY_INVALID', 'poll voter visibility must be visible or hidden');
+  }
+  return { question, options, voterVisibility };
+}
+
+async function upsertMessagePoll(db, { companyId, messageId, createdByEmpid, poll }) {
+  await db.query('DELETE FROM erp_message_polls WHERE company_id = ? AND message_id = ?', [companyId, messageId]);
+  if (!poll) return null;
+  const [inserted] = await db.query(
+    `INSERT INTO erp_message_polls (company_id, message_id, question, voter_visibility, created_by_empid)
+     VALUES (?, ?, ?, ?, ?)`,
+    [companyId, messageId, poll.question, poll.voterVisibility, createdByEmpid],
+  );
+  const pollId = inserted?.insertId;
+  for (let index = 0; index < poll.options.length; index += 1) {
+    await db.query(
+      `INSERT INTO erp_message_poll_options (poll_id, company_id, option_index, label)
+       VALUES (?, ?, ?, ?)`,
+      [pollId, companyId, index, poll.options[index]],
+    );
+  }
+  return pollId;
+}
+
+async function getPollsForMessages(db, { companyId, messageIds = [], viewerEmpid = '' }) {
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return new Map();
+  const placeholders = messageIds.map(() => '?').join(', ');
+  const [pollRows] = await db.query(
+    `SELECT p.id, p.message_id, p.question, p.voter_visibility, po.id AS option_id, po.option_index, po.label,
+            v.voter_empid
+       FROM erp_message_polls p
+       JOIN erp_message_poll_options po ON po.poll_id = p.id
+       LEFT JOIN erp_message_poll_votes v ON v.poll_id = p.id AND v.option_id = po.id
+      WHERE p.company_id = ?
+        AND p.message_id IN (${placeholders})
+        AND p.deleted_at IS NULL
+      ORDER BY p.message_id ASC, po.option_index ASC, v.created_at ASC`,
+    [companyId, ...messageIds],
+  );
+
+  const byMessage = new Map();
+  const normalizedViewer = String(viewerEmpid || '').trim();
+
+  for (const row of pollRows || []) {
+    const messageId = toId(row?.message_id);
+    if (!messageId) continue;
+
+    if (!byMessage.has(messageId)) {
+      byMessage.set(messageId, {
+        question: String(row?.question || ''),
+        voterVisibility: String(row?.voter_visibility || 'visible').toLowerCase() === 'hidden' ? 'hidden' : 'visible',
+        optionsByIndex: new Map(),
+        totalVotes: 0,
+        viewerVoteIndex: null,
+      });
+    }
+
+    const poll = byMessage.get(messageId);
+    const optionIndex = Number.isFinite(Number(row?.option_index)) ? Number(row.option_index) : 0;
+    if (!poll.optionsByIndex.has(optionIndex)) {
+      poll.optionsByIndex.set(optionIndex, {
+        index: optionIndex,
+        label: String(row?.label || ''),
+        votes: 0,
+        voters: [],
+      });
+    }
+
+    const option = poll.optionsByIndex.get(optionIndex);
+    const voterEmpid = String(row?.voter_empid || '').trim();
+    if (voterEmpid) {
+      option.votes += 1;
+      poll.totalVotes += 1;
+      if (poll.voterVisibility === 'visible') option.voters.push(voterEmpid);
+      if (normalizedViewer && voterEmpid === normalizedViewer) poll.viewerVoteIndex = optionIndex;
+    }
+  }
+
+  const result = new Map();
+  for (const [messageId, poll] of byMessage.entries()) {
+    result.set(messageId, {
+      question: poll.question,
+      voter_visibility: poll.voterVisibility,
+      voterVisibility: poll.voterVisibility,
+      total_votes: poll.totalVotes,
+      totalVotes: poll.totalVotes,
+      viewer_vote_index: Number.isInteger(poll.viewerVoteIndex) ? poll.viewerVoteIndex : null,
+      viewerVoteIndex: Number.isInteger(poll.viewerVoteIndex) ? poll.viewerVoteIndex : null,
+      options: Array.from(poll.optionsByIndex.values())
+        .sort((a, b) => a.index - b.index)
+        .map((entry) => ({
+          index: entry.index,
+          label: entry.label,
+          votes: entry.votes,
+          voters: entry.voters,
+        })),
+    });
+  }
+  return result;
+}
+
+
 let ioRef = null;
 const onlineByCompany = new Map();
 const reactionNotifyDebounce = new Map();
@@ -25,9 +143,9 @@ function toId(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function sanitizeBody(value) {
+function sanitizeBody(value, { allowEmpty = false } = {}) {
   const body = String(value ?? '').trim();
-  if (!body) throw createError(400, 'MESSAGE_BODY_REQUIRED', 'Message body is required');
+  if (!body && !allowEmpty) throw createError(400, 'MESSAGE_BODY_REQUIRED', 'Message body is required');
   if (body.length > MAX_MESSAGE_LENGTH) throw createError(400, 'MESSAGE_BODY_TOO_LONG', `Message body exceeds ${MAX_MESSAGE_LENGTH} characters`);
   return body;
 }
@@ -248,6 +366,7 @@ export async function createConversationRoot({
   const linkedId = type === 'linked' ? String(payload?.linkedId || '').trim().slice(0, 128) || null : null;
   const topic = sanitizeTopic(payload?.topic);
   if (!topic) throw createError(400, 'TOPIC_REQUIRED', 'topic is required');
+  const poll = sanitizePollPayload(payload?.poll);
   const [conversationInsert] = await db.query(
     `INSERT INTO erp_conversations (company_id, type, topic, linked_type, linked_id, created_by_empid)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -259,8 +378,14 @@ export async function createConversationRoot({
     companyId: scopedCompanyId,
     conversationId,
     authorEmpid: sender,
-    body: sanitizeBody(payload?.body),
+    body: sanitizeBody(payload?.body, { allowEmpty: Boolean(poll) }),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
+  });
+  await upsertMessagePoll(db, {
+    companyId: scopedCompanyId,
+    messageId: message?.id,
+    createdByEmpid: sender,
+    poll,
   });
   await enqueueConversationMessageWebPush({
     db,
@@ -302,13 +427,21 @@ export async function postConversationMessage({
     }
   }
 
+  const senderEmpid = String(user?.empid || '');
+  const poll = sanitizePollPayload(payload?.poll);
   const message = await createMessage(db, {
     companyId: scopedCompanyId,
     conversationId: normalizedConversationId,
-    authorEmpid: String(user?.empid || ''),
+    authorEmpid: senderEmpid,
     parentMessageId,
-    body: sanitizeBody(payload?.body),
+    body: sanitizeBody(payload?.body, { allowEmpty: Boolean(poll) }),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
+  });
+  await upsertMessagePoll(db, {
+    companyId: scopedCompanyId,
+    messageId: message?.id,
+    createdByEmpid: senderEmpid,
+    poll,
   });
   await enqueueConversationMessageWebPush({
     db,
@@ -549,6 +682,11 @@ export async function getConversationMessages({ user, companyId, conversationId,
   }
 
   const messageIds = items.map((row) => toId(row?.id)).filter(Boolean);
+  const pollByMessage = await getPollsForMessages(db, {
+    companyId: scopedCompanyId,
+    messageIds,
+    viewerEmpid,
+  });
   let readByMap = new Map();
   if (messageIds.length > 0) {
     const readPlaceholders = messageIds.map(() => '?').join(', ');
@@ -605,6 +743,7 @@ export async function getConversationMessages({ user, companyId, conversationId,
       body: isDeleted ? '' : row?.body,
       read_by: readBy,
       reactions,
+      poll: isDeleted ? null : (pollByMessage.get(messageId) || null),
     };
   });
 
@@ -782,13 +921,69 @@ export async function patchMessage({ user, companyId, messageId, payload, correl
   await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
   if (String(message.author_empid) !== String(user?.empid)) throw createError(403, 'FORBIDDEN', 'Only the author can edit this message');
 
-  const body = payload?.body != null ? sanitizeBody(payload.body) : message.body;
+  const nextPoll = Object.prototype.hasOwnProperty.call(payload || {}, 'poll') ? sanitizePollPayload(payload?.poll) : undefined;
+  const allowEmptyBody = nextPoll !== undefined ? Boolean(nextPoll) : false;
+  const body = payload?.body != null ? sanitizeBody(payload.body, { allowEmpty: allowEmptyBody }) : message.body;
   const messageClass = payload?.messageClass || payload?.message_class
     ? sanitizeMessageClass(payload?.messageClass ?? payload?.message_class)
     : message.message_class;
   await db.query('UPDATE erp_messages SET body = ?, message_class = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND company_id = ?', [body, messageClass, id, scopedCompanyId]);
+  if (Object.prototype.hasOwnProperty.call(payload || {}, 'poll')) {
+    await upsertMessagePoll(db, {
+      companyId: scopedCompanyId,
+      messageId: id,
+      createdByEmpid: String(user?.empid || ''),
+      poll: nextPoll,
+    });
+  }
   const [updated] = await db.query('SELECT * FROM erp_messages WHERE id = ? LIMIT 1', [id]);
-  return { correlationId, message: updated[0] || null };
+  const pollMap = await getPollsForMessages(db, { companyId: scopedCompanyId, messageIds: [id], viewerEmpid: String(user?.empid || '') });
+  const updatedMessage = updated[0] ? { ...updated[0], poll: pollMap.get(id) || null } : null;
+  return { correlationId, message: updatedMessage };
+}
+
+export async function castMessagePollVote({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedMessageId = toId(messageId);
+  if (!normalizedMessageId) throw createError(400, 'MESSAGE_REQUIRED', 'messageId is required');
+  const optionIndex = Number(payload?.optionIndex ?? payload?.option_index);
+  if (!Number.isInteger(optionIndex) || optionIndex < 0) throw createError(400, 'POLL_OPTION_REQUIRED', 'optionIndex is required');
+
+  const [messages] = await db.query('SELECT * FROM erp_messages WHERE id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1', [normalizedMessageId, scopedCompanyId]);
+  const message = messages[0];
+  if (!message) throw createError(404, 'MESSAGE_NOT_FOUND', 'Message not found');
+  const conversation = await getConversationById(db, scopedCompanyId, message.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, user?.empid);
+
+  const [pollRows] = await db.query(
+    `SELECT p.id AS poll_id, po.id AS option_id
+       FROM erp_message_polls p
+       JOIN erp_message_poll_options po ON po.poll_id = p.id
+      WHERE p.company_id = ? AND p.message_id = ? AND p.deleted_at IS NULL AND po.option_index = ?
+      LIMIT 1`,
+    [scopedCompanyId, normalizedMessageId, optionIndex],
+  );
+  const selected = pollRows[0];
+  if (!selected) throw createError(404, 'POLL_OPTION_NOT_FOUND', 'Poll option not found');
+
+  const voterEmpid = String(user?.empid || '').trim();
+  if (!voterEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+
+  await db.query(
+    `INSERT INTO erp_message_poll_votes (poll_id, option_id, company_id, message_id, voter_empid)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE option_id = VALUES(option_id), created_at = CURRENT_TIMESTAMP`,
+    [selected.poll_id, selected.option_id, scopedCompanyId, normalizedMessageId, voterEmpid],
+  );
+
+  const pollMap = await getPollsForMessages(db, {
+    companyId: scopedCompanyId,
+    messageIds: [normalizedMessageId],
+    viewerEmpid: voterEmpid,
+  });
+
+  return { correlationId, ok: true, messageId: normalizedMessageId, poll: pollMap.get(normalizedMessageId) || null };
 }
 
 export async function deleteMessage({ user, companyId, messageId, correlationId, db = pool, getSession = getEmploymentSession }) {
