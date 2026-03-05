@@ -173,3 +173,34 @@ test('add/remove reaction notifies message owner and skips self reaction notific
 
   setMessagingIo(null);
 });
+
+test('reaction notifications normalize owner empid and emit to normalized + legacy user rooms', async () => {
+  const db = new ReactionDb();
+  db.messages = [{ id: 12, company_id: 9, conversation_id: 1, author_empid: 'e2', deleted_at: null }];
+  const events = [];
+  setMessagingIo({
+    to(room) {
+      return {
+        emit(event, payload) {
+          events.push({ room, event, payload });
+        },
+      };
+    },
+  });
+
+  await addMessageReaction({
+    user: { empid: 'E3', companyId: 9 },
+    companyId: 9,
+    messageId: 12,
+    payload: { emoji: '✅' },
+    db,
+    getSession,
+  });
+
+  assert.equal(db.notifications.length, 1);
+  assert.equal(db.notifications[0].recipient_empid, 'E2');
+  const rooms = events.map((entry) => entry.room);
+  assert.deepEqual(rooms, ['user:E2', 'user:E2', 'user:e2', 'user:e2']);
+
+  setMessagingIo(null);
+});
