@@ -19,6 +19,7 @@ import { adaptConversationListResponse, adaptThreadResponse } from './messagingA
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
+const POLL_MARKER = '\n[poll-json]';
 const NEW_CONVERSATION_ID = '__new__';
 const POLL_OPTION_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣'];
 const MESSAGE_TEXT_SCALE_MIN = 1;
@@ -99,6 +100,39 @@ function encodeAttachmentPayload(items = []) {
     return `${ATTACHMENTS_MARKER}${encoded}`;
   } catch {
     return '';
+  }
+}
+
+function encodePollPayload(pollDraft) {
+  const question = sanitizeMessageText(pollDraft?.question || '').slice(0, 200);
+  const options = Array.isArray(pollDraft?.options)
+    ? pollDraft.options.map((entry) => sanitizeMessageText(entry).slice(0, 80)).filter(Boolean)
+    : [];
+  if (!question || options.length < 2) return '';
+  try {
+    return `${POLL_MARKER}${globalThis.btoa(JSON.stringify({ question, options: options.slice(0, POLL_OPTION_EMOJIS.length) }))}`;
+  } catch {
+    return '';
+  }
+}
+
+function decodePollPayload(text) {
+  const source = String(text || '');
+  const markerIndex = source.indexOf(POLL_MARKER);
+  if (markerIndex < 0) return { text: source, poll: null };
+  const visibleText = source.slice(0, markerIndex).trimEnd();
+  const encoded = source.slice(markerIndex + POLL_MARKER.length).trim();
+  if (!encoded) return { text: visibleText, poll: null };
+  try {
+    const parsed = JSON.parse(globalThis.atob(encoded));
+    const question = sanitizeMessageText(parsed?.question || '').slice(0, 200);
+    const options = Array.isArray(parsed?.options)
+      ? parsed.options.map((entry) => sanitizeMessageText(entry).slice(0, 80)).filter(Boolean).slice(0, POLL_OPTION_EMOJIS.length)
+      : [];
+    if (!question || options.length < 2) return { text: visibleText, poll: null };
+    return { text: visibleText, poll: { question, options } };
+  } catch {
+    return { text: visibleText, poll: null };
   }
 }
 
@@ -906,13 +940,14 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, onVotePoll, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE, hideQuickReactionEmojis = [] }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE, hideQuickReactionEmojis = [] }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
   const isDeleted = isMessageDeleted(message);
-  const poll = message?.poll || null;
-  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(decoded.text);
+  const pollDecoded = decodePollPayload(decoded.text);
+  const poll = pollDecoded.poll;
+  const safeBody = isDeleted ? 'This message was deleted.' : sanitizeMessageText(pollDecoded.text);
   const linked = extractContextLink(message);
   const hasReplies = Array.isArray(message.replies) && message.replies.length > 0;
   const isCollapsed = collapsedMessageIds.has(message.id);
@@ -1089,17 +1124,17 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       {poll && (
         <div style={{ marginTop: 8, border: '1px solid #cbd5e1', borderRadius: 10, background: '#f8fafc', padding: 8 }}>
           <p style={{ margin: 0, fontSize: metadataFontSize, color: '#334155', fontWeight: 700 }}>📊 Poll · {poll.question}</p>
-          <p style={{ margin: '4px 0 0', fontSize: metadataFontSize, color: '#64748b' }}>Voters: {poll.voterVisibility === 'hidden' ? 'Invisible' : 'Visible'}</p>
           <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
             {poll.options.map((option, index) => {
               const emoji = POLL_OPTION_EMOJIS[index];
-              const optionVotes = Number(option?.votes || 0);
-              const reactedBySelf = Number(poll?.viewerVoteIndex) === index;
+              const reactionEntry = reactions.find((entry) => entry.emoji === emoji);
+              const optionVotes = reactionEntry?.count || 0;
+              const reactedBySelf = Boolean(reactionEntry?.users?.includes(normalizeId(selfEmpid)));
               return (
                 <button
                   key={`${message.id}-poll-${emoji}`}
                   type="button"
-                  onClick={() => onVotePoll?.(message.id, index)}
+                  onClick={() => onToggleReaction(message.id, emoji)}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1111,14 +1146,9 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
                     fontSize: chipFontSize,
                   }}
                 >
-                  <span>{emoji} {option.label || option}</span>
-                  <strong>{option.votes ?? optionVotes}</strong>
+                  <span>{emoji} {option}</span>
+                  <strong>{optionVotes}</strong>
                 </button>
-                {poll.voterVisibility !== 'hidden' && Array.isArray(option.voters) && option.voters.length > 0 && (
-                  <div style={{ marginTop: 2, fontSize: Math.max(10, metadataFontSize - 1), color: '#64748b' }}>
-                    {option.voters.map((empid) => resolveEmployeeLabel(empid)).join(', ')}
-                  </div>
-                )}
               );
             })}
           </div>
@@ -1319,7 +1349,7 @@ export default function MessagingWidget() {
   const [typingByConversation, setTypingByConversation] = useState({});
   const [reactionActivityByMessage, setReactionActivityByMessage] = useState({});
   const [reactionBadgeByConversation, setReactionBadgeByConversation] = useState({});
-  const [pollDraft, setPollDraft] = useState({ enabled: false, question: '', voterVisibility: 'visible', options: ['', ''] });
+  const [pollDraft, setPollDraft] = useState({ enabled: false, question: '', options: ['', ''] });
   const typingEmitRef = useRef({ key: null, ts: 0 });
   const typingTimerRef = useRef(new Map());
   const closeOpenMessageMenus = useCallback(() => {
@@ -2685,13 +2715,13 @@ export default function MessagingWidget() {
     const targetId = normalizeId(message?.id);
     if (!targetId) return;
     const decoded = extractMessageAttachments(message);
+    const pollDecoded = decodePollPayload(decoded.text);
     dispatch({ type: 'composer/setReplyTo', payload: null });
-    dispatch({ type: 'composer/setBody', payload: sanitizeMessageText(decoded.text || '') });
+    dispatch({ type: 'composer/setBody', payload: sanitizeMessageText(pollDecoded.text || '') });
     dispatch({ type: 'composer/setAttachments', payload: [] });
-    const messagePoll = message?.poll || null;
-    setPollDraft(messagePoll
-      ? { enabled: true, question: messagePoll.question || '', voterVisibility: messagePoll.voterVisibility || 'visible', options: Array.isArray(messagePoll.options) ? messagePoll.options.map((entry) => entry?.label || '').filter(Boolean) : ['', ''] }
-      : { enabled: false, question: '', voterVisibility: 'visible', options: ['', ''] });
+    setPollDraft(pollDecoded.poll
+      ? { enabled: true, question: pollDecoded.poll.question, options: pollDecoded.poll.options }
+      : { enabled: false, question: '', options: ['', ''] });
     setEditingMessage({
       id: targetId,
       conversationId: normalizeConversationId(message?.conversation_id || message?.conversationId),
@@ -2704,7 +2734,7 @@ export default function MessagingWidget() {
   const cancelEditingMessage = () => {
     setEditingMessage(null);
     dispatch({ type: 'composer/setBody', payload: '' });
-    setPollDraft({ enabled: false, question: '', voterVisibility: 'visible', options: ['', ''] });
+    setPollDraft({ enabled: false, question: '', options: ['', ''] });
     setComposerAnnouncement('Stopped editing message.');
   };
 
@@ -2859,7 +2889,7 @@ export default function MessagingWidget() {
         setComposerAnnouncement('Cannot save an empty message.');
         return;
       }
-      const editedBody = `${safeBody}${editingMessage.attachmentPayload || ''}`;
+      const editedBody = `${safeBody}${encodePollPayload({ question: safePollQuestion, options: safePollOptions })}${editingMessage.attachmentPayload || ''}`;
       const response = await persistEditedMessage({
         messageId: editingMessage.id,
         conversationId: editingMessage.conversationId,
@@ -3005,8 +3035,7 @@ export default function MessagingWidget() {
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
-      body: `${safeBody}${encodeAttachmentPayload(uploadedAttachments)}`,
-      ...(hasValidPoll ? { poll: { question: safePollQuestion, options: safePollOptions, voterVisibility: pollDraft.voterVisibility === 'hidden' ? 'hidden' : 'visible' } } : {}),
+      body: `${safeBody}${encodePollPayload({ question: safePollQuestion, options: safePollOptions })}${encodeAttachmentPayload(uploadedAttachments)}`,
       messageClass: 'general',
       companyId: normalizedCompanyId,
       ...(linkedType ? { linkedType } : {}),
@@ -3116,7 +3145,7 @@ export default function MessagingWidget() {
       }
       await refreshConversationList(activeCompany);
       dispatch({ type: 'composer/reset' });
-      setPollDraft({ enabled: false, question: '', voterVisibility: 'visible', options: ['', ''] });
+      setPollDraft({ enabled: false, question: '', options: ['', ''] });
       if (isDraftConversation) setNewConversationSelections([]);
       globalThis.localStorage?.removeItem(draftStorageKey);
       setComposerRecipientSearch('');
@@ -3764,13 +3793,6 @@ export default function MessagingWidget() {
                     placeholder="Poll question"
                     style={{ width: '100%', borderRadius: 8, border: '1px solid #cbd5e1', padding: '6px 8px', fontSize: 12 }}
                   />
-                  <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <label style={{ fontSize: 12, color: '#334155' }}>Voters visibility</label>
-                    <select value={pollDraft.voterVisibility || 'visible'} onChange={(event) => setPollDraft((prev) => ({ ...prev, voterVisibility: event.target.value === 'hidden' ? 'hidden' : 'visible' }))} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 6px', fontSize: 12 }}>
-                      <option value='visible'>Visible names</option>
-                      <option value='hidden'>Invisible names</option>
-                    </select>
-                  </div>
                   <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
                     {pollDraft.options.map((option, index) => (
                       <input
