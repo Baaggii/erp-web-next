@@ -53,6 +53,11 @@ class ReactionDb {
       const existing = this.reactions.find((r) => r.message_id === Number(messageId) && r.company_id === Number(companyId) && r.empid === empid && r.emoji === emoji);
       return [[existing ? { deleted_at: existing.deleted_at } : null].filter(Boolean), undefined];
     }
+    if (text.startsWith('SELECT empid FROM erp_message_reactions')) {
+      const [messageId, companyId, emoji] = params;
+      const existing = this.reactions.find((r) => r.message_id === Number(messageId) && r.company_id === Number(companyId) && r.emoji === emoji && !r.deleted_at);
+      return [[existing ? { empid: existing.empid } : null].filter(Boolean), undefined];
+    }
     if (text.startsWith('SELECT * FROM erp_messages WHERE company_id = ?')) {
       const [companyId, conversationId] = params;
       const rows = this.messages.filter((m) => m.company_id === Number(companyId) && m.conversation_id === Number(conversationId) && !m.deleted_at);
@@ -78,14 +83,56 @@ const getSession = async () => ({ permissions: { messaging: true } });
 test('message reactions can be added/toggled/removed and returned with message payload', async () => {
   const db = new ReactionDb();
   const user = { empid: 'E1', companyId: 9 };
+  const notifications = [];
+  const notifyWebPush = (payload) => notifications.push(payload);
 
-  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
-  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
-  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession });
+  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession, notifyWebPush });
+  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession, notifyWebPush });
+  await toggleMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🔥' }, db, getSession, notifyWebPush });
   await removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession });
-  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🎉' }, db, getSession });
+  await addMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '🎉' }, db, getSession, notifyWebPush });
 
   const response = await getConversationMessages({ user, companyId: 9, conversationId: 1, db, getSession });
   assert.equal(response.items.length, 1);
   assert.deepEqual(response.items[0].reactions, [{ emoji: '🎉', count: 1, users: ['E1'] }]);
+  assert.equal(notifications.length, 3);
+  assert.deepEqual(notifications[0], {
+    companyId: 9,
+    empid: 'E2',
+    kind: 'message_reaction',
+    relatedId: 10,
+    message: 'E1 reacted 👍 to your message',
+    title: 'Message reaction',
+    url: '/#/',
+  });
+});
+
+test('message reaction web push is skipped when reacting to own message', async () => {
+  const db = new ReactionDb();
+  db.messages[0].author_empid = 'E1';
+  const user = { empid: 'E1', companyId: 9 };
+  const notifications = [];
+
+  await addMessageReaction({
+    user,
+    companyId: 9,
+    messageId: 10,
+    payload: { emoji: '👍' },
+    db,
+    getSession,
+    notifyWebPush: (payload) => notifications.push(payload),
+  });
+
+  assert.equal(notifications.length, 0);
+});
+
+test('user cannot remove another user reaction', async () => {
+  const db = new ReactionDb();
+  db.reactions.push({ message_id: 10, company_id: 9, empid: 'E2', emoji: '👍', deleted_at: null });
+  const user = { empid: 'E1', companyId: 9 };
+
+  await assert.rejects(
+    removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession }),
+    (err) => err?.code === 'REACTION_NOT_OWNED' && err?.status === 403,
+  );
 });
