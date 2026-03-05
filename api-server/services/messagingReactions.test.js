@@ -53,6 +53,11 @@ class ReactionDb {
       const existing = this.reactions.find((r) => r.message_id === Number(messageId) && r.company_id === Number(companyId) && r.empid === empid && r.emoji === emoji);
       return [[existing ? { deleted_at: existing.deleted_at } : null].filter(Boolean), undefined];
     }
+    if (text.startsWith('SELECT empid FROM erp_message_reactions')) {
+      const [messageId, companyId, emoji] = params;
+      const existing = this.reactions.find((r) => r.message_id === Number(messageId) && r.company_id === Number(companyId) && r.emoji === emoji && !r.deleted_at);
+      return [[existing ? { empid: existing.empid } : null].filter(Boolean), undefined];
+    }
     if (text.startsWith('SELECT * FROM erp_messages WHERE company_id = ?')) {
       const [companyId, conversationId] = params;
       const rows = this.messages.filter((m) => m.company_id === Number(companyId) && m.conversation_id === Number(conversationId) && !m.deleted_at);
