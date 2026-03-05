@@ -12,6 +12,23 @@ function isLikelyAppleTouchDevice() {
   return isIosUserAgent(ua) || (platform === 'MacIntel' && maxTouchPoints > 1);
 }
 
+function getIosVersion() {
+  const ua = navigator?.userAgent || '';
+  const match = ua.match(/OS (\d+)_?(\d+)?/);
+  if (!match) return null;
+  const major = Number(match[1] || 0);
+  const minor = Number(match[2] || 0);
+  if (!Number.isFinite(major) || major <= 0) return null;
+  return { major, minor };
+}
+
+function isStandaloneDisplayMode() {
+  if (typeof window === 'undefined') return false;
+  const byMediaQuery = typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches;
+  const byNavigator = Boolean(navigator?.standalone);
+  return byMediaQuery || byNavigator;
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -70,6 +87,19 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
       (typeof globalThis.ServiceWorkerRegistration !== 'undefined' &&
         'pushManager' in ServiceWorkerRegistration.prototype));
 
+  const isAppleTouchDevice = isLikelyAppleTouchDevice();
+
+  if (isAppleTouchDevice) {
+    const iosVersion = getIosVersion();
+    if (iosVersion && (iosVersion.major < 16 || (iosVersion.major === 16 && iosVersion.minor < 4))) {
+      return { ok: false, reason: 'ios_version_unsupported', iosVersion };
+    }
+
+    if (!isStandaloneDisplayMode()) {
+      return { ok: false, reason: 'pwa_install_required' };
+    }
+  }
+
   async function askPermission() {
     if (!hasNotificationApi) {
       return 'default';
@@ -109,6 +139,13 @@ export async function requestWebPushPermission({ userSettings, promptForPermissi
   }
 
   let permission = hasNotificationApi ? notificationApi.permission : 'default';
+  if (hasNotificationApi && permission === 'denied') {
+    return {
+      ok: false,
+      reason: isAppleTouchDevice ? 'ios_notifications_disabled' : 'permission_not_granted',
+      permission,
+    };
+  }
   if (hasNotificationApi && promptForPermission && permission !== 'granted') {
     permission = await askPermission();
   }

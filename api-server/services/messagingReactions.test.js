@@ -24,6 +24,7 @@ class ReactionDb {
     ];
     this.messages = [{ id: 10, company_id: 9, conversation_id: 1, author_empid: 'E2', deleted_at: null }];
     this.reactions = [];
+    this.notifications = [];
   }
 
   async query(sql, params = []) {
@@ -78,6 +79,20 @@ class ReactionDb {
         .map((r) => ({ message_id: r.message_id, emoji: r.emoji, empid: r.empid }));
       return [rows, undefined];
     }
+    if (text.startsWith('INSERT INTO notifications')) {
+      const [companyId, recipientEmpid, relatedId, message, createdBy] = params;
+      const row = {
+        notification_id: this.notifications.length + 1,
+        company_id: Number(companyId),
+        recipient_empid: recipientEmpid,
+        type: 'request',
+        related_id: Number(relatedId),
+        message,
+        created_by: createdBy,
+      };
+      this.notifications.push(row);
+      return [{ insertId: row.notification_id, affectedRows: 1 }, undefined];
+    }
 
     throw new Error(`Unhandled SQL in test mock: ${text}`);
   }
@@ -100,7 +115,7 @@ test('message reactions can be added/toggled/removed and returned with message p
   assert.deepEqual(response.items[0].reactions, [{ emoji: '🎉', count: 1, users: ['E1'] }]);
 });
 
-test('add/remove reactions emit activity events and no owner notification events', async () => {
+test('add/remove reaction notifies message owner and skips self reaction notifications', async () => {
   const db = new ReactionDb();
   const events = [];
   setMessagingIo({
@@ -140,10 +155,14 @@ test('add/remove reactions emit activity events and no owner notification events
     getSession,
   });
 
-  assert.equal(events.length, 3);
-  assert.deepEqual(events.map((entry) => entry.room), ['messaging:9', 'messaging:9', 'messaging:9']);
-  assert.ok(events.every((entry) => entry.event === 'message.reaction.activity'));
-  assert.deepEqual(events.map((entry) => entry.payload.eventType), ['reaction_added', 'reaction_removed', 'reaction_added']);
+  assert.equal(db.notifications.length, 2);
+  assert.equal(db.notifications[0].recipient_empid, 'E2');
+  assert.equal(db.notifications[1].recipient_empid, 'E2');
+  assert.match(db.notifications[0].message, /E3 reacted 🧪 to your message/);
+  assert.match(db.notifications[1].message, /E3 removed 🧪 reaction from your message/);
+  assert.equal(events.length, 2);
+  assert.deepEqual(events.map((entry) => entry.room), ['user:E2', 'user:E2']);
+  assert.ok(events.every((entry) => entry.event === 'notification:new'));
 
   setMessagingIo(null);
 });
