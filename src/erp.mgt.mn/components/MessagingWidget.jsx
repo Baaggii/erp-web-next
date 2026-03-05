@@ -1699,33 +1699,19 @@ export default function MessagingWidget() {
           ? displayFieldConfig.displayFields.filter((field) => typeof field === 'string' && field.trim())
           : [];
 
-        const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
-        const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
-        if (!usersRes.ok) {
-          setEmployees([]);
-          return;
-        }
-        const usersData = await usersRes.json();
-        const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
-        const userIds = Array.from(
+        const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
+        const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
+        if (!employmentRes.ok) return;
+        const employmentData = await employmentRes.json();
+        const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
+        const idsFromEmployment = Array.from(
           new Set(
-            usersRows
-              .map((row) => normalizeId(row.empid || row.emp_id || row.employee_id || row.id))
+            employmentRows
+              .map((row) => normalizeId(row.employment_emp_id || row.emp_id || row.empid || row.id))
               .filter(Boolean),
           ),
         );
-        if (!disposed) {
-          setUserDirectory(() => usersRows.reduce((acc, userRow) => {
-            const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
-            if (!empid) return acc;
-            acc[empid] = {
-              displayName: sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid,
-              employeeCode: sanitizeMessageText(userRow.username || userRow.empid || userRow.employee_code || empid) || empid,
-            };
-            return acc;
-          }, {}));
-        }
-        if (userIds.length === 0) {
+        if (idsFromEmployment.length === 0) {
           setEmployees([]);
           return;
         }
@@ -1758,16 +1744,40 @@ export default function MessagingWidget() {
           },
         ]));
 
-        usersRows.forEach((userRow) => {
-          const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
-          if (!empid) return;
-          const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
-          const current = profileMap.get(empid) || {};
-          profileMap.set(empid, {
-            displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
-            employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
-          });
-        });
+        const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
+        if (missingEmpids.length > 0) {
+          try {
+            const usersParams = new URLSearchParams({ companyId: String(activeCompany) });
+            const usersRes = await fetch(`${API_BASE}/users?${usersParams.toString()}`, { credentials: 'include' });
+            if (usersRes.ok) {
+              const usersData = await usersRes.json();
+              const usersRows = Array.isArray(usersData?.items) ? usersData.items : Array.isArray(usersData) ? usersData : [];
+              if (!disposed) {
+                setUserDirectory(() => usersRows.reduce((acc, userRow) => {
+                  const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+                  if (!empid) return acc;
+                  acc[empid] = {
+                    displayName: sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid,
+                    employeeCode: sanitizeMessageText(userRow.username || userRow.empid || userRow.employee_code || empid) || empid,
+                  };
+                  return acc;
+                }, {}));
+              }
+              usersRows.forEach((userRow) => {
+                const empid = normalizeId(userRow.empid || userRow.emp_id || userRow.employee_id || userRow.id);
+                if (!empid || !missingEmpids.includes(empid)) return;
+                const fallbackDisplayName = sanitizeMessageText(userRow.full_name || userRow.display_name || userRow.name || userRow.username || empid) || empid;
+                const current = profileMap.get(empid) || {};
+                profileMap.set(empid, {
+                  displayName: sanitizeMessageText(current.displayName || fallbackDisplayName) || empid,
+                  employeeCode: sanitizeMessageText(current.employeeCode || userRow.username || userRow.empid || empid) || empid,
+                });
+              });
+            }
+          } catch {
+            // Best effort only; leave existing values.
+          }
+        }
 
         const uniqueEmployees = Array.from(new Map(idsFromEmployment
           .filter((empid) => activeEmployeeIds.has(empid))
