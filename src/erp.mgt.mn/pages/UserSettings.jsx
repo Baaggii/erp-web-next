@@ -160,6 +160,20 @@ function GeneralSettingsTab() {
                         ),
                       );
                     }
+                  } else if (result?.reason === 'ios_version_unsupported') {
+                    setWebPushStatus(
+                      t(
+                        'web_push_ios_version_unsupported',
+                        'Web push on iPhone/iPad requires iOS/iPadOS 16.4 or later.',
+                      ),
+                    );
+                  } else if (result?.reason === 'ios_notifications_disabled') {
+                    setWebPushStatus(
+                      t(
+                        'web_push_ios_notifications_disabled',
+                        'Notifications are blocked in iOS Settings for this app. Enable them in Settings → Notifications and try again.',
+                      ),
+                    );
                   } else if (result?.reason === 'insecure_context') {
                     setWebPushStatus(
                       t('web_push_insecure_context', 'Notifications require a secure HTTPS connection.'),
