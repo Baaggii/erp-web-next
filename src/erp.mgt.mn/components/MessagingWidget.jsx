@@ -1737,7 +1737,9 @@ export default function MessagingWidget() {
         const employeeRowsById = new Map(
           employeeRows.map((row) => [normalizeId(row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
         );
-        const activeUserIds = userIds.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid)));
+        const activeEmployeeIds = new Set(
+          idsFromEmployment.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid))),
+        );
 
         const profileMap = new Map(employeeRows.map((row) => [
           normalizeId(row.emp_id || row.empid || row.id),
@@ -1767,7 +1769,9 @@ export default function MessagingWidget() {
           });
         });
 
-        const uniqueEmployees = Array.from(new Map(activeUserIds.map((empid) => {
+        const uniqueEmployees = Array.from(new Map(idsFromEmployment
+          .filter((empid) => activeEmployeeIds.has(empid))
+          .map((empid) => {
           const profile = profileMap.get(empid) || {};
           return [empid, {
             empid,
