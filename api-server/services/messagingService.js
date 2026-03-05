@@ -167,29 +167,6 @@ function buildWebPushMessageText(body) {
   return `${normalized.slice(0, 157)}...`;
 }
 
-async function enqueueMessageReactionWebPush({
-  companyId,
-  messageId,
-  messageAuthorEmpid,
-  reactorEmpid,
-  emoji,
-  notifyWebPush = enqueueWebPushNotification,
-}) {
-  if (!notifyWebPush) return;
-  const recipientEmpid = String(messageAuthorEmpid || '').trim().toUpperCase();
-  const actorEmpid = String(reactorEmpid || '').trim().toUpperCase();
-  if (!recipientEmpid || !actorEmpid || recipientEmpid === actorEmpid) return;
-  notifyWebPush({
-    companyId,
-    empid: recipientEmpid,
-    kind: 'message_reaction',
-    relatedId: messageId,
-    message: `${actorEmpid} reacted ${emoji} to your message`,
-    title: 'Message reaction',
-    url: '/#/',
-  });
-}
-
 async function enqueueConversationMessageWebPush({
   db,
   companyId,
@@ -649,22 +626,13 @@ async function getAccessibleMessageForReaction({ user, companyId, messageId, db 
   return { id, message };
 }
 
-export async function addMessageReaction({
-  user,
-  companyId,
-  messageId,
-  payload,
-  correlationId,
-  db = pool,
-  getSession = getEmploymentSession,
-  notifyWebPush = enqueueWebPushNotification,
-}) {
+export async function addMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   await db.query(
     `INSERT INTO erp_message_reactions (message_id, company_id, empid, emoji)
@@ -672,14 +640,6 @@ export async function addMessageReaction({
      ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
     [id, scopedCompanyId, actorEmpid, emoji],
   );
-  await enqueueMessageReactionWebPush({
-    companyId: scopedCompanyId,
-    messageId: id,
-    messageAuthorEmpid: message?.author_empid,
-    reactorEmpid: actorEmpid,
-    emoji,
-    notifyWebPush,
-  });
   return { correlationId, ok: true, messageId: id, emoji, reacted: true };
 }
 
@@ -700,22 +660,13 @@ export async function removeMessageReaction({ user, companyId, messageId, payloa
   return { correlationId, ok: true, messageId: id, emoji, reacted: false };
 }
 
-export async function toggleMessageReaction({
-  user,
-  companyId,
-  messageId,
-  payload,
-  correlationId,
-  db = pool,
-  getSession = getEmploymentSession,
-  notifyWebPush = enqueueWebPushNotification,
-}) {
+export async function toggleMessageReaction({ user, companyId, messageId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
   const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
   assertCanMessage(session);
   const emoji = sanitizeEmoji(payload?.emoji);
   const actorEmpid = String(user?.empid || '').trim();
   if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
-  const { id, message } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
+  const { id } = await getAccessibleMessageForReaction({ user, companyId: scopedCompanyId, messageId, db });
 
   const [rows] = await db.query(
     `SELECT deleted_at
@@ -733,14 +684,6 @@ export async function toggleMessageReaction({
        ON DUPLICATE KEY UPDATE deleted_at = NULL, reacted_at = CURRENT_TIMESTAMP`,
       [id, scopedCompanyId, actorEmpid, emoji],
     );
-    await enqueueMessageReactionWebPush({
-      companyId: scopedCompanyId,
-      messageId: id,
-      messageAuthorEmpid: message?.author_empid,
-      reactorEmpid: actorEmpid,
-      emoji,
-      notifyWebPush,
-    });
   } else {
     await db.query(
       `UPDATE erp_message_reactions
