@@ -2031,7 +2031,8 @@ export default function MessagingWidget() {
       setReactionActivityByMessage((prev) => applyReactionActivityLog(prev, event));
       const selectedConversationId = normalizeConversationId(state.activeConversationId);
       const isActiveConversation = selectedConversationId && Number(selectedConversationId) === Number(event.conversationId);
-      if (!isActiveConversation) {
+      const isVisibleActiveConversation = state.isOpen && isActiveConversation;
+      if (!isVisibleActiveConversation) {
         setReactionBadgeByConversation((prev) => ({
           ...prev,
           [event.conversationId]: Number(prev[event.conversationId] || 0) + 1,
@@ -2205,6 +2206,13 @@ export default function MessagingWidget() {
   const markConversationRead = useCallback((conversationId, activeCompany) => {
     const normalizedConversationId = normalizeConversationId(conversationId);
     if (!normalizedConversationId || !activeCompany) return;
+    setReactionBadgeByConversation((prev) => {
+      const key = normalizeConversationId(normalizedConversationId);
+      if (!key || !prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     const companyKey = getCompanyCacheKey(activeCompany);
     const candidateIds = (messagesByCompany[companyKey] || [])
       .filter((msg) => normalizeConversationId(msg?.conversation_id || msg?.conversationId) === normalizedConversationId)
@@ -2226,13 +2234,6 @@ export default function MessagingWidget() {
         const id = normalizeId(msg.id);
         if (id) next.delete(id);
       });
-      return next;
-    });
-    setReactionBadgeByConversation((prev) => {
-      const key = normalizeConversationId(normalizedConversationId);
-      if (!key || !prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
       return next;
     });
   }, [companyId, messagesByCompany, selfEmpid, state.activeCompanyId]);
