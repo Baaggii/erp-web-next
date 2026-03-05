@@ -22,6 +22,8 @@ import {
   removeMessageReaction,
   switchCompanyContext,
   toggleMessageReaction,
+  votePoll,
+  addPollOption,
   toStructuredError,
 } from '../services/messagingService.js';
 
@@ -88,6 +90,19 @@ const createConversationSchema = {
     topic: { type: 'string', minLength: 1, maxLength: 255 },
     body: { type: 'string', minLength: 1, maxLength: 4000 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
+    poll: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['options'],
+      properties: {
+        question: { type: 'string', minLength: 1, maxLength: 400 },
+        votersVisible: { enum: [true, false] },
+        allowMultipleSelections: { enum: [true, false] },
+        allowUserOptions: { enum: [true, false] },
+        options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 255 } },
+      },
+    },
+
   },
 };
 
@@ -102,6 +117,18 @@ const postConversationMessageSchema = {
     body: { type: 'string', minLength: 1, maxLength: 4000 },
     messageClass: { type: 'string', enum: ['general', 'financial', 'hr_sensitive', 'legal'] },
     parentMessageId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    poll: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['options'],
+      properties: {
+        question: { type: 'string', minLength: 1, maxLength: 400 },
+        votersVisible: { enum: [true, false] },
+        allowMultipleSelections: { enum: [true, false] },
+        allowUserOptions: { enum: [true, false] },
+        options: { type: 'array', minItems: 2, items: { type: 'string', minLength: 1, maxLength: 255 } },
+      },
+    },
   },
 };
 
@@ -145,6 +172,26 @@ const removeConversationParticipantSchema = {
   },
 };
 
+
+const pollVoteSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    optionId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    optionIds: { type: 'array', minItems: 1, items: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] } },
+  },
+};
+
+const pollOptionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['optionText'],
+  properties: {
+    companyId: { anyOf: [{ type: 'integer' }, { type: 'string', pattern: '^[0-9]+$' }] },
+    optionText: { type: 'string', minLength: 1, maxLength: 255 },
+  },
+};
 const messageReactionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -170,6 +217,8 @@ const validatePatchConversationTopic = ajv.compile(patchConversationTopicSchema)
 const validateAddConversationParticipant = ajv.compile(addConversationParticipantSchema);
 const validateRemoveConversationParticipant = ajv.compile(removeConversationParticipantSchema);
 const validateMessageReaction = ajv.compile(messageReactionSchema);
+const validatePollVote = ajv.compile(pollVoteSchema);
+const validatePollOption = ajv.compile(pollOptionSchema);
 
 function validateBody(validator, message) {
   return (req, res, next) => {
@@ -446,5 +495,25 @@ router.post('/context/switch-company', (req, res) =>
       companyId: req.body?.companyId ?? req.query.companyId,
       correlationId: req.correlationId,
     })));
+
+
+
+router.post('/polls/:pollId/votes', validateBody(validatePollVote, 'Invalid poll vote payload'), (req, res) =>
+  handle(res, req, () => votePoll({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    pollId: Number(req.params.pollId),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
+
+router.post('/polls/:pollId/options', validateBody(validatePollOption, 'Invalid poll option payload'), (req, res) =>
+  handle(res, req, () => addPollOption({
+    user: req.user,
+    companyId: req.body?.companyId ?? req.query.companyId,
+    pollId: Number(req.params.pollId),
+    payload: req.body,
+    correlationId: req.correlationId,
+  })));
 
 export default router;

@@ -129,6 +129,7 @@ export function createInitialWidgetState({ isOpen = false, activeConversationId 
       linkedType: null,
       linkedId: null,
       attachments: [],
+      poll: null,
     },
   };
 }
@@ -257,6 +258,8 @@ export function messagingWidgetReducer(state, action) {
       };
     case 'composer/setAttachments':
       return { ...state, composer: { ...state.composer, attachments: action.payload || [] } };
+    case 'composer/setPoll':
+      return { ...state, composer: { ...state.composer, poll: action.payload || null } };
     case 'composer/start':
       return {
         ...state,
@@ -272,6 +275,7 @@ export function messagingWidgetReducer(state, action) {
           linkedType: action.payload?.linkedType || null,
           linkedId: action.payload?.linkedId || null,
           attachments: [],
+          poll: null,
         },
       };
     case 'composer/reset':
@@ -285,6 +289,7 @@ export function messagingWidgetReducer(state, action) {
           linkedType: state.composer.linkedType,
           linkedId: state.composer.linkedId,
           attachments: [],
+          poll: null,
         },
       };
     case 'company/switch':
