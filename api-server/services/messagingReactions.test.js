@@ -160,9 +160,16 @@ test('add/remove reaction notifies message owner and skips self reaction notific
   assert.equal(db.notifications[1].recipient_empid, 'E2');
   assert.match(db.notifications[0].message, /E3 reacted 🧪 to your message/);
   assert.match(db.notifications[1].message, /E3 removed 🧪 reaction from your message/);
-  assert.equal(events.length, 2);
-  assert.deepEqual(events.map((entry) => entry.room), ['user:E2', 'user:E2']);
-  assert.ok(events.every((entry) => entry.event === 'notification:new'));
+  assert.equal(events.length, 4);
+  assert.deepEqual(events.map((entry) => entry.room), ['user:E2', 'user:E2', 'user:E2', 'user:E2']);
+  assert.deepEqual(events.map((entry) => entry.event), [
+    'notification:new',
+    'message.reaction.activity',
+    'notification:new',
+    'message.reaction.activity',
+  ]);
+  assert.equal(events[1].payload?.eventType, 'reaction_added');
+  assert.equal(events[3].payload?.eventType, 'reaction_removed');
 
   setMessagingIo(null);
 });
