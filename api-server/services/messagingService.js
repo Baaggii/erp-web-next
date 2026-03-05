@@ -890,21 +890,13 @@ async function notifyMessageOwnerReactionEvent({
   emoji,
   eventType,
 }) {
-  const ownerEmpid = String(
-    message?.author_empid
-    || message?.authorEmpid
-    || message?.created_by_empid
-    || message?.createdByEmpid
-    || '',
-  ).trim();
-  const normalizedOwnerEmpid = ownerEmpid.toUpperCase();
-  const normalizedActorEmpid = String(actorEmpid || '').trim().toUpperCase();
-  if (!normalizedOwnerEmpid) return;
-  if (normalizedOwnerEmpid === normalizedActorEmpid) return;
+  const ownerEmpid = String(message?.author_empid || '').trim();
+  if (!ownerEmpid) return;
+  if (ownerEmpid === actorEmpid) return;
   const conversation = await getConversationById(db, companyId, message?.conversation_id);
   if (!conversation) return;
   if (String(conversation.type || '').toLowerCase() !== 'general') {
-    const ownerAllowed = await isConversationParticipant(db, companyId, conversation.id, normalizedOwnerEmpid);
+    const ownerAllowed = await isConversationParticipant(db, companyId, conversation.id, ownerEmpid);
     if (!ownerAllowed) return;
   }
   if (shouldDebounceReactionNotify({ companyId, messageId: message?.id, actorEmpid, emoji, eventType })) return;
@@ -917,7 +909,7 @@ async function notifyMessageOwnerReactionEvent({
     `INSERT INTO notifications
       (company_id, recipient_empid, type, related_id, message, created_by, created_at)
      VALUES (?, ?, 'request', ?, ?, ?, CURRENT_TIMESTAMP)`,
-    [companyId, normalizedOwnerEmpid, message?.id ?? null, notificationMessage, actorEmpid],
+    [companyId, ownerEmpid, message?.id ?? null, notificationMessage, actorEmpid],
   );
 
   const payload = {
@@ -938,8 +930,8 @@ async function notifyMessageOwnerReactionEvent({
     },
   };
   if (ioRef) {
-    ioRef.to(`user:${normalizedOwnerEmpid}`).emit('notification:new', payload);
-    ioRef.to(`user:${normalizedOwnerEmpid}`).emit('message.reaction.activity', {
+    ioRef.to(`user:${ownerEmpid}`).emit('notification:new', payload);
+    ioRef.to(`user:${ownerEmpid}`).emit('message.reaction.activity', {
       company_id: companyId,
       companyId,
       message_id: message?.id ?? null,
@@ -948,32 +940,13 @@ async function notifyMessageOwnerReactionEvent({
       conversationId: message?.conversation_id ?? null,
       actor_empid: actorEmpid,
       actorEmpid,
-      owner_empid: normalizedOwnerEmpid,
-      ownerEmpid: normalizedOwnerEmpid,
+      owner_empid: ownerEmpid,
+      ownerEmpid,
       emoji,
       event_type: eventType,
       eventType,
       at: payload.created_at,
     });
-    if (ownerEmpid && ownerEmpid !== normalizedOwnerEmpid) {
-      ioRef.to(`user:${ownerEmpid}`).emit('notification:new', payload);
-      ioRef.to(`user:${ownerEmpid}`).emit('message.reaction.activity', {
-        company_id: companyId,
-        companyId,
-        message_id: message?.id ?? null,
-        messageId: message?.id ?? null,
-        conversation_id: message?.conversation_id ?? null,
-        conversationId: message?.conversation_id ?? null,
-        actor_empid: actorEmpid,
-        actorEmpid,
-        owner_empid: normalizedOwnerEmpid,
-        ownerEmpid: normalizedOwnerEmpid,
-        emoji,
-        event_type: eventType,
-        eventType,
-        at: payload.created_at,
-      });
-    }
   }
 }
 
