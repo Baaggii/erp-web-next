@@ -905,7 +905,7 @@ function canViewTransaction(transactionId, userId, permissions) {
   return canOpenContextLink(permissions, 'transaction');
 }
 
-function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
+function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onToggleReplies, collapsedMessageIds, parentMap, permissions, activeReplyTarget, highlightedIds, onOpenLinkedTransaction, resolveEmployeeLabel, canDeleteMessage, onDeleteMessage, onPreviewAttachment, onToggleReaction, onVotePoll, onAddPollOption, reactionActivitiesByMessage = {}, selfEmpid = null, isMentionedViewer = false, isOwnMessage = false, onAnyAction = null, isMenuOpen = false, onMenuOpenChange = null, textScale = DEFAULT_MESSAGE_TEXT_SCALE }) {
   const normalizedMessageId = normalizeId(message.id);
   const replyCount = countNestedReplies(message);
   const decoded = extractMessageAttachments(message);
@@ -938,6 +938,14 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
   const metadataFontSize = toScaledFontSize(12, textScale);
   const bodyFontSize = toScaledFontSize(14, textScale);
   const chipFontSize = toScaledFontSize(12, textScale);
+  const poll = message?.poll && typeof message.poll === 'object' ? message.poll : null;
+  const [selectedPollOptionIds, setSelectedPollOptionIds] = useState([]);
+  const [newPollOptionText, setNewPollOptionText] = useState('');
+
+  useEffect(() => {
+    setSelectedPollOptionIds([]);
+    setNewPollOptionText('');
+  }, [message?.id]);
 
   if (isDeleted) {
     return (
@@ -963,6 +971,8 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
             onDeleteMessage={onDeleteMessage}
             onPreviewAttachment={onPreviewAttachment}
             onToggleReaction={onToggleReaction}
+            onVotePoll={onVotePoll}
+            onAddPollOption={onAddPollOption}
             reactionActivitiesByMessage={reactionActivitiesByMessage}
             selfEmpid={selfEmpid}
             isOwnMessage={normalizeId(child.author_empid) === normalizeId(selfEmpid)}
@@ -1083,6 +1093,63 @@ function MessageNode({ message, depth = 0, onReply, onEdit, onJumpToParent, onTo
       <div style={{ marginTop: 4, fontSize: bodyFontSize, color: '#0f172a', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
         {highlightMentions(safeBody)}
       </div>
+      {poll && (
+        <div style={{ marginTop: 8, border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: 8, padding: 8 }}>
+          <div style={{ fontSize: chipFontSize, fontWeight: 700, color: '#1e3a8a' }}>📊 Poll: {poll.question || 'Poll'}</div>
+          <div style={{ fontSize: chipFontSize, color: '#475569', marginTop: 4 }}>
+            {poll.allowMultipleSelections ? 'Multiple choices allowed' : 'Single choice only'} · {poll.allowUserOptions ? 'Users can add options' : 'Users cannot add options'} · {poll.votersVisible ? (poll.viewerHasVoted ? 'Voters visible to you' : 'Vote to see voters') : 'Voters hidden'}
+          </div>
+          <div style={{ fontSize: chipFontSize, color: '#64748b', marginTop: 2 }}>
+            Total votes: {Number(poll.totalVotes) || 0}
+          </div>
+          <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+            {(Array.isArray(poll.options) ? poll.options : []).map((option) => {
+              const optionId = Number(option?.id);
+              const checked = selectedPollOptionIds.includes(optionId);
+              const votes = Number(option?.votes) || 0;
+              const totalVotes = Math.max(1, Number(poll.totalVotes) || 0);
+              const percent = Math.round((votes / totalVotes) * 100);
+              return (
+                <div key={`${message.id}-poll-opt-${option?.id}`} style={{ display: 'grid', gap: 3 }}>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: chipFontSize }}>
+                    <input
+                      type={poll.allowMultipleSelections ? 'checkbox' : 'radio'}
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedPollOptionIds((prev) => {
+                          if (poll.allowMultipleSelections) {
+                            return prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId];
+                          }
+                          return [optionId];
+                        });
+                      }}
+                    />
+                    <span>{option?.text}</span>
+                    <span style={{ color: '#64748b' }}>({votes} · {percent}%)</span>
+                    {option?.selectedByViewer && <span style={{ color: '#0f766e' }}>✓ Your vote</span>}
+                  </label>
+                  <div style={{ height: 6, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{ width: `${percent}%`, height: '100%', background: '#60a5fa' }} />
+                  </div>
+                  {poll.viewerHasVoted && poll.canViewVoters && Array.isArray(option?.voters) && option.voters.length > 0 && (
+                    <span style={{ color: '#64748b', fontSize: Math.max(10, chipFontSize - 1) }}>Voters: {option.voters.map((empid) => resolveEmployeeLabel(empid)).join(', ')}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            <button type="button" disabled={selectedPollOptionIds.length === 0} onClick={() => onVotePoll?.(poll.id, selectedPollOptionIds)} style={{ border: '1px solid #93c5fd', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: chipFontSize }}>Vote</button>
+            <button type="button" onClick={() => setSelectedPollOptionIds([])} style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: chipFontSize }}>Clear</button>
+            {poll.allowUserOptions && (
+              <>
+                <input value={newPollOptionText} onChange={(event) => setNewPollOptionText(event.target.value)} placeholder="Add option" style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '2px 6px', fontSize: chipFontSize }} />
+                <button type="button" onClick={() => { onAddPollOption?.(poll.id, newPollOptionText); setNewPollOptionText(''); }} style={{ border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', padding: '2px 8px', fontSize: chipFontSize }}>Add option</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {resolvedReactionActivities.length > 0 && (
         <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
           {resolvedReactionActivities.map((entry) => (
@@ -2768,6 +2835,49 @@ export default function MessagingWidget() {
     setComposerAnnouncement('Topic updated.');
   };
 
+  const voteOnPoll = async (pollId, optionIds = []) => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const normalizedCompanyId = Number(activeCompany);
+    const cleanOptionIds = Array.from(new Set((optionIds || []).map((entry) => Number(entry)).filter((entry) => Number.isFinite(entry) && entry > 0)));
+    if (!pollId || cleanOptionIds.length === 0) {
+      setComposerAnnouncement('Select poll option(s) before voting.');
+      return;
+    }
+    const res = await fetch(`${API_BASE}/messaging/polls/${pollId}/votes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: normalizedCompanyId, optionIds: cleanOptionIds }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Failed to submit poll vote.');
+      return;
+    }
+    if (activeConversation?.conversationId) await fetchThreadMessages(activeConversation.conversationId, activeCompany);
+    setComposerAnnouncement('Vote submitted.');
+  };
+
+  const addPollOption = async (pollId, optionText) => {
+    const activeCompany = state.activeCompanyId || companyId;
+    const normalizedCompanyId = Number(activeCompany);
+    const cleanText = sanitizeMessageText(optionText || '');
+    if (!pollId || !cleanText) return;
+    const res = await fetch(`${API_BASE}/messaging/polls/${pollId}/options`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId: normalizedCompanyId, optionText: cleanText }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setComposerAnnouncement(payload?.error?.message || payload?.message || 'Failed to add poll option.');
+      return;
+    }
+    if (activeConversation?.conversationId) await fetchThreadMessages(activeConversation.conversationId, activeCompany);
+    setComposerAnnouncement('Poll option added.');
+  };
+
   const sendMessage = async () => {
     if (editingMessage?.id) {
       const activeCompany = state.activeCompanyId || companyId;
@@ -2922,6 +3032,20 @@ export default function MessagingWidget() {
 
     dispatch({ type: 'composer/setReplyTo', payload: null });
 
+    const composerPoll = state.composer.poll
+      ? {
+        question: sanitizeMessageText(state.composer.poll.question || ''),
+        options: Array.from(new Set((state.composer.poll.options || []).map((entry) => sanitizeMessageText(entry)).filter(Boolean))),
+        votersVisible: state.composer.poll.votersVisible === true,
+        allowMultipleSelections: state.composer.poll.allowMultipleSelections === true,
+        allowUserOptions: state.composer.poll.allowUserOptions === true,
+      }
+      : null;
+    if (composerPoll && composerPoll.options.length < 2) {
+      setComposerAnnouncement('Poll requires at least two options.');
+      return;
+    }
+
     const payload = {
       idempotencyKey: createIdempotencyKey(),
       clientTempId,
@@ -2931,6 +3055,7 @@ export default function MessagingWidget() {
       ...(linkedType ? { linkedType } : {}),
       ...(linkedId ? { linkedId: String(linkedId) } : {}),
       ...(!isDraftConversation && shouldSendReply && explicitReplyTargetId ? { parentMessageId: explicitReplyTargetId } : {}),
+      ...(composerPoll ? { poll: composerPoll } : {}),
     };
 
     if (isDraftConversation) {
@@ -3618,6 +3743,8 @@ export default function MessagingWidget() {
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
+                onVotePoll={voteOnPoll}
+                onAddPollOption={addPollOption}
                 reactionActivitiesByMessage={reactionActivityByMessage}
                 selfEmpid={selfEmpid}
                 isMentionedViewer={Boolean(selfMentionPattern && selfMentionPattern.test(sanitizeMessageText(extractMessageAttachments(message).text || '')))}
@@ -3739,6 +3866,80 @@ export default function MessagingWidget() {
               >
                 Send
               </button>
+            </div>
+
+            <div style={{ marginTop: 8, border: '1px solid #dbeafe', borderRadius: 10, padding: 8, background: '#f8fbff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: composerTextFontSize, color: '#1e3a8a' }}>Poll</strong>
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: 'composer/setPoll', payload: state.composer.poll ? null : { question: '', options: ['Option 1', 'Option 2'], votersVisible: false, allowMultipleSelections: false, allowUserOptions: false } })}
+                  style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '3px 8px', fontSize: composerTextFontSize }}
+                >
+                  {state.composer.poll ? 'Remove poll' : 'Add poll'}
+                </button>
+              </div>
+              {state.composer.poll && (
+                <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                  <input
+                    value={state.composer.poll.question || ''}
+                    onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, question: event.target.value } })}
+                    placeholder="Poll question"
+                    style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerTextFontSize }}
+                  />
+                  <div style={{ display: 'grid', gap: 6 }}>
+                  {(state.composer.poll.options || []).map((option, index) => (
+                    <div key={`composer-poll-option-${index}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: 6, alignItems: 'center' }}>
+                      <input
+                        value={option}
+                        onChange={(event) => {
+                          const nextOptions = [...(state.composer.poll.options || [])];
+                          nextOptions[index] = event.target.value;
+                          dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: nextOptions } });
+                        }}
+                        placeholder={`Option ${index + 1}`}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 8px', fontSize: composerTextFontSize }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextOptions = (state.composer.poll.options || []).filter((_, idx) => idx !== index);
+                          dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: nextOptions } });
+                        }}
+                        disabled={(state.composer.poll.options || []).length <= 2}
+                        style={{ border: '1px solid #fecaca', borderRadius: 8, background: '#fff', color: '#b91c1c', padding: '4px 8px', fontSize: composerTextFontSize }}
+                      >
+                        Remove
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (index === 0) return;
+                          const nextOptions = [...(state.composer.poll.options || [])];
+                          const current = nextOptions[index];
+                          nextOptions[index] = nextOptions[index - 1];
+                          nextOptions[index - 1] = current;
+                          dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: nextOptions } });
+                        }}
+                        disabled={index === 0}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: composerTextFontSize }}
+                      >
+                        ↑
+                      </button>
+                    </div>
+                  ))}
+                  </div>
+                  <p style={{ margin: 0, fontSize: toScaledFontSize(12, messageTextScale), color: '#475569' }}>
+                    Add at least two options. You can edit, remove, and reorder options before sending.
+                  </p>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, options: [...(state.composer.poll.options || []), `Option ${(state.composer.poll.options || []).length + 1}`] } })} style={{ border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', padding: '2px 8px', fontSize: composerTextFontSize }}>+ Option</button>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.votersVisible === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, votersVisible: event.target.checked } })} /> Voters visible</label>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.allowMultipleSelections === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowMultipleSelections: event.target.checked } })} /> Multiple select</label>
+                    <label style={{ fontSize: composerTextFontSize }}><input type="checkbox" checked={state.composer.poll.allowUserOptions === true} onChange={(event) => dispatch({ type: 'composer/setPoll', payload: { ...state.composer.poll, allowUserOptions: event.target.checked } })} /> Users can add options</label>
+                  </div>
+                </div>
+              )}
             </div>
 
             {mentionOpen && (

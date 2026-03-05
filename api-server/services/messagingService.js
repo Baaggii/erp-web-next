@@ -6,6 +6,7 @@ const MAX_MESSAGE_LENGTH = 4000;
 const CURSOR_PAGE_SIZE = 50;
 const MESSAGE_CLASS_ALLOWLIST = new Set(['general', 'financial', 'hr_sensitive', 'legal']);
 const CONVERSATION_TYPE_ALLOWLIST = new Set(['general', 'private', 'linked']);
+const POLL_MAX_OPTIONS = 20;
 
 let ioRef = null;
 const onlineByCompany = new Map();
@@ -50,6 +51,26 @@ function sanitizeEmoji(value) {
   if (!emoji) throw createError(400, 'EMOJI_REQUIRED', 'emoji is required');
   if (emoji.length > 32) throw createError(400, 'EMOJI_INVALID', 'emoji is invalid');
   return emoji;
+}
+
+function sanitizePoll(payload, { allowQuestionFallback = false } = {}) {
+  if (!payload || typeof payload !== 'object') return null;
+  const questionRaw = String(payload.question ?? '').trim();
+  const question = questionRaw.slice(0, 400);
+  if (!question && !allowQuestionFallback) {
+    throw createError(400, 'POLL_QUESTION_REQUIRED', 'Poll question is required');
+  }
+  const sourceOptions = Array.isArray(payload.options) ? payload.options : [];
+  const options = Array.from(new Set(sourceOptions.map((entry) => String(entry ?? '').trim()).filter(Boolean)))
+    .slice(0, POLL_MAX_OPTIONS);
+  if (options.length < 2) throw createError(400, 'POLL_OPTIONS_REQUIRED', 'Poll requires at least two options');
+  return {
+    question,
+    options,
+    votersVisible: payload.votersVisible === true,
+    allowMultipleSelections: payload.allowMultipleSelections === true,
+    allowUserOptions: payload.allowUserOptions === true,
+  };
 }
 
 async function resolveSession(user, companyId, getSession = getEmploymentSession) {
@@ -162,6 +183,136 @@ async function createMessage(db, { companyId, conversationId, authorEmpid, paren
   return rows[0];
 }
 
+async function createPollForMessage(db, {
+  companyId,
+  conversationId,
+  messageId,
+  authorEmpid,
+  poll,
+}) {
+  const [pollInsert] = await db.query(
+    `INSERT INTO erp_message_polls
+      (company_id, conversation_id, message_id, question, voters_visible, allow_multiple_selections, allow_user_options, created_by_empid)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [companyId, conversationId, messageId, poll.question, poll.votersVisible ? 1 : 0, poll.allowMultipleSelections ? 1 : 0, poll.allowUserOptions ? 1 : 0, authorEmpid],
+  );
+  const pollId = pollInsert.insertId;
+  for (const optionLabel of poll.options) {
+    await db.query(
+      `INSERT INTO erp_message_poll_options (company_id, poll_id, option_text, created_by_empid)
+       VALUES (?, ?, ?, ?)`,
+      [companyId, pollId, optionLabel, authorEmpid],
+    );
+  }
+  return pollId;
+}
+
+async function hydratePollsForMessages(db, { companyId, messageIds, viewerEmpid }) {
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return new Map();
+  const placeholders = messageIds.map(() => '?').join(', ');
+  let pollRows = [];
+  try {
+    const [rows] = await db.query(
+      `SELECT *
+         FROM erp_message_polls
+        WHERE company_id = ?
+          AND message_id IN (${placeholders})`,
+      [companyId, ...messageIds],
+    );
+    pollRows = rows || [];
+  } catch {
+    return new Map();
+  }
+  if (pollRows.length === 0) return new Map();
+
+  const pollsById = new Map();
+  const messageToPoll = new Map();
+  for (const row of pollRows || []) {
+    const pollId = toId(row?.id);
+    if (!pollId) continue;
+    pollsById.set(pollId, row);
+    const messageId = toId(row?.message_id);
+    if (messageId) messageToPoll.set(messageId, pollId);
+  }
+
+  const pollIds = Array.from(pollsById.keys());
+  const pollPlaceholders = pollIds.map(() => '?').join(', ');
+  let optionRows = [];
+  let voteRows = [];
+  try {
+    const [options] = await db.query(
+      `SELECT *
+         FROM erp_message_poll_options
+        WHERE company_id = ?
+          AND poll_id IN (${pollPlaceholders})
+          AND deleted_at IS NULL
+        ORDER BY poll_id ASC, id ASC`,
+      [companyId, ...pollIds],
+    );
+    optionRows = options || [];
+    const [votes] = await db.query(
+      `SELECT v.poll_id, v.option_id, v.empid, o.option_text
+         FROM erp_message_poll_votes v
+         JOIN erp_message_poll_options o
+           ON o.id = v.option_id
+          AND o.poll_id = v.poll_id
+        WHERE v.company_id = ?
+          AND v.poll_id IN (${pollPlaceholders})
+          AND v.deleted_at IS NULL
+        ORDER BY v.poll_id ASC, v.option_id ASC, v.voted_at ASC`,
+      [companyId, ...pollIds],
+    );
+    voteRows = votes || [];
+  } catch {
+    return new Map();
+  }
+
+  const votesByOption = new Map();
+  const viewerVotesByPoll = new Set();
+  for (const row of voteRows || []) {
+    const key = `${toId(row?.poll_id)}:${toId(row?.option_id)}`;
+    if (!votesByOption.has(key)) votesByOption.set(key, []);
+    const empid = String(row?.empid || '').trim();
+    if (empid) {
+      votesByOption.get(key).push(empid);
+      if (empid === String(viewerEmpid || '').trim()) viewerVotesByPoll.add(toId(row?.poll_id));
+    }
+  }
+
+  const pollPayloadByMessage = new Map();
+  for (const [messageId, pollId] of messageToPoll.entries()) {
+    const poll = pollsById.get(pollId);
+    const viewerHasVoted = viewerVotesByPoll.has(pollId);
+    const canViewVoters = Boolean(poll?.voters_visible) && viewerHasVoted;
+    const optionItems = (optionRows || [])
+      .filter((row) => toId(row?.poll_id) === pollId)
+      .map((row) => {
+        const optionId = toId(row?.id);
+        const voters = votesByOption.get(`${pollId}:${optionId}`) || [];
+        const uniqueVoters = Array.from(new Set(voters));
+        return {
+          id: optionId,
+          text: row?.option_text,
+          votes: uniqueVoters.length,
+          voters: canViewVoters ? uniqueVoters : [],
+          selectedByViewer: uniqueVoters.includes(String(viewerEmpid || '').trim()),
+        };
+      });
+    pollPayloadByMessage.set(messageId, {
+      id: pollId,
+      question: poll?.question || '',
+      votersVisible: Boolean(poll?.voters_visible),
+      allowMultipleSelections: Boolean(poll?.allow_multiple_selections),
+      allowUserOptions: Boolean(poll?.allow_user_options),
+      totalVotes: optionItems.reduce((sum, entry) => sum + (Number(entry.votes) || 0), 0),
+      viewerHasVoted,
+      canViewVoters,
+      options: optionItems,
+    });
+  }
+  return pollPayloadByMessage;
+}
+
 function buildWebPushMessageText(body) {
   const normalized = String(body || '').trim();
   if (!normalized) return 'You have a new message';
@@ -262,6 +413,17 @@ export async function createConversationRoot({
     body: sanitizeBody(payload?.body),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
   });
+  const poll = sanitizePoll(payload?.poll, { allowQuestionFallback: true });
+  if (poll) {
+    if (!poll.question) poll.question = message.body;
+    await createPollForMessage(db, {
+      companyId: scopedCompanyId,
+      conversationId,
+      messageId: message.id,
+      authorEmpid: sender,
+      poll,
+    });
+  }
   await enqueueConversationMessageWebPush({
     db,
     companyId: scopedCompanyId,
@@ -310,6 +472,17 @@ export async function postConversationMessage({
     body: sanitizeBody(payload?.body),
     messageClass: sanitizeMessageClass(payload?.messageClass ?? payload?.message_class),
   });
+  const poll = sanitizePoll(payload?.poll, { allowQuestionFallback: true });
+  if (poll) {
+    if (!poll.question) poll.question = message.body;
+    await createPollForMessage(db, {
+      companyId: scopedCompanyId,
+      conversationId: normalizedConversationId,
+      messageId: message.id,
+      authorEmpid: String(user?.empid || ''),
+      poll,
+    });
+  }
   await enqueueConversationMessageWebPush({
     db,
     companyId: scopedCompanyId,
@@ -594,6 +767,8 @@ export async function getConversationMessages({ user, companyId, conversationId,
     }
   }
 
+  const pollByMessage = await hydratePollsForMessages(db, { companyId: scopedCompanyId, messageIds, viewerEmpid });
+
   const itemsWithReads = items.map((row) => {
     const messageId = toId(row?.id);
     const isDeleted = Boolean(row?.deleted_at);
@@ -605,6 +780,7 @@ export async function getConversationMessages({ user, companyId, conversationId,
       body: isDeleted ? '' : row?.body,
       read_by: readBy,
       reactions,
+      poll: pollByMessage.get(messageId) || null,
     };
   });
 
@@ -614,6 +790,70 @@ export async function getConversationMessages({ user, companyId, conversationId,
     items: itemsWithReads,
     pageInfo: { nextCursor: hasMore ? items[items.length - 1].id : null, hasMore },
   };
+}
+
+export async function votePoll({ user, companyId, pollId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedPollId = toId(pollId);
+  if (!normalizedPollId) throw createError(400, 'POLL_REQUIRED', 'pollId is required');
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+
+  const [pollRows] = await db.query('SELECT * FROM erp_message_polls WHERE id = ? AND company_id = ? LIMIT 1', [normalizedPollId, scopedCompanyId]);
+  const poll = pollRows[0];
+  if (!poll) throw createError(404, 'POLL_NOT_FOUND', 'Poll not found');
+  const conversation = await getConversationById(db, scopedCompanyId, poll.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, actorEmpid);
+
+  const optionIds = Array.from(new Set((Array.isArray(payload?.optionIds) ? payload.optionIds : [payload?.optionId]).map(toId).filter(Boolean)));
+  if (optionIds.length === 0) throw createError(400, 'POLL_OPTION_REQUIRED', 'At least one option must be selected');
+  if (!poll.allow_multiple_selections && optionIds.length > 1) {
+    throw createError(400, 'POLL_MULTIPLE_NOT_ALLOWED', 'This poll does not allow selecting multiple options');
+  }
+  const placeholders = optionIds.map(() => '?').join(', ');
+  const [optionRows] = await db.query(
+    `SELECT id FROM erp_message_poll_options
+      WHERE company_id = ? AND poll_id = ? AND deleted_at IS NULL AND id IN (${placeholders})`,
+    [scopedCompanyId, normalizedPollId, ...optionIds],
+  );
+  if ((optionRows || []).length !== optionIds.length) throw createError(400, 'POLL_OPTION_INVALID', 'One or more poll options are invalid');
+
+  await db.query('UPDATE erp_message_poll_votes SET deleted_at = CURRENT_TIMESTAMP WHERE company_id = ? AND poll_id = ? AND empid = ? AND deleted_at IS NULL', [scopedCompanyId, normalizedPollId, actorEmpid]);
+  for (const optionId of optionIds) {
+    await db.query(
+      `INSERT INTO erp_message_poll_votes (company_id, poll_id, option_id, empid)
+       VALUES (?, ?, ?, ?)`,
+      [scopedCompanyId, normalizedPollId, optionId, actorEmpid],
+    );
+  }
+  return { correlationId, ok: true, pollId: normalizedPollId, optionIds };
+}
+
+export async function addPollOption({ user, companyId, pollId, payload, correlationId, db = pool, getSession = getEmploymentSession }) {
+  const { scopedCompanyId, session } = await resolveSession(user, companyId, getSession);
+  assertCanMessage(session);
+  const normalizedPollId = toId(pollId);
+  if (!normalizedPollId) throw createError(400, 'POLL_REQUIRED', 'pollId is required');
+  const actorEmpid = String(user?.empid || '').trim();
+  if (!actorEmpid) throw createError(403, 'USER_EMPID_REQUIRED', 'Authenticated user empid is required');
+  const optionText = String(payload?.optionText || payload?.option || '').trim().slice(0, 255);
+  if (!optionText) throw createError(400, 'POLL_OPTION_TEXT_REQUIRED', 'optionText is required');
+
+  const [pollRows] = await db.query('SELECT * FROM erp_message_polls WHERE id = ? AND company_id = ? LIMIT 1', [normalizedPollId, scopedCompanyId]);
+  const poll = pollRows[0];
+  if (!poll) throw createError(404, 'POLL_NOT_FOUND', 'Poll not found');
+  if (!poll.allow_user_options) throw createError(403, 'POLL_OPTION_ADD_FORBIDDEN', 'This poll does not allow adding options');
+  const conversation = await getConversationById(db, scopedCompanyId, poll.conversation_id);
+  await assertConversationAccess(db, scopedCompanyId, conversation, actorEmpid);
+
+  await db.query(
+    `INSERT INTO erp_message_poll_options (company_id, poll_id, option_text, created_by_empid)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE deleted_at = NULL`,
+    [scopedCompanyId, normalizedPollId, optionText, actorEmpid],
+  );
+  return { correlationId, ok: true, pollId: normalizedPollId };
 }
 
 async function getAccessibleMessageForReaction({ user, companyId, messageId, db }) {
