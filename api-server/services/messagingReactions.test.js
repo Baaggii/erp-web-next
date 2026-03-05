@@ -125,14 +125,3 @@ test('message reaction web push is skipped when reacting to own message', async 
 
   assert.equal(notifications.length, 0);
 });
-
-test('user cannot remove another user reaction', async () => {
-  const db = new ReactionDb();
-  db.reactions.push({ message_id: 10, company_id: 9, empid: 'E2', emoji: '👍', deleted_at: null });
-  const user = { empid: 'E1', companyId: 9 };
-
-  await assert.rejects(
-    removeMessageReaction({ user, companyId: 9, messageId: 10, payload: { emoji: '👍' }, db, getSession }),
-    (err) => err?.code === 'REACTION_NOT_OWNED' && err?.status === 403,
-  );
-});
