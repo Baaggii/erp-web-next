@@ -127,7 +127,6 @@ function getSessionScope(session, scope) {
 async function ensureScopedConversation(db, { companyId, session, actorEmpid, scope }) {
   const scopeMeta = getSessionScope(session, scope);
   if (!scopeMeta.id) return null;
-  const actor = String(actorEmpid || '').trim();
   const linkedType = scope;
   const linkedId = String(scopeMeta.id);
 
@@ -202,17 +201,8 @@ async function ensureScopedConversation(db, { companyId, session, actorEmpid, sc
     joinedAtByEmpid.set(empid, Number.isNaN(hireDate?.getTime()) ? null : hireDate.toISOString().slice(0, 19).replace('T', ' '));
   }
 
-  // Always include the current session user to guarantee scoped channels are
-  // visible even when directory/employment backfill is incomplete.
-  if (actor) {
-    participants.push(actor);
-    if (!joinedAtByEmpid.has(actor)) {
-      joinedAtByEmpid.set(actor, null);
-    }
-  }
-
   const addedParticipants = await insertParticipants(db, companyId, conversation.id, participants, { joinedAtByEmpid });
-  const newlyAdded = addedParticipants.filter((empid) => empid !== actor && !existingActive.has(empid));
+  const newlyAdded = addedParticipants.filter((empid) => !existingActive.has(empid));
   for (const empid of newlyAdded) {
     await createMessage(db, {
       companyId,

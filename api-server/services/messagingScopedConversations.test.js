@@ -180,29 +180,3 @@ test('department and branch channels only return messages from participant joine
   const threadAfterPost = await getConversationMessages({ user: { empid: 'E4', companyId: 6 }, companyId: 6, conversationId: 99, db, getSession });
   assert.equal(threadAfterPost.items.some((entry) => entry.body === 'post-hire'), true);
 });
-
-test('scoped conversations are still auto-populated for current user when scope lookup returns empty', async () => {
-  const db = new ScopedMockDb();
-  db.scopeUsers.department = [];
-  db.scopeUsers.branch = [];
-
-  const getSession = async () => ({
-    permissions: { messaging: true },
-    department_id: 10,
-    department_name: 'HR',
-    branch_id: 20,
-    branch_name: 'UB',
-  });
-
-  const result = await listConversations({ user: { empid: 'E11', companyId: 9 }, companyId: 9, db, getSession });
-  const departmentConversation = result.items.find((entry) => entry.linked_type === 'department');
-  const branchConversation = result.items.find((entry) => entry.linked_type === 'branch');
-
-  assert.ok(departmentConversation, 'department conversation should be present');
-  assert.ok(branchConversation, 'branch conversation should be present');
-
-  const deptParticipant = db.participants.find((entry) => entry.conversation_id === departmentConversation.id && entry.empid === 'E11' && !entry.left_at);
-  const branchParticipant = db.participants.find((entry) => entry.conversation_id === branchConversation.id && entry.empid === 'E11' && !entry.left_at);
-  assert.ok(deptParticipant, 'current user should be participant in department conversation');
-  assert.ok(branchParticipant, 'current user should be participant in branch conversation');
-});
