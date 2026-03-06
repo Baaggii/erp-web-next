@@ -1552,8 +1552,8 @@ export async function getEmploymentSessions(empid, options = {}) {
     SELECT
       ls.emp_id AS employment_emp_id,
       ls.company_id AS employment_company_id,
-      COALESCE(NULLIF(ls.branch_id, 0), le.employment_branch_id) AS employment_branch_id,
-      COALESCE(NULLIF(ls.department_id, 0), le.employment_department_id) AS employment_department_id,
+      COALESCE(ls.branch_id, le.employment_branch_id) AS employment_branch_id,
+      COALESCE(ls.department_id, le.employment_department_id) AS employment_department_id,
       ls.workplace_id AS employment_workplace_id,
       ls.start_date AS assignment_start_date,
       ls.end_date AS assignment_end_date,
