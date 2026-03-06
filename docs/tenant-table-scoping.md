@@ -78,3 +78,31 @@ when a new company is created (`seed_on_create=0`):
 - `code_position`
 - `code_branches`
 - `code_department`
+
+## Login-domain tenant isolation decisions
+
+For authentication and employment context resolution, keep the following table model:
+
+1. **`users`**: global/shared identity table (**no tenant isolation**).
+   - Login starts by finding user by `empid` without company filtering.
+2. **`tbl_employee`**: centralized HR registry (**no tenant isolation**).
+   - Employee hire/out dates are global employment lifecycle checks.
+3. **`tbl_employment`**: tenant-scoped assignment table (**tenant isolation required**).
+   - This is the primary company/branch/department/position/role assignment source.
+4. **`tbl_employment_schedule`**: tenant-scoped workplace schedule table (**tenant isolation required**).
+   - Effective schedule rows override/fill branch+department and workplace for selected company.
+5. **Code resolution tables** (`companies`, `code_branches`, `code_department`, `code_workplace`, `code_pos`, `user_levels`, and similar): **tenant isolation required**, with optional shared global rows (`company_id=0`) where needed.
+
+### Should we use centralized field-mapping resolution?
+
+**Yes — with a split strategy:**
+
+- Use centralized config resolution (`tableDisplayFields.json`, `tableRelations.json`) for
+  **display/label joins and relation metadata**, so schema/display-field differences across
+  companies are handled consistently.
+- Keep **auth-critical constraints hardcoded** in login/session SQL logic (required IDs,
+  date effectiveness, assignment completeness), so security does not depend on mutable
+  display configuration.
+
+This keeps login behavior deterministic and secure while still benefiting from centralized
+field/relationship mapping for naming and join adaptability.

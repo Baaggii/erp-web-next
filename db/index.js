@@ -1236,6 +1236,7 @@ export async function getUserByEmpId(empid) {
   const [rows] = await pool.query(
     `SELECT
        u.*,
+       emp.emp_id AS employee_empid,
        emp.emp_hiredate,
        emp.emp_outdate
      FROM users u
