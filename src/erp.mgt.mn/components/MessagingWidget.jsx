@@ -16,6 +16,7 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
+import { collectNormalizedIdsFromRows, getFirstTruthyRowValue, resolveDisplayLabelFromConfig, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -771,22 +772,6 @@ function mergePresenceEntries(entries = []) {
     const empid = normalizeId(entry?.empid || entry?.id);
     return [empid, { ...entry, empid }];
   })).values()).filter((entry) => entry.empid);
-}
-
-function getRowValueCaseInsensitive(row, fieldName) {
-  if (!row || !fieldName) return undefined;
-  if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
-  const target = String(fieldName).toLowerCase();
-  const actualKey = Object.keys(row).find((key) => key.toLowerCase() === target);
-  return actualKey ? row[actualKey] : undefined;
-}
-
-function resolveDisplayLabelFromConfig(row, displayFields = []) {
-  if (!row || !Array.isArray(displayFields) || displayFields.length === 0) return '';
-  const parts = displayFields
-    .map((field) => sanitizeMessageText(getRowValueCaseInsensitive(row, field)))
-    .filter(Boolean);
-  return parts.join(' ').trim();
 }
 
 function collectMessageParticipantEmpids(message) {
@@ -1713,56 +1698,64 @@ export default function MessagingWidget() {
 
     const loadEmployees = async () => {
       try {
-        const displayFieldConfigRes = await fetch('/api/display_fields?table=tbl_employee', { credentials: 'include' });
-        const displayFieldConfig = displayFieldConfigRes.ok ? await displayFieldConfigRes.json().catch(() => ({})) : {};
-        const employeeDisplayFields = Array.isArray(displayFieldConfig?.displayFields)
-          ? displayFieldConfig.displayFields.filter((field) => typeof field === 'string' && field.trim())
-          : [];
-
         const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
         const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
         if (!employmentRes.ok) return;
         const employmentData = await employmentRes.json();
         const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
-        const idsFromEmployment = Array.from(
-          new Set(
-            employmentRows
-              .map((row) => normalizeId(row.employment_emp_id || row.emp_id || row.empid || row.id))
-              .filter(Boolean),
-          ),
-        );
+
+        const resolvedEmployeeRelation = await resolveRelationRowsFromSource({
+          sourceTable: 'tbl_employment',
+          sourceRows: employmentRows,
+          sourceColumn: 'employment_emp_id',
+          companyId: activeCompany,
+        });
+
+        const relatedColumn = resolvedEmployeeRelation?.relation?.column || 'emp_id';
+        const idsFromEmployment = collectNormalizedIdsFromRows(
+          employmentRows,
+          'employment_emp_id',
+          ['emp_id', 'empid', 'id'],
+        ).map((entry) => normalizeId(entry)).filter(Boolean);
         if (idsFromEmployment.length === 0) {
           setEmployees([]);
           return;
         }
 
-        const employeeParams = new URLSearchParams({ perPage: '1000' });
-        const employeeRes = await fetch(`${API_BASE}/tables/tbl_employee?${employeeParams.toString()}`, { credentials: 'include' });
-        const employeeData = employeeRes.ok ? await employeeRes.json() : { rows: [] };
-        const employeeRows = Array.isArray(employeeData?.rows) ? employeeData.rows : Array.isArray(employeeData) ? employeeData : [];
+        const employeeRows = resolvedEmployeeRelation
+          ? Array.from(resolvedEmployeeRelation.rowById.values())
+          : [];
         const employeeRowsById = new Map(
-          employeeRows.map((row) => [normalizeId(row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
+          employeeRows.map((row) => [normalizeId(getFirstTruthyRowValue(row, [relatedColumn, 'emp_id', 'empid', 'id'])), row]).filter(([id]) => Boolean(id)),
         );
         const activeEmployeeIds = new Set(
           idsFromEmployment.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid))),
         );
 
-        const profileMap = new Map(employeeRows.map((row) => [
-          normalizeId(row.emp_id || row.empid || row.id),
-          {
+        const relationDisplayFields = Array.isArray(resolvedEmployeeRelation?.displayConfig?.displayFields)
+          ? resolvedEmployeeRelation.displayConfig.displayFields
+          : [];
+        const resolvedDisplayFields = relationDisplayFields;
+
+        const profileMap = new Map(employeeRows.map((row) => {
+          const empid = normalizeId(getFirstTruthyRowValue(row, [relatedColumn, 'emp_id', 'empid', 'id']));
+          return [empid, {
             displayName:
-              resolveDisplayLabelFromConfig(row, employeeDisplayFields)
-              || row.displayName
-              || row.emp_name
-              || row.employee_name
-              || row.emp_fname
-              || row.name
-              || row.full_name
-              || row.username
-              || row.emp_id,
-            employeeCode: row.employee_code || row.emp_code || row.emp_id,
-          },
-        ]));
+              resolveDisplayLabelFromConfig(row, resolvedDisplayFields)
+              || getFirstTruthyRowValue(row, [
+                'displayName',
+                'emp_name',
+                'employee_name',
+                'emp_fname',
+                'name',
+                'full_name',
+                'username',
+                relatedColumn,
+              ]),
+            employeeCode:
+              getFirstTruthyRowValue(row, ['employee_code', 'emp_code', relatedColumn]),
+          }];
+        }));
 
         const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
         if (missingEmpids.length > 0) {
