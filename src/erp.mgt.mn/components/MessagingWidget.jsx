@@ -1323,6 +1323,7 @@ export default function MessagingWidget() {
   const sessionOpenKey = buildSessionStorageKey(sessionId, 'open');
   const sessionConversationKey = buildSessionStorageKey(sessionId, 'conversation');
   const sessionCompanyKey = buildSessionStorageKey(sessionId, 'company');
+  const sessionReadStateKey = buildSessionStorageKey(sessionId, 'read-state');
 
   const bootState = createInitialWidgetState({
     isOpen: globalThis.sessionStorage?.getItem(sessionOpenKey) === '1',
@@ -1370,7 +1371,16 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
-  const [lastReadByCompany, setLastReadByCompany] = useState({});
+  const [lastReadByCompany, setLastReadByCompany] = useState(() => {
+    const raw = globalThis.sessionStorage?.getItem(sessionReadStateKey);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
@@ -1546,6 +1556,10 @@ export default function MessagingWidget() {
     const nextCompany = companyId || state.activeCompanyId;
     if (nextCompany) globalThis.sessionStorage?.setItem(sessionCompanyKey, String(nextCompany));
   }, [companyId, state.activeCompanyId, sessionCompanyKey]);
+
+  useEffect(() => {
+    globalThis.sessionStorage?.setItem(sessionReadStateKey, JSON.stringify(lastReadByCompany || {}));
+  }, [lastReadByCompany, sessionReadStateKey]);
 
   useEffect(() => {
     if (!companyId || state.activeCompanyId === companyId) return;
@@ -2534,10 +2548,14 @@ export default function MessagingWidget() {
       return messageId > lastReadId;
     }).length;
     const unreadFallback = Number(conversation.unread || 0);
+    const conversationLastMessageId = numericMessageId(conversation.lastMessageId);
+    const unreadFromSummary = lastReadId > 0 && conversationLastMessageId > 0 && lastReadId >= conversationLastMessageId
+      ? 0
+      : unreadFallback;
     return {
       ...conversation,
       messages: conversationMessages,
-      unread: conversationMessages.length > 0 ? unreadFromMessages : unreadFallback,
+      unread: conversationMessages.length > 0 ? unreadFromMessages : unreadFromSummary,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
       groupName: conversation.isGeneral
         ? 'Company-wide'
