@@ -1434,6 +1434,9 @@ export async function getEmploymentSessions(empid, options = {}) {
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
   const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
+  const employmentDateParams = scheduleDate
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+    : [];
   const [
     companyCfgRaw,
     branchCfgRaw,
@@ -1536,21 +1539,31 @@ export async function getEmploymentSessions(empid, options = {}) {
         ORDER BY e.employment_date DESC, e.id DESC
       ) AS rn
     FROM tbl_employment e
+    LEFT JOIN tbl_employee emp
+      ON emp.emp_id = e.employment_emp_id
     WHERE e.employment_emp_id = ?
       AND e.deleted_at IS NULL
+      AND e.employment_date <= ${scheduleDateSql}
+      AND (e.employment_end_date IS NULL OR e.employment_end_date >= ${scheduleDateSql})
+      AND (emp.emp_hiredate IS NULL OR emp.emp_hiredate <= ${scheduleDateSql})
+      AND (emp.emp_outdate IS NULL OR emp.emp_outdate >= ${scheduleDateSql})
   ),
   latest_assignments AS (
     SELECT
       ls.emp_id AS employment_emp_id,
       ls.company_id AS employment_company_id,
-      ls.branch_id AS employment_branch_id,
-      ls.department_id AS employment_department_id,
+      COALESCE(NULLIF(ls.branch_id, 0), le.employment_branch_id) AS employment_branch_id,
+      COALESCE(NULLIF(ls.department_id, 0), le.employment_department_id) AS employment_department_id,
       ls.workplace_id AS employment_workplace_id,
       ls.start_date AS assignment_start_date,
       ls.end_date AS assignment_end_date,
       ls.pos_no AS assignment_pos_no,
       'schedule' AS assignment_source
     FROM latest_schedule ls
+    INNER JOIN latest_employment le
+      ON le.employment_emp_id = ls.emp_id
+     AND le.employment_company_id = ls.company_id
+     AND le.rn = 1
     UNION ALL
     SELECT
       le.employment_emp_id,
@@ -1564,6 +1577,12 @@ export async function getEmploymentSessions(empid, options = {}) {
       'employment'
     FROM latest_employment le
     WHERE le.rn = 1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM latest_schedule ls
+        WHERE ls.emp_id = le.employment_emp_id
+          AND ls.company_id = le.employment_company_id
+      )
   )
   SELECT
     e.employment_company_id AS company_id,
@@ -1609,7 +1628,7 @@ export async function getEmploymentSessions(empid, options = {}) {
   ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name, workplace_month DESC, e.assignment_start_date DESC`;
 
   const normalizedSql = sql.replace(/`/g, "");
-  const params = [empid, ...scheduleDateParams, empid];
+  const params = [empid, ...scheduleDateParams, empid, ...employmentDateParams];
   let rows;
   try {
     [rows] = await pool.query(normalizedSql, params);
@@ -1624,8 +1643,17 @@ export async function getEmploymentSessions(empid, options = {}) {
     let employmentRowExists = false;
     try {
       const [employmentRows] = await pool.query(
-        "SELECT 1 FROM tbl_employment WHERE employment_emp_id = ? AND deleted_at IS NULL LIMIT 1",
-        [empid],
+        `SELECT 1
+         FROM tbl_employment e
+         LEFT JOIN tbl_employee emp ON emp.emp_id = e.employment_emp_id
+         WHERE e.employment_emp_id = ?
+           AND e.deleted_at IS NULL
+           AND e.employment_date <= ${scheduleDateSql}
+           AND (e.employment_end_date IS NULL OR e.employment_end_date >= ${scheduleDateSql})
+           AND (emp.emp_hiredate IS NULL OR emp.emp_hiredate <= ${scheduleDateSql})
+           AND (emp.emp_outdate IS NULL OR emp.emp_outdate >= ${scheduleDateSql})
+         LIMIT 1`,
+        [empid, ...employmentDateParams],
       );
       employmentRowExists = employmentRows.length > 0;
     } catch (err) {
@@ -1662,7 +1690,12 @@ export async function getEmploymentSessions(empid, options = {}) {
       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-      WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL
+      WHERE e.employment_emp_id = ?
+        AND e.deleted_at IS NULL
+        AND e.employment_date <= ${scheduleDateSql}
+        AND (e.employment_end_date IS NULL OR e.employment_end_date >= ${scheduleDateSql})
+        AND (emp.emp_hiredate IS NULL OR emp.emp_hiredate <= ${scheduleDateSql})
+        AND (emp.emp_outdate IS NULL OR emp.emp_outdate >= ${scheduleDateSql})
       GROUP BY e.employment_company_id, company_name,
                e.employment_branch_id, branch_name,
                e.employment_department_id, department_name,
@@ -1674,7 +1707,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       ORDER BY e.employment_date DESC, e.id DESC
       LIMIT 1`;
       try {
-        const [fallbackRows] = await pool.query(fallbackSql, [empid]);
+        const [fallbackRows] = await pool.query(fallbackSql, [empid, ...employmentDateParams]);
         sessions = fallbackRows.map(mapEmploymentRow);
       } catch (err) {
         console.warn("Employment fallback query failed; returning empty list", {
