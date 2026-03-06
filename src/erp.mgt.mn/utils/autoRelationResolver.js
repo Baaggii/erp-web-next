@@ -28,47 +28,6 @@ function normalizeValue(value) {
   return String(value).trim();
 }
 
-
-export function getFirstTruthyRowValue(row, columns = []) {
-  const candidates = Array.isArray(columns) ? columns : [];
-  for (const column of candidates) {
-    const value = getRowValueCaseInsensitive(row, column);
-    if (value !== undefined && value !== null && String(value).trim() !== '') {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-export function resolveDisplayLabelFromConfig(row, displayFields = []) {
-  if (!row || !Array.isArray(displayFields) || displayFields.length === 0) return '';
-  const parts = displayFields
-    .map((field) => {
-      const value = getRowValueCaseInsensitive(row, field);
-      return value === undefined || value === null ? '' : String(value).trim();
-    })
-    .filter(Boolean);
-  return parts.join(' ').trim();
-}
-
-export function collectNormalizedIdsFromRows(rows = [], primaryColumn, fallbackColumns = []) {
-  if (!Array.isArray(rows)) return [];
-  const columns = [primaryColumn, ...(Array.isArray(fallbackColumns) ? fallbackColumns : [])]
-    .map((entry) => String(entry || '').trim())
-    .filter(Boolean);
-  if (columns.length === 0) return [];
-  const ids = rows
-    .map((row) => {
-      for (const column of columns) {
-        const value = normalizeValue(getRowValueCaseInsensitive(row, column));
-        if (value) return value;
-      }
-      return '';
-    })
-    .filter(Boolean);
-  return Array.from(new Set(ids));
-}
-
 async function fetchAllTableRows(table, { companyId, filterColumn, filterValue } = {}) {
   const rows = [];
   const perPage = 1000;

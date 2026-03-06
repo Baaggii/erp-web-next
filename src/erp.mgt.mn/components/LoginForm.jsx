@@ -10,9 +10,35 @@ import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 import { collectDeviceContext } from '../utils/deviceContext.js';
 import {
+  getRowValueCaseInsensitive,
+  resolveRelationRowsFromSource,
+} from '../utils/autoRelationResolver.js';
+import {
   deriveWorkplacePositionsFromAssignments,
   resolveWorkplacePositionMap,
 } from '../utils/workplaceResolver.js';
+
+
+function pickRelationDisplayValue(relationResult, relationRow) {
+  if (!relationRow || typeof relationRow !== 'object') return null;
+  const displayFields = Array.isArray(relationResult?.displayConfig?.displayFields)
+    ? relationResult.displayConfig.displayFields
+    : [];
+  for (const field of displayFields) {
+    const value = getRowValueCaseInsensitive(relationRow, field);
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  const fallbacks = ['name', 'company_name', 'branch_name', 'department_name', 'employee_name'];
+  for (const field of fallbacks) {
+    const value = getRowValueCaseInsensitive(relationRow, field);
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return null;
+}
 
 export default function LoginForm() {
   // login using employee ID only
@@ -37,6 +63,66 @@ export default function LoginForm() {
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
+  async function buildCompanyOptions(sessionOptions = []) {
+    const normalizedCompanies = [];
+    const seen = new Set();
+    const companyRows = [];
+
+    sessionOptions.forEach((sessionOption) => {
+      if (!sessionOption || typeof sessionOption !== 'object') return;
+      const rawId = getRowValueCaseInsensitive(sessionOption, 'company_id');
+      const normalizedId =
+        rawId === undefined || rawId === null
+          ? null
+          : Number.isFinite(Number(rawId))
+            ? Number(rawId)
+            : null;
+      if (normalizedId === null) return;
+      const key = `id:${normalizedId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      companyRows.push({ employment_company_id: normalizedId, __raw: sessionOption });
+    });
+
+    let relationResult = null;
+    try {
+      relationResult = await resolveRelationRowsFromSource({
+        sourceTable: 'tbl_employment',
+        sourceRows: companyRows,
+        sourceColumn: 'employment_company_id',
+      });
+    } catch (err) {
+      console.warn('Failed to resolve company relation for login options', err);
+    }
+
+    companyRows.forEach((companyRow) => {
+      const companyIdValue = companyRow?.employment_company_id;
+      const relationRow = relationResult?.rowById?.get(String(companyIdValue).trim());
+      const relationName = getRowValueCaseInsensitive(relationRow, 'name');
+      const rawName = getRowValueCaseInsensitive(companyRow.__raw, 'company_name');
+      const fallbackName =
+        relationName && String(relationName).trim().length
+          ? String(relationName).trim()
+          : rawName && String(rawName).trim().length
+            ? String(rawName).trim()
+            : `Company #${companyIdValue}`;
+      normalizedCompanies.push({
+        company_id: companyIdValue,
+        company_name: fallbackName,
+      });
+    });
+
+    normalizedCompanies.sort((a, b) => {
+      const nameA = (a.company_name || '').toLowerCase();
+      const nameB = (b.company_name || '').toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+
+    return normalizedCompanies;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -53,39 +139,9 @@ export default function LoginForm() {
         setStoredCreds({ empid, password });
         setEmpid('');
         setPassword('');
-        const normalizedCompanies = [];
-        const seen = new Set();
-        if (Array.isArray(loggedIn.sessions)) {
-          loggedIn.sessions.forEach((sessionOption) => {
-            if (!sessionOption || typeof sessionOption !== 'object') return;
-            const rawId = sessionOption.company_id;
-            const normalizedId =
-              rawId === undefined || rawId === null
-                ? null
-                : Number.isFinite(Number(rawId))
-                  ? Number(rawId)
-                  : null;
-            if (normalizedId === null) return;
-            const key = `id:${normalizedId}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            const fallbackName =
-              sessionOption.company_name && String(sessionOption.company_name).trim().length
-                ? String(sessionOption.company_name).trim()
-                : `Company #${normalizedId}`;
-            normalizedCompanies.push({
-              company_id: normalizedId,
-              company_name: fallbackName,
-            });
-          });
-        }
-        normalizedCompanies.sort((a, b) => {
-          const nameA = (a.company_name || '').toLowerCase();
-          const nameB = (b.company_name || '').toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
+        const normalizedCompanies = await buildCompanyOptions(
+          Array.isArray(loggedIn.sessions) ? loggedIn.sessions : [],
+        );
         setCompanyOptions(normalizedCompanies);
         setCompanyId('');
         setIsCompanyStep(true);
@@ -94,32 +150,43 @@ export default function LoginForm() {
 
       // The login response already returns the user profile
       const normalizedSession = normalizeEmploymentSession(loggedIn.session);
-      const nextUser = normalizedSession
-        ? { ...loggedIn, session: normalizedSession }
+      let enrichedSession = normalizedSession;
+      if (normalizedSession) {
+        try {
+          enrichedSession = await resolveSessionDisplayMetadata(
+            normalizedSession,
+            loggedIn?.empid,
+          );
+        } catch (err) {
+          console.warn('Failed to resolve session relation metadata after login', err);
+        }
+      }
+      const nextUser = enrichedSession
+        ? { ...loggedIn, session: enrichedSession }
         : loggedIn;
 
       setUser(nextUser);
-      setSession(normalizedSession);
+      setSession(enrichedSession);
       setCompany(
-        loggedIn.company ?? normalizedSession?.company_id ?? null,
+        loggedIn.company ?? enrichedSession?.company_id ?? null,
       );
-      setBranch(loggedIn.branch ?? normalizedSession?.branch_id ?? null);
+      setBranch(loggedIn.branch ?? enrichedSession?.branch_id ?? null);
       setDepartment(
-        loggedIn.department ?? normalizedSession?.department_id ?? null,
+        loggedIn.department ?? enrichedSession?.department_id ?? null,
       );
       setPosition(
-        loggedIn.position ?? normalizedSession?.position_id ?? null,
+        loggedIn.position ?? enrichedSession?.position_id ?? null,
       );
       setWorkplace(
-        loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
+        loggedIn.workplace ?? enrichedSession?.workplace_id ?? null,
       );
       setPermissions(loggedIn.permissions || null);
       const derivedWorkplaceMap =
-        deriveWorkplacePositionsFromAssignments(normalizedSession);
+        deriveWorkplacePositionsFromAssignments(enrichedSession);
       setWorkplacePositionMap(derivedWorkplaceMap);
       try {
         const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
-          session: normalizedSession,
+          session: enrichedSession,
         });
         setWorkplacePositionMap(resolvedWorkplaceMap);
       } catch (err) {

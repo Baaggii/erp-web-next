@@ -16,7 +16,7 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
-import { collectNormalizedIdsFromRows, getFirstTruthyRowValue, resolveDisplayLabelFromConfig, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
+import { getRowValueCaseInsensitive, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -772,6 +772,14 @@ function mergePresenceEntries(entries = []) {
     const empid = normalizeId(entry?.empid || entry?.id);
     return [empid, { ...entry, empid }];
   })).values()).filter((entry) => entry.empid);
+}
+
+function resolveDisplayLabelFromConfig(row, displayFields = []) {
+  if (!row || !Array.isArray(displayFields) || displayFields.length === 0) return '';
+  const parts = displayFields
+    .map((field) => sanitizeMessageText(getRowValueCaseInsensitive(row, field)))
+    .filter(Boolean);
+  return parts.join(' ').trim();
 }
 
 function collectMessageParticipantEmpids(message) {
@@ -1712,11 +1720,13 @@ export default function MessagingWidget() {
         });
 
         const relatedColumn = resolvedEmployeeRelation?.relation?.column || 'emp_id';
-        const idsFromEmployment = collectNormalizedIdsFromRows(
-          employmentRows,
-          'employment_emp_id',
-          ['emp_id', 'empid', 'id'],
-        ).map((entry) => normalizeId(entry)).filter(Boolean);
+        const idsFromEmployment = Array.from(
+          new Set(
+            employmentRows
+              .map((row) => normalizeId(getRowValueCaseInsensitive(row, 'employment_emp_id') || row.emp_id || row.empid || row.id))
+              .filter(Boolean),
+          ),
+        );
         if (idsFromEmployment.length === 0) {
           setEmployees([]);
           return;
@@ -1726,7 +1736,7 @@ export default function MessagingWidget() {
           ? Array.from(resolvedEmployeeRelation.rowById.values())
           : [];
         const employeeRowsById = new Map(
-          employeeRows.map((row) => [normalizeId(getFirstTruthyRowValue(row, [relatedColumn, 'emp_id', 'empid', 'id'])), row]).filter(([id]) => Boolean(id)),
+          employeeRows.map((row) => [normalizeId(getRowValueCaseInsensitive(row, relatedColumn) || row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
         );
         const activeEmployeeIds = new Set(
           idsFromEmployment.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid))),
@@ -1735,25 +1745,25 @@ export default function MessagingWidget() {
         const relationDisplayFields = Array.isArray(resolvedEmployeeRelation?.displayConfig?.displayFields)
           ? resolvedEmployeeRelation.displayConfig.displayFields
           : [];
-        const resolvedDisplayFields = relationDisplayFields;
+        const resolvedDisplayFields = relationDisplayFields.length > 0 ? relationDisplayFields : employeeDisplayFields;
 
         const profileMap = new Map(employeeRows.map((row) => {
-          const empid = normalizeId(getFirstTruthyRowValue(row, [relatedColumn, 'emp_id', 'empid', 'id']));
+          const empid = normalizeId(getRowValueCaseInsensitive(row, relatedColumn) || row.emp_id || row.empid || row.id);
           return [empid, {
             displayName:
               resolveDisplayLabelFromConfig(row, resolvedDisplayFields)
-              || getFirstTruthyRowValue(row, [
-                'displayName',
-                'emp_name',
-                'employee_name',
-                'emp_fname',
-                'name',
-                'full_name',
-                'username',
-                relatedColumn,
-              ]),
+              || row.displayName
+              || row.emp_name
+              || row.employee_name
+              || row.emp_fname
+              || row.name
+              || row.full_name
+              || row.username
+              || getRowValueCaseInsensitive(row, relatedColumn),
             employeeCode:
-              getFirstTruthyRowValue(row, ['employee_code', 'emp_code', relatedColumn]),
+              getRowValueCaseInsensitive(row, 'employee_code')
+              || getRowValueCaseInsensitive(row, 'emp_code')
+              || getRowValueCaseInsensitive(row, relatedColumn),
           }];
         }));
 
