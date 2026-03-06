@@ -2301,7 +2301,6 @@ export default function MessagingWidget() {
     () => Object.values(reactionBadgeByConversation).reduce((sum, value) => sum + Number(value || 0), 0),
     [reactionBadgeByConversation],
   );
-  const widgetBadgeCount = unreadCount + reactionChangeCount;
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -2554,6 +2553,7 @@ export default function MessagingWidget() {
     () => conversationSummaries.reduce((sum, conversation) => sum + (Number(conversation.unread) || 0), 0),
     [conversationSummaries],
   );
+  const widgetBadgeCount = unreadCount + reactionChangeCount;
 
   const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
