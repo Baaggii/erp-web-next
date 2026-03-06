@@ -141,6 +141,7 @@ export async function login(req, res, next) {
 
     if (!sessionFetchFailed && sessions.length > 0) {
       let sessionGroup = null;
+      let tenantValidatedSession = null;
       if (!hasCompanySelection) {
         if (companyGroups.size > 1) {
           const options = Array.from(companyGroups.values()).map(
@@ -165,9 +166,24 @@ export async function login(req, res, next) {
         if (!sessionGroup) {
           return res.status(400).json({ message: 'Invalid company selection' });
         }
+
+        // Re-validate selected company assignment in strict tenant context.
+        // This keeps post-selection login deterministic even if upstream
+        // non-tenant checks or cached sessions diverge.
+        tenantValidatedSession = await getEmploymentSession(empid, selectedCompanyId, {
+          effectiveDate,
+          includeDiagnostics: true,
+        });
+        if (!tenantValidatedSession) {
+          return res.status(403).json({
+            message: 'Selected company has no active employment assignment for the current date',
+          });
+        }
       }
 
-      const session = pickDefaultSession(sessionGroup?.sessions || []);
+      const session = hasCompanySelection
+        ? tenantValidatedSession || pickDefaultSession(sessionGroup?.sessions || [])
+        : pickDefaultSession(sessionGroup?.sessions || []);
       if (!session) {
         warnings.push('No employment session found for the selected company');
       }

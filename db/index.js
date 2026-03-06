@@ -1233,15 +1233,86 @@ export async function testConnection() {
  * Fetch a user by employee ID
  */
 export async function getUserByEmpId(empid) {
+  const configCompanyId = GLOBAL_COMPANY_ID;
+  const [userRelCfg, userCfgRaw] = await Promise.all([
+    listCustomRelations("users", configCompanyId),
+    getDisplayCfg("users", configCompanyId),
+  ]);
+
+  const userCfg = unwrapDisplayConfig(userCfgRaw);
+  const relationConfig = userRelCfg?.config || {};
+
+  let userEmpidColumn = "empid";
+  let employeeTable = "tbl_employee";
+  let employeeJoinColumn = "emp_id";
+
+  const employeeRelationEntry = Object.entries(relationConfig).find(([, entries]) => {
+    if (!Array.isArray(entries) || entries.length === 0) return false;
+    const rel = entries[0];
+    return rel && typeof rel.table === "string" && rel.table.trim() === "tbl_employee";
+  });
+
+  if (employeeRelationEntry) {
+    const [sourceColumn, entries] = employeeRelationEntry;
+    const relation = entries[0] || {};
+    if (typeof sourceColumn === "string" && sourceColumn.trim()) {
+      userEmpidColumn = sourceColumn.trim();
+    }
+    if (typeof relation.table === "string" && relation.table.trim()) {
+      employeeTable = relation.table.trim();
+    }
+    if (typeof relation.column === "string" && relation.column.trim()) {
+      employeeJoinColumn = relation.column.trim();
+    } else if (typeof relation.idField === "string" && relation.idField.trim()) {
+      employeeJoinColumn = relation.idField.trim();
+    }
+  }
+
+  const employeeColumns = await listTableColumns(employeeTable);
+  const employeeColumnLookup = new Map(
+    (employeeColumns || []).map((col) => [String(col || "").toLowerCase(), col]),
+  );
+  const resolveEmployeeColumn = (aliases, fallback) => {
+    for (const alias of aliases) {
+      const resolved = employeeColumnLookup.get(String(alias || "").toLowerCase());
+      if (resolved) return resolved;
+    }
+    return fallback;
+  };
+
+  const employeeIdColumn = resolveEmployeeColumn(
+    [employeeJoinColumn, "emp_id", "employee_id", "empid"],
+    employeeJoinColumn,
+  );
+  const employeeHireDateColumn = resolveEmployeeColumn(
+    ["emp_hiredate", "hire_date", "employment_start_date", "start_date"],
+    "emp_hiredate",
+  );
+  const employeeOutDateColumn = resolveEmployeeColumn(
+    ["emp_outdate", "out_date", "employment_end_date", "end_date"],
+    "emp_outdate",
+  );
+
+  const userColumns = await listTableColumns("users");
+  const userColumnLookup = new Map(
+    (userColumns || []).map((col) => [String(col || "").toLowerCase(), col]),
+  );
+  const resolvedUserEmpidColumn =
+    userColumnLookup.get(String(userEmpidColumn || "").toLowerCase()) ||
+    userColumnLookup.get("empid") ||
+    userCfg?.idField ||
+    "empid";
+
   const [rows] = await pool.query(
     `SELECT
        u.*,
-       emp.emp_id AS employee_empid,
-       emp.emp_hiredate,
-       emp.emp_outdate
-     FROM users u
-     LEFT JOIN tbl_employee emp ON emp.emp_id = u.empid
-     WHERE u.empid = ?
+       emp.${escapeIdentifier(employeeIdColumn)} AS employee_empid,
+       emp.${escapeIdentifier(employeeHireDateColumn)} AS emp_hiredate,
+       emp.${escapeIdentifier(employeeOutDateColumn)} AS emp_outdate
+     FROM ${escapeIdentifier("users")} u
+     LEFT JOIN ${escapeIdentifier(employeeTable)} emp
+       ON emp.${escapeIdentifier(employeeJoinColumn)} = u.${escapeIdentifier(resolvedUserEmpidColumn)}
+     WHERE u.${escapeIdentifier(resolvedUserEmpidColumn)} = ?
      LIMIT 1`,
     [empid],
   );

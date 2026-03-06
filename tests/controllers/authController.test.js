@@ -10,10 +10,23 @@ function mockPoolSequential(responses = []) {
   const orig = db.pool.query;
   let i = 0;
   db.pool.query = async (...args) => {
+    const sql = String(args[0] || '');
+    const params = Array.isArray(args[1]) ? args[1] : [];
+    if (sql.includes('FROM information_schema.COLUMNS')) {
+      const tableName = String(params[0] || '');
+      if (tableName === 'users') {
+        return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'empid' }, { COLUMN_NAME: 'password' }], undefined];
+      }
+      if (tableName === 'tbl_employee') {
+        return [[{ COLUMN_NAME: 'emp_id' }, { COLUMN_NAME: 'emp_hiredate' }, { COLUMN_NAME: 'emp_outdate' }], undefined];
+      }
+      return [[{ COLUMN_NAME: 'id' }], undefined];
+    }
     const res = responses[i];
     i += 1;
     if (typeof res === 'function') return res(...args);
-    return res;
+    if (res !== undefined) return res;
+    return [[], undefined];
   };
   return () => {
     db.pool.query = orig;
