@@ -2010,13 +2010,56 @@ export async function listUsers() {
 
 export async function listUsersByCompany(companyId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.empid, u.created_at
-       FROM users u
-       LEFT JOIN tbl_employee emp ON emp.emp_id = u.empid
-      WHERE u.company_id = ?
-        AND (emp.emp_hiredate IS NULL OR emp.emp_hiredate <= CURRENT_DATE())
-        AND (emp.emp_outdate IS NULL OR emp.emp_outdate >= CURRENT_DATE())`,
-    [companyId],
+    `WITH latest_employment AS (
+       SELECT
+         e.employment_company_id,
+         e.employment_emp_id,
+         e.employment_branch_id,
+         e.employment_department_id,
+         e.employment_position_id,
+         e.employment_workplace_id,
+         ROW_NUMBER() OVER (
+           PARTITION BY e.employment_company_id, e.employment_emp_id
+           ORDER BY e.employment_date DESC, e.id DESC
+         ) AS rn
+       FROM tbl_employment e
+       LEFT JOIN tbl_employee te ON te.emp_id = e.employment_emp_id
+      WHERE e.employment_company_id = ?
+        AND e.deleted_at IS NULL
+        AND e.employment_date <= CURRENT_DATE()
+        AND (e.employment_end_date IS NULL OR e.employment_end_date >= CURRENT_DATE())
+        AND (te.emp_hiredate IS NULL OR te.emp_hiredate <= CURRENT_DATE())
+        AND (te.emp_outdate IS NULL OR te.emp_outdate >= CURRENT_DATE())
+    )
+    SELECT
+      u.id,
+      u.empid,
+      u.created_at,
+      le.employment_branch_id AS branch_id,
+      cb.name AS branch_name,
+      le.employment_department_id AS department_id,
+      cd.name AS department_name,
+      le.employment_position_id AS position_id,
+      le.employment_workplace_id AS workplace_id,
+      CONCAT_WS(' ', te.emp_fname, te.emp_lname) AS full_name
+    FROM users u
+    JOIN latest_employment le
+      ON le.employment_company_id = u.company_id
+     AND le.employment_emp_id = u.empid
+     AND le.rn = 1
+    LEFT JOIN tbl_employee te
+      ON te.emp_id = u.empid
+     AND (te.Company_id = u.company_id OR te.Company_id IS NULL OR te.Company_id = 0)
+    LEFT JOIN code_department cd
+      ON cd.department_id = le.employment_department_id
+     AND (cd.company_id = u.company_id OR cd.company_id = 0)
+    LEFT JOIN code_branches cb
+      ON cb.branch_id = le.employment_branch_id
+     AND cb.company_id = u.company_id
+    WHERE u.company_id = ?
+      AND TRIM(COALESCE(u.empid, '')) <> ''
+    ORDER BY COALESCE(te.emp_fname, ''), COALESCE(te.emp_lname, ''), u.empid`,
+    [companyId, companyId],
   );
   return rows;
 }
