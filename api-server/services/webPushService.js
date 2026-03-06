@@ -195,6 +195,21 @@ export async function upsertWebPushSubscription({
     ],
   );
 
+  // Keep only one active record per endpoint for a user. Browsers may rotate
+  // subscription keys while retaining the same endpoint, which can otherwise
+  // leave duplicate active rows and cause repeated deliveries.
+  await dbPool.query(
+    `UPDATE web_push_subscriptions
+       SET is_active = 0,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE company_id = ?
+       AND empid = ?
+       AND endpoint = ?
+       AND subscription_hash <> ?
+       AND is_active = 1`,
+    [companyId, normalizedEmpid, endpoint, subHash],
+  );
+
   return { ok: true, hash: subHash };
 }
 
@@ -218,10 +233,20 @@ async function listSubscriptions({ companyId, empid }) {
        FROM web_push_subscriptions
       WHERE company_id = ?
         AND empid = ?
-        AND is_active = 1`,
+        AND is_active = 1
+      ORDER BY last_seen DESC, id DESC`,
     [companyId, normalizeEmpid(empid)],
   );
-  return rows || [];
+  if (!rows?.length) return [];
+
+  // Extra runtime safety against any historical duplicates.
+  const seenEndpoints = new Set();
+  return rows.filter((row) => {
+    const endpoint = String(row?.endpoint || '').trim();
+    if (!endpoint || seenEndpoints.has(endpoint)) return false;
+    seenEndpoints.add(endpoint);
+    return true;
+  });
 }
 
 function buildDedupeKey(job) {
