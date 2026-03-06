@@ -16,6 +16,7 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
+import { getRowValueCaseInsensitive, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -771,14 +772,6 @@ function mergePresenceEntries(entries = []) {
     const empid = normalizeId(entry?.empid || entry?.id);
     return [empid, { ...entry, empid }];
   })).values()).filter((entry) => entry.empid);
-}
-
-function getRowValueCaseInsensitive(row, fieldName) {
-  if (!row || !fieldName) return undefined;
-  if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
-  const target = String(fieldName).toLowerCase();
-  const actualKey = Object.keys(row).find((key) => key.toLowerCase() === target);
-  return actualKey ? row[actualKey] : undefined;
 }
 
 function resolveDisplayLabelFromConfig(row, displayFields = []) {
@@ -1724,10 +1717,19 @@ export default function MessagingWidget() {
         if (!employmentRes.ok) return;
         const employmentData = await employmentRes.json();
         const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
+
+        const resolvedEmployeeRelation = await resolveRelationRowsFromSource({
+          sourceTable: 'tbl_employment',
+          sourceRows: employmentRows,
+          sourceColumn: 'employment_emp_id',
+          companyId: activeCompany,
+        });
+
+        const relatedColumn = resolvedEmployeeRelation?.relation?.column || 'emp_id';
         const idsFromEmployment = Array.from(
           new Set(
             employmentRows
-              .map((row) => normalizeId(row.employment_emp_id || row.emp_id || row.empid || row.id))
+              .map((row) => normalizeId(getRowValueCaseInsensitive(row, 'employment_emp_id') || row.emp_id || row.empid || row.id))
               .filter(Boolean),
           ),
         );
@@ -1736,22 +1738,26 @@ export default function MessagingWidget() {
           return;
         }
 
-        const employeeParams = new URLSearchParams({ perPage: '1000' });
-        const employeeRes = await fetch(`${API_BASE}/tables/tbl_employee?${employeeParams.toString()}`, { credentials: 'include' });
-        const employeeData = employeeRes.ok ? await employeeRes.json() : { rows: [] };
-        const employeeRows = Array.isArray(employeeData?.rows) ? employeeData.rows : Array.isArray(employeeData) ? employeeData : [];
+        const employeeRows = resolvedEmployeeRelation
+          ? Array.from(resolvedEmployeeRelation.rowById.values())
+          : [];
         const employeeRowsById = new Map(
-          employeeRows.map((row) => [normalizeId(row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
+          employeeRows.map((row) => [normalizeId(getRowValueCaseInsensitive(row, relatedColumn) || row.emp_id || row.empid || row.id), row]).filter(([id]) => Boolean(id)),
         );
         const activeEmployeeIds = new Set(
           idsFromEmployment.filter((empid) => isEmployeeDateActive(employeeRowsById.get(empid))),
         );
 
-        const profileMap = new Map(employeeRows.map((row) => [
-          normalizeId(row.emp_id || row.empid || row.id),
-          {
+        const relationDisplayFields = Array.isArray(resolvedEmployeeRelation?.displayConfig?.displayFields)
+          ? resolvedEmployeeRelation.displayConfig.displayFields
+          : [];
+        const resolvedDisplayFields = relationDisplayFields.length > 0 ? relationDisplayFields : employeeDisplayFields;
+
+        const profileMap = new Map(employeeRows.map((row) => {
+          const empid = normalizeId(getRowValueCaseInsensitive(row, relatedColumn) || row.emp_id || row.empid || row.id);
+          return [empid, {
             displayName:
-              resolveDisplayLabelFromConfig(row, employeeDisplayFields)
+              resolveDisplayLabelFromConfig(row, resolvedDisplayFields)
               || row.displayName
               || row.emp_name
               || row.employee_name
@@ -1759,10 +1765,13 @@ export default function MessagingWidget() {
               || row.name
               || row.full_name
               || row.username
-              || row.emp_id,
-            employeeCode: row.employee_code || row.emp_code || row.emp_id,
-          },
-        ]));
+              || getRowValueCaseInsensitive(row, relatedColumn),
+            employeeCode:
+              getRowValueCaseInsensitive(row, 'employee_code')
+              || getRowValueCaseInsensitive(row, 'emp_code')
+              || getRowValueCaseInsensitive(row, relatedColumn),
+          }];
+        }));
 
         const missingEmpids = idsFromEmployment.filter((empid) => !sanitizeMessageText(profileMap.get(empid)?.displayName || ''));
         if (missingEmpids.length > 0) {
