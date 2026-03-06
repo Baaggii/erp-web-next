@@ -50,6 +50,21 @@ function toActivityScore(lastMessageAt, lastMessageId) {
   return { kind: 'none', value: 0 };
 }
 
+function normalizeUnreadCount(entry) {
+  const candidates = [
+    entry?.unread_count,
+    entry?.unreadCount,
+    entry?.unread,
+    entry?.new_count,
+    entry?.newCount,
+  ];
+  for (const value of candidates) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+}
+
 export function adaptConversationListResponse(data) {
   const items = Array.isArray(data?.items) ? data.items : [];
 
@@ -88,7 +103,7 @@ export function adaptConversationListResponse(data) {
           lastMessageAt: entry?.last_message_at ?? entry?.lastMessageAt ?? null,
           lastMessageId: normalizeId(entry?.last_message_id ?? entry?.lastMessageId) || null,
           visibilityScope: visibilityScope || null,
-          unread: 0,
+          unread: normalizeUnreadCount(entry),
           createdByEmpid: normalizeId(entry?.created_by_empid ?? entry?.createdByEmpid) || null,
           raw: entry,
         };
