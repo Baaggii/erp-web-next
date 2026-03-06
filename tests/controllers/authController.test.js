@@ -110,6 +110,24 @@ test('login succeeds without workplace assignments', async () => {
 });
 
 
+
+test('login rejects employee without active employment assignments', async () => {
+  const restorePos = mockPosSessionLogger();
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed', emp_hiredate: '2022-05-03', emp_outdate: null }]],
+    [[]],
+  ]);
+  const res = createRes();
+  await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
+  restore();
+  restorePos();
+  assert.equal(res.code, 403);
+  assert.equal(
+    res.body.message,
+    'Employee has no active employment assignment for the current date',
+  );
+});
+
 test('login rejects employee outside active date window', async () => {
   const restorePos = mockPosSessionLogger();
   const restore = mockPoolSequential([
