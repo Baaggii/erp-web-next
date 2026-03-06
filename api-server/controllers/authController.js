@@ -34,6 +34,13 @@ function formatDateOnly(value) {
   return `${year}-${month}-${day}`;
 }
 
+function isEmployeeRegistered(user) {
+  const employeeEmpid = user?.employee_empid;
+  if (employeeEmpid === undefined || employeeEmpid === null) return false;
+  const normalized = String(employeeEmpid).trim();
+  return normalized.length > 0;
+}
+
 function isEmployeeActiveOnDate(user, effectiveDate = new Date()) {
   const currentDate = formatDateOnly(effectiveDate);
   if (!currentDate) return true;
@@ -52,6 +59,11 @@ export async function login(req, res, next) {
     const user = await getUserByEmpId(empid);
     if (!user || !(await user.verifyPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    if (!isEmployeeRegistered(user)) {
+      return res.status(403).json({
+        message: 'User is not registered as an employee',
+      });
     }
     if (!isEmployeeActiveOnDate(user, effectiveDate)) {
       return res.status(403).json({

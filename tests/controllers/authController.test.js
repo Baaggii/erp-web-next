@@ -46,7 +46,7 @@ test('login prompts for company selection when companyId undefined', async () =>
     { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 20 },
   ];
   const restore = mockPoolSequential([
-    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: '1' }]],
     [sessions],
     [[]],
     [[]],
@@ -71,7 +71,7 @@ test('login succeeds when companyId is 0', async () => {
     { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: 30 },
   ];
   const restore = mockPoolSequential([
-    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: '1' }]],
     [sessions],
     [[]],
     [[]],
@@ -93,7 +93,7 @@ test('login succeeds without workplace assignments', async () => {
     { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_id: null },
   ];
   const restore = mockPoolSequential([
-    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: '1' }]],
     [sessions],
     [[]],
     [[]],
@@ -114,7 +114,7 @@ test('login succeeds without workplace assignments', async () => {
 test('login rejects employee without active employment assignments', async () => {
   const restorePos = mockPosSessionLogger();
   const restore = mockPoolSequential([
-    [[{ id: 1, empid: 1, password: 'hashed', emp_hiredate: '2022-05-03', emp_outdate: null }]],
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: '1', emp_hiredate: '2022-05-03', emp_outdate: null }]],
     [[]],
   ]);
   const res = createRes();
@@ -131,7 +131,7 @@ test('login rejects employee without active employment assignments', async () =>
 test('login rejects employee outside active date window', async () => {
   const restorePos = mockPosSessionLogger();
   const restore = mockPoolSequential([
-    [[{ id: 1, empid: 1, password: 'hashed', emp_hiredate: '2022-05-03', emp_outdate: '2000-01-01' }]],
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: '1', emp_hiredate: '2022-05-03', emp_outdate: '2000-01-01' }]],
   ]);
   const res = createRes();
   await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
@@ -139,4 +139,18 @@ test('login rejects employee outside active date window', async () => {
   restorePos();
   assert.equal(res.code, 403);
   assert.equal(res.body.message, 'Employee is not active for the current date');
+});
+
+
+test('login rejects user that is not registered in tbl_employee', async () => {
+  const restorePos = mockPosSessionLogger();
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed', employee_empid: null }]],
+  ]);
+  const res = createRes();
+  await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
+  restore();
+  restorePos();
+  assert.equal(res.code, 403);
+  assert.equal(res.body.message, 'User is not registered as an employee');
 });
