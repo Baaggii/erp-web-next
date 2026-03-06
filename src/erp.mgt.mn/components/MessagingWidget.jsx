@@ -1706,12 +1706,6 @@ export default function MessagingWidget() {
 
     const loadEmployees = async () => {
       try {
-        const displayFieldConfigRes = await fetch('/api/display_fields?table=tbl_employee', { credentials: 'include' });
-        const displayFieldConfig = displayFieldConfigRes.ok ? await displayFieldConfigRes.json().catch(() => ({})) : {};
-        const employeeDisplayFields = Array.isArray(displayFieldConfig?.displayFields)
-          ? displayFieldConfig.displayFields.filter((field) => typeof field === 'string' && field.trim())
-          : [];
-
         const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
         const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
         if (!employmentRes.ok) return;
