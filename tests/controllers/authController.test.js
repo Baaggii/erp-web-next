@@ -13,7 +13,8 @@ function mockPoolSequential(responses = []) {
     const res = responses[i];
     i += 1;
     if (typeof res === 'function') return res(...args);
-    return res;
+    if (res !== undefined) return res;
+    return [[], undefined];
   };
   return () => {
     db.pool.query = orig;
