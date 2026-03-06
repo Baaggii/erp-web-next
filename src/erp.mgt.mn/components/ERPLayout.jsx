@@ -3761,17 +3761,7 @@ export function Header({
       const baseName = assignment.workplace_name ?? assignment.workplaceName
         ? String(assignment.workplace_name ?? assignment.workplaceName).trim()
         : '';
-      const contextParts = [];
-      if (assignment.department_name ?? assignment.departmentName) {
-        contextParts.push(
-          String(assignment.department_name ?? assignment.departmentName).trim(),
-        );
-      }
-      if (assignment.branch_name ?? assignment.branchName) {
-        contextParts.push(String(assignment.branch_name ?? assignment.branchName).trim());
-      }
-      const context = contextParts.filter(Boolean).join(' / ');
-      const labelParts = [idLabel, baseName, context].filter(
+      const labelParts = [idLabel, baseName].filter(
         (part) => part && part.length,
       );
       if (!labelParts.length && normalizedWorkplaceId != null) {
@@ -3789,15 +3779,15 @@ export function Header({
       const baseName = session.workplace_name ?? session.workplaceName
         ? String(session.workplace_name ?? session.workplaceName).trim()
         : '';
-      const contextParts = [];
-      if (session.department_name ?? session.departmentName) {
-        contextParts.push(String(session.department_name ?? session.departmentName).trim());
-      }
-      if (session.branch_name ?? session.branchName) {
-        contextParts.push(String(session.branch_name ?? session.branchName).trim());
-      }
-      const context = contextParts.filter(Boolean).join(' / ');
-      const fallbackParts = [idParts.join(' · '), baseName, context].filter(
+      const branchName = normalizeText(session.branch_name ?? session.branchName);
+      const normalizedBaseName = normalizeText(baseName);
+      const shouldUseBaseName =
+        normalizedBaseName &&
+        (!branchName ||
+          normalizedBaseName.localeCompare(branchName, undefined, {
+            sensitivity: 'accent',
+          }) !== 0);
+      const fallbackParts = [idParts.join(' · '), shouldUseBaseName ? baseName : ''].filter(
         (part) => part && part.length,
       );
       if (fallbackParts.length) {
@@ -3806,6 +3796,32 @@ export function Header({
     }
     return labels;
   }, [normalizeText, preferNameLikeText, session]);
+
+  const departmentLabel = useMemo(() => {
+    const assignmentDepartment = (Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : []
+    )
+      .map((assignment) => assignment?.department_name ?? assignment?.departmentName)
+      .map((value) => normalizeText(value))
+      .find((value) => value && value.length);
+    return (
+      assignmentDepartment ??
+      normalizeText(session?.department_name ?? session?.departmentName) ??
+      null
+    );
+  }, [normalizeText, session]);
+
+  const branchLabel = useMemo(() => {
+    const assignmentBranch = (Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : []
+    )
+      .map((assignment) => assignment?.branch_name ?? assignment?.branchName)
+      .map((value) => normalizeText(value))
+      .find((value) => value && value.length);
+    return assignmentBranch ?? normalizeText(session?.branch_name ?? session?.branchName) ?? null;
+  }, [normalizeText, session]);
 
   const userDetails = useMemo(() => {
     const items = [];
@@ -3821,6 +3837,20 @@ export function Header({
         label: t('userMenu.workplace', 'Workplace'),
         value: workplaceLabels.filter(Boolean).join(', '),
         icon: '🏭',
+      });
+    }
+    if (departmentLabel) {
+      items.push({
+        label: t('userMenu.department', 'Department'),
+        value: departmentLabel,
+        icon: '🏬',
+      });
+    }
+    if (branchLabel) {
+      items.push({
+        label: t('userMenu.branch', 'Branch'),
+        value: branchLabel,
+        icon: '🌿',
       });
     }
     if (session?.pos_name) {
@@ -3855,7 +3885,15 @@ export function Header({
       });
     }
     return items;
-  }, [positionLabel, session?.company_name, session?.user_level_name, t, workplaceLabels]);
+  }, [
+    branchLabel,
+    departmentLabel,
+    positionLabel,
+    session?.company_name,
+    session?.user_level_name,
+    t,
+    workplaceLabels,
+  ]);
 
   const matchedAssignment = useMemo(() => {
     const assignments = Array.isArray(session?.workplace_assignments)
