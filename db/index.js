@@ -1326,7 +1326,6 @@ function mapEmploymentRow(row) {
 }
 
 let employmentScheduleColumnCache = null;
-let employmentColumnCache = null;
 let companyMerchantColumnCache = null;
 const posTableColumnCache = new Map();
 
@@ -1390,24 +1389,6 @@ async function getCompanyMerchantTinColumnInfo() {
   return companyMerchantColumnCache;
 }
 
-async function getEmploymentColumnInfo() {
-  if (employmentColumnCache) return employmentColumnCache;
-  try {
-    const columns = await getTableColumnsSafe("tbl_employment");
-    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
-    employmentColumnCache = {
-      hasEmploymentEndDate: lower.has("employment_end_date"),
-    };
-  } catch (err) {
-    if (err?.code === "ER_NO_SUCH_TABLE") {
-      employmentColumnCache = { hasEmploymentEndDate: false };
-    } else {
-      throw err;
-    }
-  }
-  return employmentColumnCache;
-}
-
 async function getEmploymentScheduleColumnInfo() {
   if (employmentScheduleColumnCache) return employmentScheduleColumnCache;
   if (process.env.SKIP_SCHEDULE_COLUMN_CHECK === "1") {
@@ -1459,14 +1440,12 @@ export async function getEmploymentSessions(empid, options = {}) {
     deptCfgRaw,
     empCfgRaw,
     relationCfg,
-    employmentColumnInfo,
   ] = await Promise.all([
     getDisplayCfg("companies", configCompanyId),
     getDisplayCfg("code_branches", configCompanyId),
     getDisplayCfg("code_department", configCompanyId),
     getDisplayCfg("tbl_employee", configCompanyId),
     listCustomRelations("tbl_employment", configCompanyId),
-    getEmploymentColumnInfo(),
   ]);
 
   const companyCfg = unwrapDisplayConfig(companyCfgRaw);
@@ -1474,10 +1453,6 @@ export async function getEmploymentSessions(empid, options = {}) {
   const deptCfg = unwrapDisplayConfig(deptCfgRaw);
   const empCfg = unwrapDisplayConfig(empCfgRaw);
   const relationConfig = relationCfg?.config || {};
-  const employmentEndDateFilter = employmentColumnInfo?.hasEmploymentEndDate
-    ? `
-      AND (e.employment_end_date IS NULL OR e.employment_end_date >= ${scheduleDateSql})`
-    : '';
 
   const [companyRel, branchRel, deptRel] = await Promise.all([
     resolveEmploymentRelation({
@@ -1562,7 +1537,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       ) AS rn
     FROM tbl_employment e
     WHERE e.employment_emp_id = ?
-      AND e.deleted_at IS NULL${employmentEndDateFilter}
+      AND e.deleted_at IS NULL
   ),
   latest_assignments AS (
     SELECT
@@ -1687,7 +1662,7 @@ export async function getEmploymentSessions(empid, options = {}) {
       LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
       LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-      WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL${employmentEndDateFilter}
+      WHERE e.employment_emp_id = ? AND e.deleted_at IS NULL
       GROUP BY e.employment_company_id, company_name,
                e.employment_branch_id, branch_name,
                e.employment_department_id, department_name,
