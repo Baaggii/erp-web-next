@@ -28,24 +28,6 @@ function normalizeValue(value) {
   return String(value).trim();
 }
 
-export function collectNormalizedIdsFromRows(rows = [], primaryColumn, fallbackColumns = []) {
-  if (!Array.isArray(rows)) return [];
-  const columns = [primaryColumn, ...(Array.isArray(fallbackColumns) ? fallbackColumns : [])]
-    .map((entry) => String(entry || '').trim())
-    .filter(Boolean);
-  if (columns.length === 0) return [];
-  const ids = rows
-    .map((row) => {
-      for (const column of columns) {
-        const value = normalizeValue(getRowValueCaseInsensitive(row, column));
-        if (value) return value;
-      }
-      return '';
-    })
-    .filter(Boolean);
-  return Array.from(new Set(ids));
-}
-
 async function fetchAllTableRows(table, { companyId, filterColumn, filterValue } = {}) {
   const rows = [];
   const perPage = 1000;

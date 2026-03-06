@@ -16,7 +16,7 @@ import {
   sanitizeMessageText,
 } from './messagingWidgetModel.js';
 import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
-import { collectNormalizedIdsFromRows, getRowValueCaseInsensitive, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
+import { getRowValueCaseInsensitive, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -1720,11 +1720,13 @@ export default function MessagingWidget() {
         });
 
         const relatedColumn = resolvedEmployeeRelation?.relation?.column || 'emp_id';
-        const idsFromEmployment = collectNormalizedIdsFromRows(
-          employmentRows,
-          'employment_emp_id',
-          ['emp_id', 'empid', 'id'],
-        ).map((entry) => normalizeId(entry)).filter(Boolean);
+        const idsFromEmployment = Array.from(
+          new Set(
+            employmentRows
+              .map((row) => normalizeId(getRowValueCaseInsensitive(row, 'employment_emp_id') || row.emp_id || row.empid || row.id))
+              .filter(Boolean),
+          ),
+        );
         if (idsFromEmployment.length === 0) {
           setEmployees([]);
           return;
@@ -1743,7 +1745,7 @@ export default function MessagingWidget() {
         const relationDisplayFields = Array.isArray(resolvedEmployeeRelation?.displayConfig?.displayFields)
           ? resolvedEmployeeRelation.displayConfig.displayFields
           : [];
-        const resolvedDisplayFields = relationDisplayFields;
+        const resolvedDisplayFields = relationDisplayFields.length > 0 ? relationDisplayFields : employeeDisplayFields;
 
         const profileMap = new Map(employeeRows.map((row) => {
           const empid = normalizeId(getRowValueCaseInsensitive(row, relatedColumn) || row.emp_id || row.empid || row.id);
