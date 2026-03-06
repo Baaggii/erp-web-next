@@ -79,19 +79,29 @@ when a new company is created (`seed_on_create=0`):
 - `code_branches`
 - `code_department`
 
-## Login-domain tenant isolation decisions
+## Login-domain centralized tenant-isolation workflow
 
-For authentication and employment context resolution, keep the following table model:
+For authentication and employment context resolution, use a two-phase workflow:
 
-1. **`users`**: global/shared identity table (**no tenant isolation**).
-   - Login starts by finding user by `empid` without company filtering.
-2. **`tbl_employee`**: centralized HR registry (**no tenant isolation**).
-   - Employee hire/out dates are global employment lifecycle checks.
-3. **`tbl_employment`**: tenant-scoped assignment table (**tenant isolation required**).
-   - This is the primary company/branch/department/position/role assignment source.
-4. **`tbl_employment_schedule`**: tenant-scoped workplace schedule table (**tenant isolation required**).
-   - Effective schedule rows override/fill branch+department and workplace for selected company.
-5. **Code resolution tables** (`companies`, `code_branches`, `code_department`, `code_workplace`, `code_pos`, `user_levels`, and similar): **tenant isolation required**, with optional shared global rows (`company_id=0`) where needed.
+1. **Global pre-check phase** (before company is selected)
+   - Validate identity credentials from `users`.
+   - Validate employee registration + active date from `tbl_employee`.
+   - Resolve active company options from `tbl_employment` / `tbl_employment_schedule`.
+2. **Company selection phase**
+   - If more than one active company assignment exists, return company options and require explicit selection.
+3. **Tenant-locked phase** (after company is selected)
+   - Re-validate selected-company assignment in strict tenant context.
+   - Execute subsequent reads/writes through centralized tenant isolation (`tenant_tables` + temp-table scoping), including shared/global behavior.
+
+### Table policy for login
+
+- `users`, `tbl_employee`: global pre-check tables.
+- `tbl_employment`, `tbl_employment_schedule`: tenant-scoped assignment tables.
+- Code resolution tables (`companies`, `code_branches`, `code_department`, `code_workplace`, `code_pos`, `user_levels`, etc.): tenant-scoped with optional global rows (`company_id=0`) where shared defaults are intended.
+
+### Should SQL include explicit `company_id` predicates after tenant lock?
+
+It can be omitted **only** for query paths guaranteed to go through centralized tenant-isolation wrappers/procedures. Otherwise, keep explicit `company_id` filters in SQL.
 
 ### Should we use centralized field-mapping resolution?
 
