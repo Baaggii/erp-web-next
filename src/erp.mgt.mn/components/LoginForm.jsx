@@ -10,6 +10,10 @@ import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 import { collectDeviceContext } from '../utils/deviceContext.js';
 import {
+  getRowValueCaseInsensitive,
+  resolveRelationRowsFromSource,
+} from '../utils/autoRelationResolver.js';
+import {
   deriveWorkplacePositionsFromAssignments,
   resolveWorkplacePositionMap,
 } from '../utils/workplaceResolver.js';
@@ -37,6 +41,66 @@ export default function LoginForm() {
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
+  async function buildCompanyOptions(sessionOptions = []) {
+    const normalizedCompanies = [];
+    const seen = new Set();
+    const companyRows = [];
+
+    sessionOptions.forEach((sessionOption) => {
+      if (!sessionOption || typeof sessionOption !== 'object') return;
+      const rawId = getRowValueCaseInsensitive(sessionOption, 'company_id');
+      const normalizedId =
+        rawId === undefined || rawId === null
+          ? null
+          : Number.isFinite(Number(rawId))
+            ? Number(rawId)
+            : null;
+      if (normalizedId === null) return;
+      const key = `id:${normalizedId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      companyRows.push({ employment_company_id: normalizedId, __raw: sessionOption });
+    });
+
+    let relationResult = null;
+    try {
+      relationResult = await resolveRelationRowsFromSource({
+        sourceTable: 'tbl_employment',
+        sourceRows: companyRows,
+        sourceColumn: 'employment_company_id',
+      });
+    } catch (err) {
+      console.warn('Failed to resolve company relation for login options', err);
+    }
+
+    companyRows.forEach((companyRow) => {
+      const companyIdValue = companyRow?.employment_company_id;
+      const relationRow = relationResult?.rowById?.get(String(companyIdValue).trim());
+      const relationName = getRowValueCaseInsensitive(relationRow, 'name');
+      const rawName = getRowValueCaseInsensitive(companyRow.__raw, 'company_name');
+      const fallbackName =
+        relationName && String(relationName).trim().length
+          ? String(relationName).trim()
+          : rawName && String(rawName).trim().length
+            ? String(rawName).trim()
+            : `Company #${companyIdValue}`;
+      normalizedCompanies.push({
+        company_id: companyIdValue,
+        company_name: fallbackName,
+      });
+    });
+
+    normalizedCompanies.sort((a, b) => {
+      const nameA = (a.company_name || '').toLowerCase();
+      const nameB = (b.company_name || '').toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+
+    return normalizedCompanies;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -53,39 +117,9 @@ export default function LoginForm() {
         setStoredCreds({ empid, password });
         setEmpid('');
         setPassword('');
-        const normalizedCompanies = [];
-        const seen = new Set();
-        if (Array.isArray(loggedIn.sessions)) {
-          loggedIn.sessions.forEach((sessionOption) => {
-            if (!sessionOption || typeof sessionOption !== 'object') return;
-            const rawId = sessionOption.company_id;
-            const normalizedId =
-              rawId === undefined || rawId === null
-                ? null
-                : Number.isFinite(Number(rawId))
-                  ? Number(rawId)
-                  : null;
-            if (normalizedId === null) return;
-            const key = `id:${normalizedId}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            const fallbackName =
-              sessionOption.company_name && String(sessionOption.company_name).trim().length
-                ? String(sessionOption.company_name).trim()
-                : `Company #${normalizedId}`;
-            normalizedCompanies.push({
-              company_id: normalizedId,
-              company_name: fallbackName,
-            });
-          });
-        }
-        normalizedCompanies.sort((a, b) => {
-          const nameA = (a.company_name || '').toLowerCase();
-          const nameB = (b.company_name || '').toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
+        const normalizedCompanies = await buildCompanyOptions(
+          Array.isArray(loggedIn.sessions) ? loggedIn.sessions : [],
+        );
         setCompanyOptions(normalizedCompanies);
         setCompanyId('');
         setIsCompanyStep(true);
