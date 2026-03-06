@@ -44,6 +44,21 @@ function isEmployeeActiveOnDate(user, effectiveDate = new Date()) {
   return true;
 }
 
+
+function hasRequiredEmploymentFields(session) {
+  if (!session || typeof session !== 'object') return false;
+  const hasBranch = session.branch_id !== null && session.branch_id !== undefined;
+  const hasDepartment =
+    session.department_id !== null && session.department_id !== undefined;
+  const hasPosition =
+    session.position_id !== null &&
+    session.position_id !== undefined;
+  const hasRole =
+    session.user_level !== null &&
+    session.user_level !== undefined;
+  return hasBranch && hasDepartment && hasPosition && hasRole;
+}
+
 export async function login(req, res, next) {
   try {
     const { empid, password, companyId } = req.body;
@@ -77,8 +92,10 @@ export async function login(req, res, next) {
     }
     if (!sessionFetchFailed) {
       if (!Array.isArray(sessions) || sessions.length === 0) {
-        warnings.push('No workplace assignments found for current period');
-        sessions = [];
+        return res.status(403).json({
+          message:
+            'Employee has no effective employment assignment for the current date',
+        });
       }
     } else {
       sessions = [];
@@ -187,6 +204,13 @@ export async function login(req, res, next) {
         ? normalizeEmploymentSession(session, workplaceAssignments)
         : null;
 
+      if (!hasRequiredEmploymentFields(sessionPayload)) {
+        return res.status(403).json({
+          message:
+            'Employee is missing effective department, branch, position or role assignment',
+        });
+      }
+
       permissions =
         sessionPayload?.user_level && sessionPayload?.company_id
           ? await getUserLevelActions(
@@ -197,26 +221,10 @@ export async function login(req, res, next) {
     }
 
     if (!sessionPayload) {
-      const fallbackCompanyId =
-        hasCompanySelection && selectedCompanyId !== null
-          ? selectedCompanyId
-          : sessions[0]?.company_id ?? null;
-      sessionPayload =
-        normalizeEmploymentSession(
-          {
-            company_id: fallbackCompanyId,
-            workplace_id: null,
-            workplace_name: null,
-          },
-          workplaceAssignments,
-        ) ||
-        {
-          company_id: fallbackCompanyId,
-          workplace_id: null,
-          workplace_name: null,
-          workplace_assignments: workplaceAssignments,
-        };
-      permissions = {};
+      return res.status(403).json({
+        message:
+          'Employee has no effective employment assignment for the selected company',
+      });
     }
 
     const {
