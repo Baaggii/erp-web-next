@@ -18,6 +18,28 @@ import {
   resolveWorkplacePositionMap,
 } from '../utils/workplaceResolver.js';
 
+
+function pickRelationDisplayValue(relationResult, relationRow) {
+  if (!relationRow || typeof relationRow !== 'object') return null;
+  const displayFields = Array.isArray(relationResult?.displayConfig?.displayFields)
+    ? relationResult.displayConfig.displayFields
+    : [];
+  for (const field of displayFields) {
+    const value = getRowValueCaseInsensitive(relationRow, field);
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  const fallbacks = ['name', 'company_name', 'branch_name', 'department_name', 'employee_name'];
+  for (const field of fallbacks) {
+    const value = getRowValueCaseInsensitive(relationRow, field);
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return null;
+}
+
 export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
@@ -128,32 +150,43 @@ export default function LoginForm() {
 
       // The login response already returns the user profile
       const normalizedSession = normalizeEmploymentSession(loggedIn.session);
-      const nextUser = normalizedSession
-        ? { ...loggedIn, session: normalizedSession }
+      let enrichedSession = normalizedSession;
+      if (normalizedSession) {
+        try {
+          enrichedSession = await resolveSessionDisplayMetadata(
+            normalizedSession,
+            loggedIn?.empid,
+          );
+        } catch (err) {
+          console.warn('Failed to resolve session relation metadata after login', err);
+        }
+      }
+      const nextUser = enrichedSession
+        ? { ...loggedIn, session: enrichedSession }
         : loggedIn;
 
       setUser(nextUser);
-      setSession(normalizedSession);
+      setSession(enrichedSession);
       setCompany(
-        loggedIn.company ?? normalizedSession?.company_id ?? null,
+        loggedIn.company ?? enrichedSession?.company_id ?? null,
       );
-      setBranch(loggedIn.branch ?? normalizedSession?.branch_id ?? null);
+      setBranch(loggedIn.branch ?? enrichedSession?.branch_id ?? null);
       setDepartment(
-        loggedIn.department ?? normalizedSession?.department_id ?? null,
+        loggedIn.department ?? enrichedSession?.department_id ?? null,
       );
       setPosition(
-        loggedIn.position ?? normalizedSession?.position_id ?? null,
+        loggedIn.position ?? enrichedSession?.position_id ?? null,
       );
       setWorkplace(
-        loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
+        loggedIn.workplace ?? enrichedSession?.workplace_id ?? null,
       );
       setPermissions(loggedIn.permissions || null);
       const derivedWorkplaceMap =
-        deriveWorkplacePositionsFromAssignments(normalizedSession);
+        deriveWorkplacePositionsFromAssignments(enrichedSession);
       setWorkplacePositionMap(derivedWorkplaceMap);
       try {
         const resolvedWorkplaceMap = await resolveWorkplacePositionMap({
-          session: normalizedSession,
+          session: enrichedSession,
         });
         setWorkplacePositionMap(resolvedWorkplaceMap);
       } catch (err) {
