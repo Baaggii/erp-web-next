@@ -205,6 +205,17 @@ function isDocumentActive() {
   return true;
 }
 
+function readSessionReadState(storageKey) {
+  const raw = globalThis.sessionStorage?.getItem(storageKey);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 
 function toDateOnly(value) {
   if (!value) return null;
@@ -1371,16 +1382,7 @@ export default function MessagingWidget() {
   const [collapsedMessageIds, setCollapsedMessageIds] = useState(() => new Set());
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
-  const [lastReadByCompany, setLastReadByCompany] = useState(() => {
-    const raw = globalThis.sessionStorage?.getItem(sessionReadStateKey);
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  });
+  const [lastReadByCompany, setLastReadByCompany] = useState(() => readSessionReadState(sessionReadStateKey));
   const [threadPagingByCompany, setThreadPagingByCompany] = useState({});
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
@@ -1560,6 +1562,10 @@ export default function MessagingWidget() {
   useEffect(() => {
     globalThis.sessionStorage?.setItem(sessionReadStateKey, JSON.stringify(lastReadByCompany || {}));
   }, [lastReadByCompany, sessionReadStateKey]);
+
+  useEffect(() => {
+    setLastReadByCompany(readSessionReadState(sessionReadStateKey));
+  }, [sessionReadStateKey]);
 
   useEffect(() => {
     if (!companyId || state.activeCompanyId === companyId) return;
