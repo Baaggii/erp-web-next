@@ -77,8 +77,9 @@ export async function login(req, res, next) {
     }
     if (!sessionFetchFailed) {
       if (!Array.isArray(sessions) || sessions.length === 0) {
-        warnings.push('No workplace assignments found for current period');
-        sessions = [];
+        return res.status(403).json({
+          message: 'Employee has no active employment assignment for the current date',
+        });
       }
     } else {
       sessions = [];
