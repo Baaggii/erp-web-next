@@ -2297,18 +2297,6 @@ export default function MessagingWidget() {
 
   const threadMessages = useMemo(() => buildNestedThreads(threadMessagesRaw), [threadMessagesRaw]);
   const messageMap = useMemo(() => new Map(messages.map((msg) => [normalizeId(msg.id), msg])), [messages]);
-  const unreadCount = useMemo(() => {
-    const companyKey = getCompanyCacheKey(state.activeCompanyId || companyId);
-    const readState = lastReadByCompany?.[companyKey] || {};
-    return messages.filter((msg) => {
-      const conversationId = normalizeConversationId(msg?.conversation_id || msg?.conversationId);
-      if (!conversationId || !isUnreadCandidateMessage(msg, selfEmpid)) return false;
-      const messageId = numericMessageId(msg.id);
-      const lastReadId = Number(readState[conversationId] || 0);
-      return messageId > lastReadId;
-    }).length;
-  }, [companyId, lastReadByCompany, messages, selfEmpid, state.activeCompanyId]);
-
   const reactionChangeCount = useMemo(
     () => Object.values(reactionBadgeByConversation).reduce((sum, value) => sum + Number(value || 0), 0),
     [reactionBadgeByConversation],
@@ -2541,14 +2529,16 @@ export default function MessagingWidget() {
     const lastReadId = Number(activeThreadReadState[convId] || 0);
     const previewMessage = conversationMessages.at(-1);
     const previewDecoded = decodeMessageContent(previewMessage?.body || '');
+    const unreadFromMessages = conversationMessages.filter((msg) => {
+      if (!isUnreadCandidateMessage(msg, selfEmpid)) return false;
+      const messageId = numericMessageId(msg.id);
+      return messageId > lastReadId;
+    }).length;
+    const unreadFallback = Number(conversation.unread || 0);
     return {
       ...conversation,
       messages: conversationMessages,
-      unread: conversationMessages.filter((msg) => {
-        if (!isUnreadCandidateMessage(msg, selfEmpid)) return false;
-        const messageId = numericMessageId(msg.id);
-        return messageId > lastReadId;
-      }).length,
+      unread: conversationMessages.length > 0 ? unreadFromMessages : unreadFallback,
       preview: sanitizeMessageText(previewDecoded.text || '').slice(0, 48) || (conversation.isGeneral ? 'Company-wide channel' : 'No messages yet'),
       groupName: conversation.isGeneral
         ? 'Company-wide'
@@ -2559,6 +2549,11 @@ export default function MessagingWidget() {
       reactionChanges: Number(reactionBadgeByConversation[convId] || 0),
     };
   }), [activeThreadReadState, conversationSummariesSource, messages, reactionBadgeByConversation, selfEmpid]);
+
+  const unreadCount = useMemo(
+    () => conversationSummaries.reduce((sum, conversation) => sum + (Number(conversation.unread) || 0), 0),
+    [conversationSummaries],
+  );
 
   const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
