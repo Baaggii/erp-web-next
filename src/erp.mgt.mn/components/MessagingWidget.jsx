@@ -3484,6 +3484,27 @@ export default function MessagingWidget() {
     fetchThreadMessages(activeConversationId, activeCompany);
   }, [activeConversation?.conversationId, state.activeCompanyId, companyId]);
 
+  const closeWidget = useCallback(() => {
+    const activeCompany = state.activeCompanyId || companyId;
+    if (
+      isDocumentActive()
+      && state.isOpen
+      && activeCompany
+      && activeConversationNumericId
+      && threadMessagesRaw.length > 0
+    ) {
+      markConversationRead(activeConversationNumericId, activeCompany);
+    }
+    dispatch({ type: 'widget/close' });
+  }, [
+    activeConversationNumericId,
+    companyId,
+    markConversationRead,
+    state.activeCompanyId,
+    state.isOpen,
+    threadMessagesRaw.length,
+  ]);
+
   if (!state.isOpen) {
     return (
       <section style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1200 }}>
@@ -3591,7 +3612,7 @@ export default function MessagingWidget() {
           )}
           <button
             type="button"
-            onClick={() => dispatch({ type: 'widget/close' })}
+            onClick={closeWidget}
             aria-label="Collapse messaging widget"
             style={{ border: '1px solid rgba(148, 163, 184, 0.7)', borderRadius: 8, background: 'transparent', color: '#e2e8f0', padding: '6px 10px', fontSize: 12 }}
           >
