@@ -113,6 +113,8 @@ It can be omitted **only** for query paths guaranteed to go through centralized 
 - Keep **auth-critical constraints hardcoded** in login/session SQL logic (required IDs,
   date effectiveness, assignment completeness), so security does not depend on mutable
   display configuration.
+- Login pre-check queries may use centralized relation/display metadata for identity-to-employee join
+  resolution, but credential validation and employment-effectiveness guards remain hardcoded.
 
 This keeps login behavior deterministic and secure while still benefiting from centralized
 field/relationship mapping for naming and join adaptability.
