@@ -2483,6 +2483,7 @@ const TableManager = forwardRef(function TableManager({
         let rels = [];
         let relRes;
         let unauthorized = false;
+        let customList = [];
         try {
           relRes = await fetch(
             `/api/tables/${encodeURIComponent(table)}/relations`,
@@ -2502,37 +2503,50 @@ const TableManager = forwardRef(function TableManager({
             }
             return [];
           });
-        } else {
-          let customList = [];
-          try {
-            const customRes = await fetch(
-              `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-              { credentials: 'include', skipErrorToast: true, skipLoader: true },
+        }
+
+        try {
+          const customRes = await fetch(
+            `/api/tables/${encodeURIComponent(table)}/relations/custom`,
+            { credentials: 'include', skipErrorToast: true, skipLoader: true },
+          );
+          unauthorized = unauthorized || customRes?.status === 403;
+          if (customRes.ok) {
+            const customJson = await customRes.json().catch(() => ({}));
+            customList = buildCustomRelationsList(customJson);
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (!relRes?.ok && customList.length === 0) {
+          if (!canceled && !unauthorized) {
+            addToast(
+              t('failed_load_table_relations', 'Failed to load table relations'),
+              'error',
             );
-            unauthorized = unauthorized || customRes?.status === 403;
-            if (customRes.ok) {
-              const customJson = await customRes.json().catch(() => ({}));
-              customList = buildCustomRelationsList(customJson);
-            }
-          } catch {
-            /* ignore */
           }
-          if (customList.length === 0) {
-            if (!canceled && !unauthorized) {
-              addToast(
-                t('failed_load_table_relations', 'Failed to load table relations'),
-                'error',
-              );
-            }
-            if (!canceled) {
-              setRelations({});
-              setRefData({});
-              setRefRows({});
-              setRelationConfigs({});
-            }
-            return;
+          if (!canceled) {
+            setRelations({});
+            setRefData({});
+            setRefRows({});
+            setRelationConfigs({});
           }
-        rels = customList;
+          return;
+        }
+
+        if (customList.length > 0) {
+          const seenCustomKeys = new Set(
+            rels
+              .map((entry) => resolveCanonicalKey(entry?.COLUMN_NAME))
+              .filter(Boolean),
+          );
+          customList.forEach((entry) => {
+            const customKey = resolveCanonicalKey(entry?.COLUMN_NAME);
+            if (!customKey || seenCustomKeys.has(customKey)) return;
+            rels.push(entry);
+            seenCustomKeys.add(customKey);
+          });
         }
         if (canceled) return;
 
