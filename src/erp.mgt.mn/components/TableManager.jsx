@@ -1930,14 +1930,26 @@ const TableManager = forwardRef(function TableManager({
       return undefined;
     };
 
+    const hasRowValueForField = (field) => {
+      if (!Array.isArray(rows) || rows.length === 0) return false;
+      const resolved = resolveCanonicalKey(field) || field;
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const rowValue = row[resolved];
+        if (hasMeaningfulValue(rowValue)) return true;
+      }
+      return false;
+    };
+
     const shouldLoadRelationColumn = (field) => {
       const resolved = resolveCanonicalKey(field) || field;
       const isVisible =
         visibleFieldSet.size === 0 || visibleFieldSet.has(resolved);
       const hasValue = hasMeaningfulValue(resolveFieldValue(field));
+      const hasRowValue = hasRowValueForField(field);
       const isRequired = requiredFieldSet.has(resolved);
-      if (!isVisible && !hasValue) return false;
-      const isActive = isVisible || isRequired || hasValue;
+      if (!isVisible && !hasValue && !hasRowValue) return false;
+      const isActive = isVisible || isRequired || hasValue || hasRowValue;
       if (!isActive) return false;
       if (!isVisible) {
         const cache = hiddenRelationFetchCacheRef.current.fields;
@@ -2527,7 +2539,8 @@ const TableManager = forwardRef(function TableManager({
         const relationMap = {};
         rels.forEach((r) => {
           const key = resolveCanonicalKey(r.COLUMN_NAME);
-          relationMap[key] = {
+          if (!key) return;
+          const nextConfig = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
             ...(r.idField ? { idField: r.idField } : {}),
@@ -2543,6 +2556,29 @@ const TableManager = forwardRef(function TableManager({
               ? { filterValue: r.filterValue }
               : {}),
             ...(r.isArray ? { isArray: true } : {}),
+          };
+
+          if (!relationMap[key]) {
+            relationMap[key] = nextConfig;
+            return;
+          }
+
+          const existing = relationMap[key];
+          const mergedDisplayFields = Array.from(
+            new Set([
+              ...(Array.isArray(existing.displayFields) ? existing.displayFields : []),
+              ...(Array.isArray(nextConfig.displayFields)
+                ? nextConfig.displayFields
+                : []),
+            ]),
+          );
+
+          relationMap[key] = {
+            ...existing,
+            ...nextConfig,
+            displayFields:
+              mergedDisplayFields.length > 0 ? mergedDisplayFields : undefined,
+            idField: nextConfig.idField || existing.idField,
           };
         });
         setRelations(relationMap);
@@ -2651,6 +2687,7 @@ const TableManager = forwardRef(function TableManager({
     branch,
     department,
     formConfig,
+    rows,
     resolveCanonicalKey,
     showForm,
     validCols,
