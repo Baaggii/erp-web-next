@@ -217,7 +217,6 @@ export async function resolveTableRelationRows(req, res, next) {
       targetColumn: relation.column,
       filterColumn: relation.filterColumn,
       filterValue: relation.filterValue,
-      allowSchemaFallback: false,
     });
 
     if (sourceIds.length === 0) {
