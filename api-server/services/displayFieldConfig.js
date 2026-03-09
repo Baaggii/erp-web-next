@@ -248,18 +248,40 @@ export async function getDisplayFields(
     return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : '';
   })();
   const includeMatchesOnly = Boolean(options.includeAllMatches || options.matchesOnly);
+  const allowSchemaFallback =
+    options.allowSchemaFallback !== undefined
+      ? Boolean(options.allowSchemaFallback)
+      : options.strict
+      ? false
+      : true;
 
   const { cfg, isDefault } = await readConfig(companyId);
   const entries = cfg.filter((entry) => entry.table === normalizedTable);
   const filteredById = normalizedIdField
     ? entries.filter((entry) => entry.idField === normalizedIdField)
     : entries;
-  const matches = filteredById.length > 0 ? filteredById : normalizedIdField ? [] : entries;
+  // Fallback to table-level defaults when the requested idField has no exact config.
+  // This avoids dropping into schema-derived guesses for common cases such as
+  // relation column aliases (e.g. company_id) pointing to tables configured with idField=id.
+  const matches = filteredById.length > 0 ? filteredById : entries;
   const matched = selectConfigForFilter(matches, normalizedColumn, normalizedValue, normalizedIdField);
   const responseEntries = includeMatchesOnly ? matches : entries;
 
   if (matched) {
     return { config: matched, entries: responseEntries, matches, isDefault };
+  }
+
+  if (!allowSchemaFallback) {
+    return {
+      config: {
+        table: normalizedTable,
+        idField: normalizedIdField || null,
+        displayFields: [],
+      },
+      entries: responseEntries,
+      matches,
+      isDefault,
+    };
   }
 
   try {

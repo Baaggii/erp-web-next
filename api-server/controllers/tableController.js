@@ -36,6 +36,93 @@ try {
 }
 import { formatDateForDb } from '../utils/formatDate.js';
 import { enqueueTransactionNotification } from '../services/transactionNotificationQueue.js';
+import { queryWithTenantScope } from '../services/tenantScope.js';
+import { getDisplayFields } from '../services/displayFieldConfig.js';
+
+function getRowValueCaseInsensitive(row, fieldName) {
+  if (!row || typeof row !== 'object' || !fieldName) return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
+  const target = String(fieldName).toLowerCase();
+  const actualKey = Object.keys(row).find((key) => key.toLowerCase() === target);
+  return actualKey ? row[actualKey] : undefined;
+}
+
+function normalizeRelationEntry(entry = {}) {
+  const sourceColumn = String(entry?.COLUMN_NAME || '').trim();
+  const table = String(entry?.REFERENCED_TABLE_NAME || '').trim();
+  const column = String(entry?.REFERENCED_COLUMN_NAME || '').trim();
+  if (!sourceColumn || !table || !column) return null;
+  return {
+    sourceColumn,
+    table,
+    column,
+    source: entry?.source || null,
+    idField: typeof entry?.idField === 'string' ? entry.idField : null,
+    displayFields: Array.isArray(entry?.displayFields) ? entry.displayFields : [],
+    filterColumn: typeof entry?.filterColumn === 'string' ? entry.filterColumn : null,
+    filterValue: entry?.filterValue,
+  };
+}
+
+function normalizeValue(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+}
+
+function isSafeSqlIdentifier(identifier) {
+  return typeof identifier === 'string' && /^[A-Za-z0-9_]+$/.test(identifier);
+}
+
+async function getMergedTableRelations(tableName, companyId) {
+  const [dbRelations, custom] = await Promise.all([
+    listTableRelationships(tableName),
+    listCustomRelations(tableName, companyId),
+  ]);
+
+  const result = Array.isArray(dbRelations)
+    ? dbRelations.map((rel) => ({
+        COLUMN_NAME: rel.COLUMN_NAME,
+        REFERENCED_TABLE_NAME: rel.REFERENCED_TABLE_NAME,
+        REFERENCED_COLUMN_NAME: rel.REFERENCED_COLUMN_NAME,
+        source: 'database',
+      }))
+    : [];
+
+  const customEntries = custom?.config ?? {};
+  if (customEntries && typeof customEntries === 'object') {
+    for (const [column, relations] of Object.entries(customEntries)) {
+      if (!Array.isArray(relations)) continue;
+      relations.forEach((relation, index) => {
+        if (!relation || typeof relation !== 'object') return;
+        if (!relation.table || !relation.column) return;
+        result.push({
+          COLUMN_NAME: column,
+          REFERENCED_TABLE_NAME: relation.table,
+          REFERENCED_COLUMN_NAME: relation.column,
+          source: 'custom',
+          configIndex: index,
+          ...(relation.idField ? { idField: relation.idField } : {}),
+          ...(Array.isArray(relation.displayFields)
+            ? { displayFields: relation.displayFields }
+            : {}),
+          ...(relation.combinationSourceColumn
+            ? { combinationSourceColumn: relation.combinationSourceColumn }
+            : {}),
+          ...(relation.combinationTargetColumn
+            ? { combinationTargetColumn: relation.combinationTargetColumn }
+            : {}),
+          ...(relation.filterColumn ? { filterColumn: relation.filterColumn } : {}),
+          ...(relation.filterValue !== undefined && relation.filterValue !== null
+            ? { filterValue: relation.filterValue }
+            : {}),
+          ...(relation.isArray ? { isArray: true } : {}),
+        });
+      });
+    }
+  }
+
+  return result;
+}
 
 export async function getTables(req, res, next) {
   try {
@@ -94,53 +181,106 @@ export async function getTableRows(req, res, next) {
 export async function getTableRelations(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
-    const [dbRelations, custom] = await Promise.all([
-      listTableRelationships(req.params.table),
-      listCustomRelations(req.params.table, companyId),
-    ]);
-    const result = Array.isArray(dbRelations)
-      ? dbRelations.map((rel) => ({
-          COLUMN_NAME: rel.COLUMN_NAME,
-          REFERENCED_TABLE_NAME: rel.REFERENCED_TABLE_NAME,
-          REFERENCED_COLUMN_NAME: rel.REFERENCED_COLUMN_NAME,
-          source: 'database',
-        }))
+    const result = await getMergedTableRelations(req.params.table, companyId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resolveTableRelationRows(req, res, next) {
+  try {
+    const companyId = Number(
+      req.body?.companyId ?? req.query.companyId ?? req.user?.companyId ?? 0,
+    );
+    const sourceColumn = String(req.body?.sourceColumn || req.query.sourceColumn || '').trim();
+    const sourceValues = Array.isArray(req.body?.sourceValues)
+      ? req.body.sourceValues
       : [];
 
-    const customEntries = custom?.config ?? {};
-    if (customEntries && typeof customEntries === 'object') {
-      for (const [column, relations] of Object.entries(customEntries)) {
-        if (!Array.isArray(relations)) continue;
-        relations.forEach((relation, index) => {
-          if (!relation || typeof relation !== 'object') return;
-          if (!relation.table || !relation.column) return;
-          result.push({
-            COLUMN_NAME: column,
-            REFERENCED_TABLE_NAME: relation.table,
-            REFERENCED_COLUMN_NAME: relation.column,
-            source: 'custom',
-            configIndex: index,
-            ...(relation.idField ? { idField: relation.idField } : {}),
-            ...(Array.isArray(relation.displayFields)
-              ? { displayFields: relation.displayFields }
-              : {}),
-            ...(relation.combinationSourceColumn
-              ? { combinationSourceColumn: relation.combinationSourceColumn }
-              : {}),
-            ...(relation.combinationTargetColumn
-              ? { combinationTargetColumn: relation.combinationTargetColumn }
-              : {}),
-            ...(relation.filterColumn ? { filterColumn: relation.filterColumn } : {}),
-            ...(relation.filterValue !== undefined && relation.filterValue !== null
-              ? { filterValue: relation.filterValue }
-              : {}),
-            ...(relation.isArray ? { isArray: true } : {}),
-          });
-        });
-      }
+    if (!sourceColumn) {
+      return res.status(400).json({ message: 'sourceColumn is required' });
     }
 
-    res.json(result);
+    const relations = await getMergedTableRelations(req.params.table, companyId);
+    const relation = relations
+      .map((entry) => normalizeRelationEntry(entry))
+      .filter(Boolean)
+      .find((entry) => entry.sourceColumn.toLowerCase() === sourceColumn.toLowerCase());
+
+    if (!relation) {
+      return res.json({ relation: null, displayConfig: null, rows: [], rowById: {}, sourceIds: [] });
+    }
+
+    const sourceIds = Array.from(new Set(sourceValues.map((value) => normalizeValue(value)).filter(Boolean)));
+    const { config: displayCfg = {} } = await getDisplayFields(relation.table, companyId, {
+      targetColumn: relation.column,
+      filterColumn: relation.filterColumn,
+      filterValue: relation.filterValue,
+      allowSchemaFallback: false,
+    });
+
+    if (sourceIds.length === 0) {
+      return res.json({
+        relation,
+        displayConfig: {
+          idField: relation.idField || relation.column,
+          displayFields: relation.displayFields || [],
+        },
+        rows: [],
+        rowById: {},
+        sourceIds,
+      });
+    }
+
+    if (!isSafeSqlIdentifier(relation.table) || !isSafeSqlIdentifier(relation.column)) {
+      return res.status(400).json({ message: 'Unsafe relation configuration' });
+    }
+    if (relation.filterColumn && !isSafeSqlIdentifier(relation.filterColumn)) {
+      return res.status(400).json({ message: 'Unsafe relation filter configuration' });
+    }
+
+    const inPlaceholders = sourceIds.map(() => '?').join(', ');
+    let sql = `SELECT * FROM {{table}} WHERE ?? IN (${inPlaceholders})`;
+    const params = [relation.column, ...sourceIds];
+    if (relation.filterColumn && relation.filterValue !== undefined && relation.filterValue !== null) {
+      sql += ' AND ?? = ?';
+      params.push(relation.filterColumn, String(relation.filterValue));
+    }
+
+    const [rows] = await queryWithTenantScope(
+      pool,
+      relation.table,
+      companyId,
+      sql,
+      params,
+    );
+
+    const rowById = {};
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const idValue = normalizeValue(getRowValueCaseInsensitive(row, relation.column));
+      if (!idValue) return;
+      if (!sourceIds.includes(idValue)) return;
+      rowById[idValue] = row;
+    });
+
+    return res.json({
+      relation,
+      displayConfig: {
+        idField:
+          (typeof displayCfg?.idField === 'string' && displayCfg.idField) ||
+          relation.idField ||
+          relation.column,
+        displayFields: Array.isArray(displayCfg?.displayFields)
+          ? displayCfg.displayFields
+          : Array.isArray(relation.displayFields)
+            ? relation.displayFields
+            : [],
+      },
+      rows: Array.isArray(rows) ? rows : [],
+      rowById,
+      sourceIds,
+    });
   } catch (err) {
     next(err);
   }
