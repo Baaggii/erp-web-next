@@ -248,6 +248,12 @@ export async function getDisplayFields(
     return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : '';
   })();
   const includeMatchesOnly = Boolean(options.includeAllMatches || options.matchesOnly);
+  const allowSchemaFallback =
+    options.allowSchemaFallback !== undefined
+      ? Boolean(options.allowSchemaFallback)
+      : options.strict
+      ? false
+      : true;
 
   const { cfg, isDefault } = await readConfig(companyId);
   const entries = cfg.filter((entry) => entry.table === normalizedTable);
@@ -263,6 +269,19 @@ export async function getDisplayFields(
 
   if (matched) {
     return { config: matched, entries: responseEntries, matches, isDefault };
+  }
+
+  if (!allowSchemaFallback) {
+    return {
+      config: {
+        table: normalizedTable,
+        idField: normalizedIdField || null,
+        displayFields: [],
+      },
+      entries: responseEntries,
+      matches,
+      isDefault,
+    };
   }
 
   try {
