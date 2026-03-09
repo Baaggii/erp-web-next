@@ -98,13 +98,10 @@ export default function LoginForm() {
     companyRows.forEach((companyRow) => {
       const companyIdValue = companyRow?.employment_company_id;
       const relationRow = relationResult?.rowById?.get(String(companyIdValue).trim());
-      const relationLabel = pickRelationDisplayValue(relationResult, relationRow);
       const relationName = getRowValueCaseInsensitive(relationRow, 'name');
       const rawName = getRowValueCaseInsensitive(companyRow.__raw, 'company_name');
       const fallbackName =
-        relationLabel && String(relationLabel).trim().length
-          ? String(relationLabel).trim()
-          : relationName && String(relationName).trim().length
+        relationName && String(relationName).trim().length
           ? String(relationName).trim()
           : rawName && String(rawName).trim().length
             ? String(rawName).trim()
