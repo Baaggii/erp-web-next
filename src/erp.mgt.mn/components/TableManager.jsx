@@ -2490,28 +2490,21 @@ const TableManager = forwardRef(function TableManager({
             }
             return [];
           });
-        }
-
-        let customList = [];
-        try {
-          const customRes = await fetch(
-            `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-            { credentials: 'include', skipErrorToast: true, skipLoader: true },
-          );
-          unauthorized = unauthorized || customRes?.status === 403;
-          if (customRes.ok) {
-            const customJson = await customRes.json().catch(() => ({}));
-            customList = buildCustomRelationsList(customJson);
+        } else {
+          let customList = [];
+          try {
+            const customRes = await fetch(
+              `/api/tables/${encodeURIComponent(table)}/relations/custom`,
+              { credentials: 'include', skipErrorToast: true, skipLoader: true },
+            );
+            unauthorized = unauthorized || customRes?.status === 403;
+            if (customRes.ok) {
+              const customJson = await customRes.json().catch(() => ({}));
+              customList = buildCustomRelationsList(customJson);
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
-        }
-
-        if (customList.length > 0) {
-          rels = [...rels, ...customList];
-        }
-
-        if (!relRes?.ok) {
           if (customList.length === 0) {
             if (!canceled && !unauthorized) {
               addToast(
@@ -2527,6 +2520,7 @@ const TableManager = forwardRef(function TableManager({
             }
             return;
           }
+        rels = customList;
         }
         if (canceled) return;
 
