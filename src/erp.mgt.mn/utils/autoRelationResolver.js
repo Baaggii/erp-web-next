@@ -66,6 +66,51 @@ export async function resolveRelationRowsFromSource({
     return null;
   }
 
+  const sourceIds = Array.from(new Set(sourceRows
+    .map((row) => normalizeValue(getRowValueCaseInsensitive(row, normalizedSourceColumn)))
+    .filter(Boolean)));
+
+  try {
+    const tenantResolveRes = await fetch(
+      `/api/tables/${encodeURIComponent(normalizedSourceTable)}/relations/resolve`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceColumn: normalizedSourceColumn,
+          sourceValues: sourceIds,
+          ...(companyId !== undefined && companyId !== null && companyId !== ''
+            ? { companyId }
+            : {}),
+        }),
+        skipErrorToast: true,
+        skipLoader: true,
+      },
+    );
+    if (tenantResolveRes.ok) {
+      const tenantResolved = await tenantResolveRes.json().catch(() => null);
+      if (tenantResolved?.relation) {
+        return {
+          relation: tenantResolved.relation,
+          displayConfig: tenantResolved.displayConfig || {
+            idField: tenantResolved?.relation?.idField || tenantResolved?.relation?.column,
+            displayFields: Array.isArray(tenantResolved?.relation?.displayFields)
+              ? tenantResolved.relation.displayFields
+              : [],
+          },
+          rows: Array.isArray(tenantResolved?.rows) ? tenantResolved.rows : [],
+          rowById: new Map(Object.entries(tenantResolved?.rowById || {})),
+          sourceIds: Array.isArray(tenantResolved?.sourceIds)
+            ? tenantResolved.sourceIds
+            : sourceIds,
+        };
+      }
+    }
+  } catch {
+    // Fallback to legacy relation resolution path.
+  }
+
   const relationRes = await fetch(`/api/tables/${encodeURIComponent(normalizedSourceTable)}/relations`, {
     credentials: 'include',
     skipErrorToast: true,
@@ -78,10 +123,6 @@ export async function resolveRelationRowsFromSource({
     .filter(Boolean)
     .find((entry) => entry.sourceColumn.toLowerCase() === normalizedSourceColumn.toLowerCase());
   if (!relation) return null;
-
-  const sourceIds = Array.from(new Set(sourceRows
-    .map((row) => normalizeValue(getRowValueCaseInsensitive(row, normalizedSourceColumn)))
-    .filter(Boolean)));
   if (sourceIds.length === 0) {
     return {
       relation,

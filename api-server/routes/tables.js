@@ -3,6 +3,7 @@ import {
   getTables,
   getTableRows,
   getTableRelations,
+  resolveTableRelationRows,
   listCustomTableRelations,
   saveCustomTableRelation,
   deleteCustomTableRelation,
@@ -32,6 +33,7 @@ router.delete(
   deleteCustomTableRelation,
 );
 router.get('/:table/relations', requireAuth, getTableRelations);
+router.post('/:table/relations/resolve', requireAuth, resolveTableRelationRows);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
 router.put('/:table/labels', requireAuth, saveColumnLabels);
 router.get('/:table/:id/references', requireAuth, getRowReferences);
