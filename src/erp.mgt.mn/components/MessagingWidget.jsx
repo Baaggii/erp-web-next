@@ -1355,7 +1355,6 @@ export default function MessagingWidget() {
   const [employees, setEmployees] = useState([]);
   const [userDirectory, setUserDirectory] = useState({});
   const [companyRecords, setCompanyRecords] = useState([]);
-  const [companyDisplayFields, setCompanyDisplayFields] = useState([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [composerRecipientSearch, setComposerRecipientSearch] = useState('');
   const [participantsModalOpen, setParticipantsModalOpen] = useState(false);
@@ -1646,23 +1645,12 @@ export default function MessagingWidget() {
 
     const loadCompanies = async () => {
       try {
-        const [companiesRes, displayRes] = await Promise.all([
-          fetch('/api/companies', { credentials: 'include' }),
-          fetch('/api/display_fields?table=companies', { credentials: 'include' }),
-        ]);
-        if (!companiesRes.ok) return;
-        const data = await companiesRes.json();
+        const res = await fetch('/api/companies', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
         if (disposed) return;
         const companies = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
         setCompanyRecords(companies);
-
-        if (displayRes.ok) {
-          const displayConfig = await displayRes.json().catch(() => ({}));
-          const displayFields = Array.isArray(displayConfig?.displayFields)
-            ? displayConfig.displayFields.filter((field) => typeof field === 'string' && field.trim().length > 0)
-            : [];
-          setCompanyDisplayFields(displayFields);
-        }
       } catch {
         // Optional enhancement only; keep widget functional.
       }
@@ -2620,15 +2608,13 @@ export default function MessagingWidget() {
   const companyLabelMap = useMemo(() => {
     const labels = new Map((companyRecords || []).map((entry) => {
       const id = normalizeId(entry?.id || entry?.company_id || entry?.companyId);
-      const configLabel = resolveDisplayLabelFromConfig(entry, companyDisplayFields);
-      const fallbackLabel = sanitizeMessageText(entry?.name || entry?.company_name || entry?.companyName || id);
-      const label = sanitizeMessageText(configLabel || fallbackLabel || id);
+      const label = sanitizeMessageText(entry?.name || entry?.company_name || entry?.companyName || id);
       return [id, label || id];
     }).filter(([id]) => Boolean(id)));
     const activeCompanyId = normalizeId(state.activeCompanyId || companyId);
     if (activeCompanyId && sessionCompanyLabel) labels.set(activeCompanyId, sessionCompanyLabel);
     return labels;
-  }, [companyDisplayFields, companyRecords, companyId, sessionCompanyLabel, state.activeCompanyId]);
+  }, [companyRecords, companyId, sessionCompanyLabel, state.activeCompanyId]);
   const resolveCompanyLabel = (rawCompanyId) => {
     const normalizedCompanyId = normalizeId(rawCompanyId);
     if (!normalizedCompanyId) return 'Unknown company';
