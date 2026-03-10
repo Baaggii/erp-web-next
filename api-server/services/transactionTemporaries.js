@@ -869,8 +869,12 @@ async function insertNotification(
     relatedId,
     type = 'request',
     kind = 'temporary',
+    channelPreferences = null,
   },
 ) {
+  if (channelPreferences && channelPreferences.showInNotification === false) {
+    return;
+  }
   const recipients = recipientEmpIds ?? recipientEmpId;
   const normalizedRecipients = parseEmpIdList(recipients);
   if (normalizedRecipients.length === 0) return;
@@ -886,6 +890,44 @@ async function insertNotification(
       createdBy,
       connection: conn,
     });
+  }
+}
+
+function hasConfiguredFields(value) {
+  return Array.isArray(value) && value.some((entry) => String(entry || '').trim());
+}
+
+async function resolveTemporaryNotificationPreferences({
+  tableName,
+  formName,
+  configName,
+  companyId,
+  formConfigResolver = getFormConfig,
+}) {
+  const fallback = {
+    showInNotification: true,
+    showInDashboard: true,
+    showInPhone: true,
+    showInEmail: true,
+  };
+  const targetFormName =
+    typeof formName === 'string' && formName.trim()
+      ? formName.trim()
+      : typeof configName === 'string' && configName.trim()
+        ? configName.trim()
+        : '';
+  if (!tableName || !targetFormName) return fallback;
+  try {
+    const { config } = await formConfigResolver(tableName, targetFormName, companyId);
+    if (!config || typeof config !== 'object') return fallback;
+    return {
+      showInNotification: hasConfiguredFields(config.notificationFields),
+      showInDashboard: hasConfiguredFields(config.notificationDashboardFields),
+      showInPhone: hasConfiguredFields(config.notificationPhoneFields),
+      showInEmail: hasConfiguredFields(config.notificationEmailFields),
+    };
+  } catch {
+    return fallback;
   }
 }
 
@@ -968,6 +1010,7 @@ export async function createTemporarySubmission({
     connectionFactory = () => pool.getConnection(),
     employmentSessionFetcher = getEmploymentSession,
     notificationInserter = insertNotification,
+    formConfigResolver = getFormConfig,
   } = runtimeDeps;
   if (!tableName) {
     const err = new Error('tableName required');
@@ -1012,6 +1055,13 @@ export async function createTemporarySubmission({
         : {}),
     });
     const reviewerEmpIds = parseEmpIdList(session?.senior_empid ?? session?.seniorEmpId);
+    const notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName,
+      formName,
+      configName,
+      companyId,
+      formConfigResolver,
+    });
     const fallbackBranch = normalizeScopePreference(branchId);
     const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
@@ -1079,6 +1129,7 @@ export async function createTemporarySubmission({
           reviewerCount > 1 ? ` (shared with ${reviewerCount} senior reviewers)` : ''
         }`,
         type: 'request',
+        channelPreferences: notificationPreferences,
       });
     }
     await conn.query('COMMIT');
@@ -1628,6 +1679,7 @@ export async function promoteTemporarySubmission(
   const conn = providedConnection || (await connectionFactory());
   const shouldReleaseConnection = !providedConnection;
   let row = null;
+  let notificationPreferences = null;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -1765,6 +1817,13 @@ export async function promoteTemporarySubmission(
         });
       }
     }
+    notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName: row.table_name,
+      formName,
+      configName: row.config_name,
+      companyId: row.company_id,
+      formConfigResolver,
+    });
 
     const allowedField =
       typeof formCfg?.isAllowedField === 'string'
@@ -2100,6 +2159,7 @@ export async function promoteTemporarySubmission(
             : ''
         }`,
         type: 'request',
+        channelPreferences: notificationPreferences,
       });
       await notificationInserter(conn, {
         companyId: row.company_id,
@@ -2108,6 +2168,7 @@ export async function promoteTemporarySubmission(
         relatedId: id,
         message: `Temporary submission #${id} forwarded for additional review`,
         type: 'response',
+        channelPreferences: notificationPreferences,
       });
       await conn.query('COMMIT');
       return {
@@ -2412,6 +2473,7 @@ export async function promoteTemporarySubmission(
         relatedId: id,
         message: promotionMessage,
         type: 'response',
+        channelPreferences: notificationPreferences,
       });
     }
     if (planReviewerRecipients.size > 0) {
@@ -2424,6 +2486,7 @@ export async function promoteTemporarySubmission(
           relatedId: id,
           message: sharedMessage,
           type: 'response',
+          channelPreferences: notificationPreferences,
         });
       }
     }
@@ -2439,6 +2502,7 @@ export async function promoteTemporarySubmission(
             relatedId: resolvedRow.id,
             message: resolutionMessage,
             type: 'response',
+            channelPreferences: notificationPreferences,
           });
         }
       }
@@ -2450,6 +2514,7 @@ export async function promoteTemporarySubmission(
       relatedId: id,
       message: `You approved temporary submission #${id} for ${row.table_name}`,
       type: 'response',
+      channelPreferences: notificationPreferences,
     });
     await conn.query('COMMIT');
     return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
@@ -2487,6 +2552,7 @@ export async function rejectTemporarySubmission(
     chainStatusUpdater = updateTemporaryChainStatus,
     activityLogger = logUserAction,
     notificationInserter = insertNotification,
+    formConfigResolver = getFormConfig,
   } = runtimeDeps;
 
   const conn = providedConnection || (await connectionFactory());
@@ -2499,6 +2565,14 @@ export async function rejectTemporarySubmission(
       [id],
     );
     const row = rows[0];
+    const formName = row?.form_name || row?.config_name || null;
+    const notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName: row?.table_name,
+      formName,
+      configName: row?.config_name,
+      companyId: row?.company_id,
+      formConfigResolver,
+    });
     if (!row) {
       const err = new Error('Temporary submission not found');
       err.status = 404;
@@ -2608,6 +2682,7 @@ export async function rejectTemporarySubmission(
         relatedId: id,
         message: rejectionMessage,
         type: 'response',
+        channelPreferences: notificationPreferences,
       });
     }
     await notificationInserter(conn, {
@@ -2617,6 +2692,7 @@ export async function rejectTemporarySubmission(
       relatedId: id,
       message: `You rejected temporary submission #${id} for ${row.table_name}`,
       type: 'response',
+      channelPreferences: notificationPreferences,
     });
     await conn.query('COMMIT');
     return { id, status: 'rejected' };
