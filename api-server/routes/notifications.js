@@ -146,6 +146,17 @@ function formatTransactionAction(value) {
 function buildTransactionPreview(payload) {
   const actionLabel = formatTransactionAction(payload?.action);
   const formName = formatTransactionFormName(payload);
+  const summaryFields = Array.isArray(payload?.summaryFields) ? payload.summaryFields : [];
+  const summaryParts = summaryFields
+    .map((entry) => {
+      const rawValue = entry?.value;
+      if (rawValue === undefined || rawValue === null) return '';
+      return String(rawValue).trim();
+    })
+    .filter((value) => value);
+  if (summaryParts.length) {
+    return `${actionLabel} • ${formName} • ${summaryParts.join(' · ')}`;
+  }
   const summary = String(payload?.summaryText || '').trim();
   if (summary) {
     return `${actionLabel} • ${formName} • ${summary}`;

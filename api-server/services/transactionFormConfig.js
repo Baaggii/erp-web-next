@@ -732,12 +732,22 @@ function parseEntry(raw = {}) {
       typeof raw.transactionTypeValue === 'string'
         ? raw.transactionTypeValue
         : '',
-    detectFields: arrify(raw.detectFields || raw.detectField),
-    notifyFields: arrify(raw.notifyFields),
-    notificationFields: arrify(raw.notificationFields),
-    notificationDashboardFields: arrify(raw.notificationDashboardFields),
-    notificationPhoneFields: arrify(raw.notificationPhoneFields),
-    notificationEmailFields: arrify(raw.notificationEmailFields),
+    detectFields: arrify(raw.detectFields || raw.detectField || raw.detect_field),
+    notifyFields: arrify(raw.notifyFields || raw.notify_fields),
+    notificationFields: arrify(
+      raw.notificationFields || raw.notification_fields,
+    ),
+    notificationDashboardFields: arrify(
+      raw.notificationDashboardFields ||
+        raw.notification_dashboard_fields ||
+        raw.notification_dashboard_field,
+    ),
+    notificationPhoneFields: arrify(
+      raw.notificationPhoneFields || raw.notification_phone_fields,
+    ),
+    notificationEmailFields: arrify(
+      raw.notificationEmailFields || raw.notification_email_fields,
+    ),
     notificationRedirectTab:
       typeof raw.notificationRedirectTab === 'string'
         ? raw.notificationRedirectTab.trim()
@@ -1141,11 +1151,18 @@ export async function setFormConfig(
     transactionTypeValue = '',
     detectFields = [],
     detectField = '',
+    detect_field = '',
     notifyFields = [],
+    notify_fields = [],
     notificationFields = [],
+    notification_fields = [],
     notificationDashboardFields = [],
+    notification_dashboard_fields = [],
+    notification_dashboard_field = [],
     notificationPhoneFields = [],
+    notification_phone_fields = [],
     notificationEmailFields = [],
+    notification_email_fields = [],
     notificationRedirectTab = '',
     temporaryKeepFields = [],
     procedures = [],
@@ -1231,13 +1248,35 @@ export async function setFormConfig(
     transactionTypeField: transactionTypeField || '',
     transactionTypeValue: transactionTypeValue || '',
     detectFields: arrify(
-      detectFields.length ? detectFields : detectField ? [detectField] : [],
+      detectFields.length
+        ? detectFields
+        : detectField
+          ? [detectField]
+          : detect_field
+            ? [detect_field]
+            : [],
     ),
-    notifyFields: arrify(notifyFields),
-    notificationFields: arrify(notificationFields),
-    notificationDashboardFields: arrify(notificationDashboardFields),
-    notificationPhoneFields: arrify(notificationPhoneFields),
-    notificationEmailFields: arrify(notificationEmailFields),
+    notifyFields: arrify(notifyFields.length ? notifyFields : notify_fields),
+    notificationFields: arrify(
+      notificationFields.length ? notificationFields : notification_fields,
+    ),
+    notificationDashboardFields: arrify(
+      notificationDashboardFields.length
+        ? notificationDashboardFields
+        : notification_dashboard_fields.length
+          ? notification_dashboard_fields
+          : notification_dashboard_field,
+    ),
+    notificationPhoneFields: arrify(
+      notificationPhoneFields.length
+        ? notificationPhoneFields
+        : notification_phone_fields,
+    ),
+    notificationEmailFields: arrify(
+      notificationEmailFields.length
+        ? notificationEmailFields
+        : notification_email_fields,
+    ),
     notificationRedirectTab:
       typeof notificationRedirectTab === 'string'
         ? notificationRedirectTab.trim()
