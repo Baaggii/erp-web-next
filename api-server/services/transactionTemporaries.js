@@ -985,6 +985,7 @@ async function resolveTemporaryNotificationPreferences({
     showInPhone: true,
     showInEmail: true,
     notificationFields: [],
+    summaryFields: [],
   };
   const targetFormName =
     typeof formName === 'string' && formName.trim()
@@ -996,12 +997,15 @@ async function resolveTemporaryNotificationPreferences({
   try {
     const { config } = await formConfigResolver(tableName, targetFormName, companyId);
     if (!config || typeof config !== 'object') return fallback;
+    const notificationFields = normalizeFieldList(config.notificationFields);
+    const dashboardFields = normalizeFieldList(config.notificationDashboardFields);
     return {
       showInNotification: hasConfiguredFields(config.notificationFields),
       showInDashboard: hasConfiguredFields(config.notificationDashboardFields),
       showInPhone: hasConfiguredFields(config.notificationPhoneFields),
       showInEmail: hasConfiguredFields(config.notificationEmailFields),
-      notificationFields: normalizeFieldList(config.notificationFields),
+      notificationFields,
+      summaryFields: notificationFields.length > 0 ? notificationFields : dashboardFields,
     };
   } catch {
     return fallback;
@@ -1199,7 +1203,7 @@ export async function createTemporarySubmission({
     if (reviewerCount > 0) {
       const temporarySummary = buildTemporarySummaryFields(
         cleanedWithCalculated,
-        notificationPreferences?.notificationFields,
+        notificationPreferences?.summaryFields,
       );
       const message = buildTemporaryNotificationMessage({
         action: 'pending',
@@ -2241,7 +2245,7 @@ export async function promoteTemporarySubmission(
       );
       const temporarySummary = buildTemporarySummaryFields(
         sanitizedPayloadValues,
-        notificationPreferences?.notificationFields,
+        notificationPreferences?.summaryFields,
       );
       const sharedSuffix =
         forwardReviewerEmpIds.length > 1
@@ -2581,7 +2585,7 @@ export async function promoteTemporarySubmission(
     planReviewerRecipients.delete(normalizedReviewer);
     const temporarySummary = buildTemporarySummaryFields(
       sanitizedValues,
-      notificationPreferences?.notificationFields,
+      notificationPreferences?.summaryFields,
     );
     const promotionMessage = buildTemporaryNotificationMessage({
       action: 'promoted',
@@ -2834,7 +2838,7 @@ export async function rejectTemporarySubmission(
       {};
     const rejectionSummary = buildTemporarySummaryFields(
       rejectionSummarySource,
-      notificationPreferences?.notificationFields,
+      notificationPreferences?.summaryFields,
     );
     const rejectionMessage = buildTemporaryNotificationMessage({
       action: 'rejected',
