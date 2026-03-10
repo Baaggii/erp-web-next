@@ -898,9 +898,14 @@ function hasConfiguredFields(value) {
 }
 
 function normalizeFieldList(list) {
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((field) => (typeof field === 'string' ? field.trim() : ''))
+  const entries = Array.isArray(list)
+    ? list
+    : typeof list === 'string'
+      ? [list]
+      : [];
+  return entries
+    .flatMap((entry) => String(entry || '').split(','))
+    .map((field) => field.trim())
     .filter((field) => field);
 }
 
