@@ -36,6 +36,23 @@ function toScaledFontSize(basePx, scale) {
   return Math.round(basePx * clampMessageTextScale(scale));
 }
 
+function normalizeSearchValue(value) {
+  return sanitizeMessageText(value || '').toLowerCase();
+}
+
+function matchesUserSearch(entry, rawQuery) {
+  const normalizedQuery = normalizeSearchValue(rawQuery).trim();
+  if (!normalizedQuery) return true;
+  const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (queryTerms.length === 0) return true;
+
+  const haystack = [entry?.label, entry?.id, entry?.employeeCode]
+    .map((value) => normalizeSearchValue(value))
+    .join(' ');
+
+  return queryTerms.every((term) => haystack.includes(term));
+}
+
 function buildParticipantCacheKey(sessionId, companyId) {
   return `messaging-widget:participants:${normalizeId(sessionId) || 'anonymous'}:${normalizeId(companyId) || 'none'}`;
 }
@@ -2535,15 +2552,12 @@ export default function MessagingWidget() {
 
   const filteredEmployees = useMemo(() => {
     if (!employeeSearch.trim()) return employeeRecords;
-    const query = employeeSearch.trim().toLowerCase();
-    return employeeRecords.filter((entry) => entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query));
+    return employeeRecords.filter((entry) => matchesUserSearch(entry, employeeSearch));
   }, [employeeRecords, employeeSearch]);
 
   const presenceEmployees = useMemo(() => {
-    const query = employeeSearch.trim().toLowerCase();
     return employeeRecords.filter((entry) => {
-      const matchesQuery = !query || entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query);
-      if (!matchesQuery) return false;
+      if (!matchesUserSearch(entry, employeeSearch)) return false;
       if (employeeStatusFilter === PRESENCE.ONLINE) return entry.status === PRESENCE.ONLINE || entry.status === PRESENCE.AWAY;
       if (employeeStatusFilter === PRESENCE.OFFLINE) return entry.status === PRESENCE.OFFLINE || entry.status === PRESENCE.AWAY;
       return true;
@@ -2656,11 +2670,9 @@ export default function MessagingWidget() {
   }, [activeConversationParticipants, isDraftConversation, resolveEmployeeLabel, state.composer.recipients]);
   const conversationParticipantIds = useMemo(() => new Set(activeConversationParticipants), [activeConversationParticipants]);
   const addRecipientCandidates = useMemo(() => {
-    const query = composerRecipientSearch.trim().toLowerCase();
     return employeeRecords.filter((entry) => {
       if (conversationParticipantIds.has(entry.id)) return false;
-      if (!query) return true;
-      return entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query);
+      return matchesUserSearch(entry, composerRecipientSearch);
     });
   }, [composerRecipientSearch, employeeRecords, conversationParticipantIds]);
 
@@ -2713,9 +2725,8 @@ export default function MessagingWidget() {
   };
 
   const mentionCandidates = useMemo(() => {
-    const query = mentionQuery.trim().toLowerCase();
     return employeeRecords
-      .filter((entry) => !query || entry.label.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query))
+      .filter((entry) => matchesUserSearch(entry, mentionQuery))
       .slice(0, 8);
   }, [employeeRecords, mentionQuery]);
 
@@ -3486,6 +3497,29 @@ export default function MessagingWidget() {
     });
   };
 
+  const onOpenMentionPicker = () => {
+    const composer = composerRef.current;
+    const body = state.composer.body || '';
+    const start = composer?.selectionStart ?? body.length;
+    const end = composer?.selectionEnd ?? start;
+    const prefix = body.slice(0, start);
+    const suffix = body.slice(end);
+    const needsLeadingSpace = start > 0 && !/\s$/.test(prefix);
+    const insertText = `${needsLeadingSpace ? ' ' : ''}@`;
+    const nextBody = `${prefix}${insertText}${suffix}`;
+
+    dispatch({ type: 'composer/setBody', payload: nextBody });
+    setMentionOpen(true);
+    setMentionQuery('');
+
+    requestAnimationFrame(() => {
+      const nextPos = start + insertText.length;
+      setMentionStart(nextPos - 1);
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(nextPos, nextPos);
+    });
+  };
+
   const onRemoveDraftRecipient = (id) => {
     if (!isDraftConversation) {
       setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
@@ -3978,6 +4012,25 @@ export default function MessagingWidget() {
                 }}
               >
                 😊
+              </button>
+              <button
+                type="button"
+                onClick={onOpenMentionPicker}
+                aria-label="Mention a user"
+                title="Mention a user"
+                style={{
+                  flex: '0 0 auto',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 10,
+                  background: mentionOpen ? '#dbeafe' : '#fff',
+                  color: '#1e293b',
+                  minWidth: 42,
+                  padding: '0 10px',
+                  fontSize: composerTextFontSize,
+                  lineHeight: 1,
+                }}
+              >
+                @
               </button>
               <textarea
                 id="messaging-composer"
