@@ -101,7 +101,6 @@ const RowFormModal = function RowFormModal({
   disabledFieldReasons = {},
   labels = {},
   requiredFields = [],
-  requiredAnyGroups = [],
   onChange = () => {},
   onRowsChange = () => {},
   headerFields = [],
@@ -279,33 +278,6 @@ const RowFormModal = function RowFormModal({
   const requiredFieldSet = React.useMemo(
     () => new Set((requiredFields || []).map((f) => f.toLowerCase())),
     [requiredFields],
-  );
-  const requiredAnyFieldGroups = React.useMemo(
-    () =>
-      Array.isArray(requiredAnyGroups)
-        ? requiredAnyGroups
-            .map((group) =>
-              Array.isArray(group)
-                ? group
-                    .map((field) => (typeof field === 'string' ? field.trim() : ''))
-                    .filter(Boolean)
-                : [],
-            )
-            .filter((group) => group.length > 0)
-        : [],
-    [requiredAnyGroups],
-  );
-  const isValueMissing = React.useCallback(
-    (field, value) => {
-      const isJson = fieldTypeMap[field] === 'json';
-      return (
-        value === '' ||
-        value === null ||
-        value === undefined ||
-        (isJson && Array.isArray(value) && value.length === 0)
-      );
-    },
-    [fieldTypeMap],
   );
   const branchIdLowerSet = React.useMemo(
     () => new Set((branchIdFields || []).map((f) => f.toLowerCase())),
@@ -3323,48 +3295,43 @@ const RowFormModal = function RowFormModal({
             if (v === null || v === undefined || v === '') return false;
             if (typeof v === 'object' && 'value' in v) return v.value !== '';
             return true;
-          });
-          if (!hasValue) return;
-          const normalized = {};
-          const jsonValueMap = {};
-          Object.entries(r).forEach(([k, v]) => {
-            const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
-            let val = raw;
-            if (fieldTypeMap[k] === 'json') {
-              const arr = parseJsonFieldValue(val);
-              jsonValueMap[k] = arr;
-              val = JSON.stringify(arr);
-            } else {
-              val = normalizeDateInput(val, placeholders[k]);
-              if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
-                val = normalizeNumberInput(val);
-              }
+        });
+        if (!hasValue) return;
+        const normalized = {};
+        const jsonValueMap = {};
+        Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          let val = raw;
+          if (fieldTypeMap[k] === 'json') {
+            const arr = parseJsonFieldValue(val);
+            jsonValueMap[k] = arr;
+            val = JSON.stringify(arr);
+          } else {
+            val = normalizeDateInput(val, placeholders[k]);
+            if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+              val = normalizeNumberInput(val);
             }
-            normalized[k] = val;
-          });
-          requiredFields.forEach((f) => {
-            const missing =
-              normalized[f] === '' ||
-              normalized[f] === null ||
-              normalized[f] === undefined ||
-              (fieldTypeMap[f] === 'json' &&
-                Array.isArray(jsonValueMap[f]) &&
-                jsonValueMap[f].length === 0);
-            if (missing) hasMissing = true;
-            if (
-              (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
-              normalized[f] !== '' &&
-              !/code/i.test(f) &&
-              isNaN(Number(normalizeNumberInput(normalized[f])))
-            ) {
+          }
+          normalized[k] = val;
+        });
+        requiredFields.forEach((f) => {
+          const missing =
+            normalized[f] === '' ||
+            normalized[f] === null ||
+            normalized[f] === undefined ||
+            (fieldTypeMap[f] === 'json' &&
+              Array.isArray(jsonValueMap[f]) &&
+              jsonValueMap[f].length === 0);
+          if (missing) hasMissing = true;
+          if (
+            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+            normalized[f] !== '' &&
+            !/code/i.test(f) &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
+            )
               hasInvalid = true;
-            }
             const ph = placeholders[f];
             if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
-          });
-          requiredAnyFieldGroups.forEach((group) => {
-            const hasAny = group.some((field) => !isValueMissing(field, r[field]));
-            if (!hasAny) hasMissing = true;
           });
           cleanedRows.push(normalized);
           rawRows.push(r);
@@ -3527,10 +3494,6 @@ const RowFormModal = function RowFormModal({
           const ph = placeholders[f];
           if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
         });
-        requiredAnyFieldGroups.forEach((group) => {
-          const hasAny = group.some((field) => !isValueMissing(field, r[field]));
-          if (!hasAny) hasMissing = true;
-        });
         cleanedRows.push(normalized);
         rowIndices.push(idx);
       });
@@ -3631,17 +3594,14 @@ const RowFormModal = function RowFormModal({
     requiredFields.forEach((f) => {
       if (!columns.includes(f)) return;
       const val = formVals[f];
-      const isMissing = isValueMissing(f, val);
+      const isJson = fieldTypeMap[f] === 'json';
+      const isMissing =
+        val === '' ||
+        val === null ||
+        val === undefined ||
+        (isJson && Array.isArray(val) && val.length === 0);
       if (isMissing) {
         errs[f] = 'Утга оруулна уу';
-      }
-    });
-    requiredAnyFieldGroups.forEach((group) => {
-      const hasValue = group.some((field) => columns.includes(field) && !isValueMissing(field, formVals[field]));
-      if (hasValue) return;
-      const focusField = group.find((field) => columns.includes(field));
-      if (focusField) {
-        errs[focusField] = 'Энэ бүлгээс дор хаяж нэг талбар бөглөнө үү';
       }
     });
     setErrors(errs);
@@ -4250,7 +4210,6 @@ const RowFormModal = function RowFormModal({
             onRowSubmit={onSubmit}
             onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
-            requiredAnyGroups={requiredAnyFieldGroups}
             disabledFields={disabledFields}
             disabledFieldReasons={disabledFieldReasons}
             defaultValues={defaultValues}

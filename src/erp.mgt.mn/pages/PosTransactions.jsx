@@ -3809,7 +3809,6 @@ export default function PosTransactionsPage() {
                       disabledFields={disabled}
                       disabledFieldReasons={disabledFieldReasons}
                       requiredFields={fc.requiredFields || []}
-                      requiredAnyGroups={fc.requiredAnyGroups || []}
                       labels={labels}
                       row={values[t.table]}
                       rows={t.type === 'multi' ? values[t.table] : undefined}
