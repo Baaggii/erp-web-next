@@ -1642,6 +1642,7 @@ export default function MessagingWidget() {
     const activeCompany = state.activeCompanyId || companyId;
     if (!activeCompany) return;
     let disposed = false;
+    const companyKey = getCompanyCacheKey(activeCompany);
 
     const loadCompanies = async () => {
       try {
@@ -1658,6 +1659,7 @@ export default function MessagingWidget() {
 
     const loadMessages = async () => {
       try {
+        dispatch({ type: 'conversations/loadStart', payload: { companyKey } });
         setNetworkState('loading');
         const params = new URLSearchParams({ companyId: activeCompany, limit: '100' });
         const res = await fetch(`${API_BASE}/messaging/conversations?${params.toString()}`, { credentials: 'include' });
@@ -1668,7 +1670,7 @@ export default function MessagingWidget() {
         dispatch({
           type: 'conversations/loadSuccess',
           payload: {
-            companyKey: getCompanyCacheKey(activeCompany),
+            companyKey,
             items: adaptedConversations.items,
           },
         });
@@ -1686,16 +1688,16 @@ export default function MessagingWidget() {
 
         setMessagesByCompany((prev) => ({
           ...prev,
-          [getCompanyCacheKey(activeCompany)]: prev[getCompanyCacheKey(activeCompany)] || [],
+          [companyKey]: prev[companyKey] || [],
         }));
         setNetworkState('ready');
       } catch (err) {
         if (disposed) return;
         dispatch({
-          type: 'conversations/loadSuccess',
+          type: 'conversations/loadError',
           payload: {
-            companyKey: getCompanyCacheKey(activeCompany),
-            items: [],
+            companyKey,
+            error: err.message || 'Failed to load conversations',
           },
         });
         setNetworkState('ready');
@@ -2580,7 +2582,9 @@ export default function MessagingWidget() {
     () => conversationSummaries.reduce((sum, conversation) => sum + (Number(conversation.unread) || 0), 0),
     [conversationSummaries],
   );
-  const widgetBadgeCount = unreadCount + reactionChangeCount;
+  const activeThreadState = state.threadStateByCompany?.[getCompanyCacheKey(state.activeCompanyId || companyId)] || {};
+  const isConversationListReady = activeThreadState.conversationsStatus === 'ready';
+  const widgetBadgeCount = isConversationListReady ? unreadCount + reactionChangeCount : 0;
 
   const activeTopic = activeConversation?.topic || 'Untitled';
   const sessionUserLabel = sanitizeMessageText(
