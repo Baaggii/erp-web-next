@@ -1346,8 +1346,6 @@ test('createTemporarySubmission builds temporary notification summary from confi
   const parsedMessage = JSON.parse(notifications[0].message);
   assert.equal(parsedMessage.kind, 'temporary');
   assert.equal(parsedMessage.action, 'pending');
-  assert.equal(parsedMessage.temporaryTable, 'transactions_contract');
-  assert.equal(parsedMessage.actor, 'EMP009');
   assert.deepEqual(parsedMessage.summaryFields, [
     { field: 'contract_no', value: 'CN-001' },
     { field: 'amount', value: '1500' },

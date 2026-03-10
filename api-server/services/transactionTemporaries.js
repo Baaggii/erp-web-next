@@ -942,7 +942,6 @@ function buildTemporarySummaryFields(values, configuredFields = []) {
 
 function buildTemporaryNotificationMessage({
   action,
-  temporaryId,
   tableName,
   formName,
   configName,
@@ -955,16 +954,12 @@ function buildTemporaryNotificationMessage({
     kind: 'temporary',
     temporarySubmission: true,
     action: String(action || 'pending').trim().toLowerCase(),
-    temporaryId: temporaryId ?? null,
-    temporaryTable: tableName || null,
     tableName: tableName || null,
     formName: formName || null,
     configName: configName || null,
-    actor: createdBy || null,
     createdBy: createdBy || null,
     summaryFields: Array.isArray(summaryFields) ? summaryFields : [],
     summaryText: summaryText || fallbackText || '',
-    updatedAt: new Date().toISOString(),
   });
 }
 
@@ -1208,7 +1203,6 @@ export async function createTemporarySubmission({
       );
       const message = buildTemporaryNotificationMessage({
         action: 'pending',
-        temporaryId,
         tableName,
         formName,
         configName,
@@ -2255,7 +2249,6 @@ export async function promoteTemporarySubmission(
           : '';
       const pendingMessage = buildTemporaryNotificationMessage({
         action: 'pending',
-        temporaryId: forwardTemporaryId ?? id,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
@@ -2266,7 +2259,6 @@ export async function promoteTemporarySubmission(
       });
       const forwardedMessage = buildTemporaryNotificationMessage({
         action: 'forwarded',
-        temporaryId: id,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
@@ -2593,7 +2585,6 @@ export async function promoteTemporarySubmission(
     );
     const promotionMessage = buildTemporaryNotificationMessage({
       action: 'promoted',
-      temporaryId: id,
       tableName: row.table_name,
       formName: row.form_name,
       configName: row.config_name,
@@ -2616,7 +2607,6 @@ export async function promoteTemporarySubmission(
     if (planReviewerRecipients.size > 0) {
       const sharedMessage = buildTemporaryNotificationMessage({
         action: 'promoted',
-        temporaryId: id,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
@@ -2640,7 +2630,6 @@ export async function promoteTemporarySubmission(
     if (resolvedPendingRows.length > 0) {
       const resolutionMessage = buildTemporaryNotificationMessage({
         action: 'promoted',
-        temporaryId: effectiveChainId,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
@@ -2671,7 +2660,6 @@ export async function promoteTemporarySubmission(
       relatedId: id,
       message: buildTemporaryNotificationMessage({
         action: 'promoted',
-        temporaryId: id,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
@@ -2850,7 +2838,6 @@ export async function rejectTemporarySubmission(
     );
     const rejectionMessage = buildTemporaryNotificationMessage({
       action: 'rejected',
-      temporaryId: id,
       tableName: row.table_name,
       formName: row.form_name,
       configName: row.config_name,
@@ -2877,7 +2864,6 @@ export async function rejectTemporarySubmission(
       relatedId: id,
       message: buildTemporaryNotificationMessage({
         action: 'rejected',
-        temporaryId: id,
         tableName: row.table_name,
         formName: row.form_name,
         configName: row.config_name,
