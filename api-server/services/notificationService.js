@@ -40,6 +40,27 @@ function normalizeKind(kind, fallback) {
   return normalized;
 }
 
+function buildWebPushMessage(rawMessage) {
+  if (typeof rawMessage !== 'string') return rawMessage ?? '';
+  const trimmed = rawMessage.trim();
+  if (!trimmed || !(trimmed.startsWith('{') || trimmed.startsWith('['))) return rawMessage;
+  try {
+    const parsed = JSON.parse(trimmed);
+    const summaryFields = Array.isArray(parsed?.summaryFields) ? parsed.summaryFields : [];
+    const summaryParts = summaryFields
+      .map((entry) =>
+        entry?.value !== undefined && entry?.value !== null ? String(entry.value).trim() : '',
+      )
+      .filter((value) => value);
+    if (summaryParts.length) return summaryParts.join(' · ');
+    const summaryText = String(parsed?.summaryText || '').trim();
+    if (summaryText) return summaryText;
+    return rawMessage;
+  } catch {
+    return rawMessage;
+  }
+}
+
 export async function notifyUser({
   companyId,
   recipientEmpId,
@@ -93,7 +114,7 @@ export async function notifyUser({
     empid: recipient,
     notificationId: payload.id,
     kind: normalizedKind,
-    message: normalizedMessage,
+    message: buildWebPushMessage(normalizedMessage),
     relatedId: relatedId ?? null,
     title: 'ERP notification',
     url: '/#/notifications',
