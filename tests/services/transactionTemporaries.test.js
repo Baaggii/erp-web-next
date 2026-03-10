@@ -6,6 +6,7 @@ import {
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
   promoteTemporarySubmission,
+  rejectTemporarySubmission,
   getTemporaryChainHistory,
   listTemporarySubmissions,
   updateTemporaryChainStatus,
@@ -30,6 +31,13 @@ function createStubConnection({ temporaryRow, chainIds = [], pendingRows = [] } 
       }
       if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
         return [[{ COLUMN_NAME: 'chain_id' }, { COLUMN_NAME: 'is_pending' }]];
+      }
+      if (sql.includes('information_schema.COLUMNS')) {
+        return [[
+          { COLUMN_NAME: 'amount' },
+          { COLUMN_NAME: 'created_by' },
+          { COLUMN_NAME: 'id' },
+        ]];
       }
       if (sql.includes('idx_temp_chain_pending')) {
         return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
@@ -1259,5 +1267,131 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
     assert.ok(conn.released);
   } finally {
     db.pool.getConnection = originalGetConnection;
+  }
+});
+
+
+test('createTemporarySubmission passes notification channel preferences from form config', async () => {
+  const { conn } = createStubConnection();
+  const notifications = [];
+
+  const result = await createTemporarySubmission(
+    {
+      tableName: 'transactions_contract',
+      formName: 'contract_form',
+      payload: {},
+      rawValues: {},
+      cleanedValues: {},
+      companyId: 1,
+      createdBy: 'EMP009',
+    },
+    {
+      connectionFactory: async () => conn,
+      employmentSessionFetcher: async () => ({ senior_empid: 'EMP100' }),
+      formConfigResolver: async () => ({
+        config: {
+          notificationFields: [],
+          notificationDashboardFields: ['id'],
+          notificationPhoneFields: [],
+          notificationEmailFields: ['email'],
+        },
+      }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+    },
+  );
+
+  assert.equal(result.reviewerEmpId, 'EMP100');
+  assert.equal(notifications.length, 1);
+  assert.deepEqual(notifications[0].channelPreferences, {
+    showInNotification: false,
+    showInDashboard: true,
+    showInPhone: false,
+    showInEmail: true,
+    notificationFields: [],
+  });
+  assert.equal(notifications[0].temporaryContext?.status, 'pending');
+  assert.equal(notifications[0].temporaryContext?.tableName, 'transactions_contract');
+});
+
+test('promote/reject temporary submissions pass notification channel preferences from form config', async () => {
+  const temporaryRow = {
+    id: 55,
+    company_id: 1,
+    chain_id: 55,
+    table_name: 'transactions_test',
+    form_name: 'test_form',
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP100',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+  const preferences = {
+    showInNotification: false,
+    showInDashboard: true,
+    showInPhone: true,
+    showInEmail: false,
+    notificationFields: [],
+  };
+
+  {
+    const notifications = [];
+    const { conn } = createStubConnection({ temporaryRow, chainIds: [55] });
+    await promoteTemporarySubmission(
+      55,
+      { reviewerEmpId: 'EMP100', cleanedValues: { amount: 10 } },
+      {
+        connectionFactory: async () => conn,
+        columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+        tableInserter: async () => ({ id: 'R55' }),
+        formConfigResolver: async () => ({
+          config: {
+            notificationFields: [],
+            notificationDashboardFields: ['id'],
+            notificationPhoneFields: ['phone'],
+            notificationEmailFields: [],
+          },
+        }),
+        chainStatusUpdater: async () => 1,
+        notificationInserter: async (_c, payload) => notifications.push(payload),
+        activityLogger: async () => {},
+      },
+    );
+    assert.ok(notifications.length > 0);
+    notifications.forEach((payload) => {
+      assert.deepEqual(payload.channelPreferences, preferences);
+    });
+  }
+
+  {
+    const notifications = [];
+    const { conn } = createStubConnection({ temporaryRow, chainIds: [55] });
+    await rejectTemporarySubmission(
+      55,
+      { reviewerEmpId: 'EMP100' },
+      {
+        connectionFactory: async () => conn,
+        formConfigResolver: async () => ({
+          config: {
+            notificationFields: [],
+            notificationDashboardFields: ['id'],
+            notificationPhoneFields: ['phone'],
+            notificationEmailFields: [],
+          },
+        }),
+        chainStatusUpdater: async () => 1,
+        notificationInserter: async (_c, payload) => notifications.push(payload),
+        activityLogger: async () => {},
+      },
+    );
+    assert.ok(notifications.length > 0);
+    notifications.forEach((payload) => {
+      assert.deepEqual(payload.channelPreferences, preferences);
+    });
   }
 });

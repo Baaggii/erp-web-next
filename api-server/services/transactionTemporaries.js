@@ -869,8 +869,29 @@ async function insertNotification(
     relatedId,
     type = 'request',
     kind = 'temporary',
+    channelPreferences = null,
+    temporaryContext = null,
   },
 ) {
+  if (channelPreferences && channelPreferences.showInNotification === false) {
+    return;
+  }
+  let persistedMessage = message;
+  if (String(kind || '').trim().toLowerCase() === 'temporary' && temporaryContext) {
+    const summaryFields = buildTemporarySummaryFields(
+      temporaryContext.values,
+      channelPreferences?.notificationFields,
+    );
+    persistedMessage = safeJsonStringify({
+      kind: 'temporary',
+      action: temporaryContext.action || type,
+      status: temporaryContext.status || null,
+      tableName: temporaryContext.tableName || null,
+      formName: temporaryContext.formName || null,
+      summaryFields,
+      summaryText: message || '',
+    });
+  }
   const recipients = recipientEmpIds ?? recipientEmpId;
   const normalizedRecipients = parseEmpIdList(recipients);
   if (normalizedRecipients.length === 0) return;
@@ -882,10 +903,73 @@ async function insertNotification(
       type,
       kind,
       relatedId,
-      message,
+      message: persistedMessage,
       createdBy,
       connection: conn,
     });
+  }
+}
+
+function hasConfiguredFields(value) {
+  return Array.isArray(value) && value.some((entry) => String(entry || '').trim());
+}
+
+function normalizeFieldList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((field) => String(field || '').trim()).filter(Boolean);
+}
+
+function getCaseInsensitiveValue(source, fieldName) {
+  if (!source || typeof source !== 'object' || !fieldName) return undefined;
+  const target = String(fieldName).trim().toLowerCase();
+  const matchedKey = Object.keys(source).find(
+    (key) => String(key || '').trim().toLowerCase() === target,
+  );
+  if (!matchedKey) return undefined;
+  return source[matchedKey];
+}
+
+function buildTemporarySummaryFields(values, fields) {
+  const valueSource = values && typeof values === 'object' ? values : {};
+  const normalizedFields = normalizeFieldList(fields);
+  return normalizedFields
+    .map((field) => ({ field, value: getCaseInsensitiveValue(valueSource, field) }))
+    .filter((entry) => entry.value !== undefined && entry.value !== null && String(entry.value).trim());
+}
+
+async function resolveTemporaryNotificationPreferences({
+  tableName,
+  formName,
+  configName,
+  companyId,
+  formConfigResolver = getFormConfig,
+}) {
+  const fallback = {
+    showInNotification: true,
+    showInDashboard: true,
+    showInPhone: true,
+    showInEmail: true,
+    notificationFields: [],
+  };
+  const targetFormName =
+    typeof formName === 'string' && formName.trim()
+      ? formName.trim()
+      : typeof configName === 'string' && configName.trim()
+        ? configName.trim()
+        : '';
+  if (!tableName || !targetFormName) return fallback;
+  try {
+    const { config } = await formConfigResolver(tableName, targetFormName, companyId);
+    if (!config || typeof config !== 'object') return fallback;
+    return {
+      showInNotification: hasConfiguredFields(config.notificationFields),
+      showInDashboard: hasConfiguredFields(config.notificationDashboardFields),
+      showInPhone: hasConfiguredFields(config.notificationPhoneFields),
+      showInEmail: hasConfiguredFields(config.notificationEmailFields),
+      notificationFields: normalizeFieldList(config.notificationFields),
+    };
+  } catch {
+    return fallback;
   }
 }
 
@@ -968,6 +1052,7 @@ export async function createTemporarySubmission({
     connectionFactory = () => pool.getConnection(),
     employmentSessionFetcher = getEmploymentSession,
     notificationInserter = insertNotification,
+    formConfigResolver = getFormConfig,
   } = runtimeDeps;
   if (!tableName) {
     const err = new Error('tableName required');
@@ -1012,6 +1097,13 @@ export async function createTemporarySubmission({
         : {}),
     });
     const reviewerEmpIds = parseEmpIdList(session?.senior_empid ?? session?.seniorEmpId);
+    const notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName,
+      formName,
+      configName,
+      companyId,
+      formConfigResolver,
+    });
     const fallbackBranch = normalizeScopePreference(branchId);
     const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
@@ -1079,6 +1171,14 @@ export async function createTemporarySubmission({
           reviewerCount > 1 ? ` (shared with ${reviewerCount} senior reviewers)` : ''
         }`,
         type: 'request',
+        channelPreferences: notificationPreferences,
+        temporaryContext: {
+          tableName,
+          formName: formName ?? configName ?? null,
+          status: 'pending',
+          action: 'pending',
+          values: cleanedValuesForStorage,
+        },
       });
     }
     await conn.query('COMMIT');
@@ -1628,6 +1728,7 @@ export async function promoteTemporarySubmission(
   const conn = providedConnection || (await connectionFactory());
   const shouldReleaseConnection = !providedConnection;
   let row = null;
+  let notificationPreferences = null;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -1765,6 +1866,13 @@ export async function promoteTemporarySubmission(
         });
       }
     }
+    notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName: row.table_name,
+      formName,
+      configName: row.config_name,
+      companyId: row.company_id,
+      formConfigResolver,
+    });
 
     const allowedField =
       typeof formCfg?.isAllowedField === 'string'
@@ -2100,6 +2208,14 @@ export async function promoteTemporarySubmission(
             : ''
         }`,
         type: 'request',
+        channelPreferences: notificationPreferences,
+        temporaryContext: {
+          tableName: row.table_name,
+          formName: row.form_name ?? row.config_name ?? null,
+          status: 'pending',
+          action: 'forwarded',
+          values: sanitizedValues,
+        },
       });
       await notificationInserter(conn, {
         companyId: row.company_id,
@@ -2108,6 +2224,14 @@ export async function promoteTemporarySubmission(
         relatedId: id,
         message: `Temporary submission #${id} forwarded for additional review`,
         type: 'response',
+        channelPreferences: notificationPreferences,
+        temporaryContext: {
+          tableName: row.table_name,
+          formName: row.form_name ?? row.config_name ?? null,
+          status: 'forwarded',
+          action: 'forwarded',
+          values: sanitizedValues,
+        },
       });
       await conn.query('COMMIT');
       return {
@@ -2412,6 +2536,14 @@ export async function promoteTemporarySubmission(
         relatedId: id,
         message: promotionMessage,
         type: 'response',
+        channelPreferences: notificationPreferences,
+        temporaryContext: {
+          tableName: row.table_name,
+          formName: row.form_name ?? row.config_name ?? null,
+          status: 'promoted',
+          action: 'promoted',
+          values: sanitizedValues,
+        },
       });
     }
     if (planReviewerRecipients.size > 0) {
@@ -2424,6 +2556,14 @@ export async function promoteTemporarySubmission(
           relatedId: id,
           message: sharedMessage,
           type: 'response',
+          channelPreferences: notificationPreferences,
+          temporaryContext: {
+            tableName: row.table_name,
+            formName: row.form_name ?? row.config_name ?? null,
+            status: 'promoted',
+            action: 'promoted',
+            values: sanitizedValues,
+          },
         });
       }
     }
@@ -2439,6 +2579,14 @@ export async function promoteTemporarySubmission(
             relatedId: resolvedRow.id,
             message: resolutionMessage,
             type: 'response',
+            channelPreferences: notificationPreferences,
+            temporaryContext: {
+              tableName: row.table_name,
+              formName: row.form_name ?? row.config_name ?? null,
+              status: 'promoted',
+              action: 'promoted',
+              values: sanitizedValues,
+            },
           });
         }
       }
@@ -2450,6 +2598,14 @@ export async function promoteTemporarySubmission(
       relatedId: id,
       message: `You approved temporary submission #${id} for ${row.table_name}`,
       type: 'response',
+      channelPreferences: notificationPreferences,
+      temporaryContext: {
+        tableName: row.table_name,
+        formName: row.form_name ?? row.config_name ?? null,
+        status: 'promoted',
+        action: 'promoted',
+        values: sanitizedValues,
+      },
     });
     await conn.query('COMMIT');
     return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
@@ -2487,6 +2643,7 @@ export async function rejectTemporarySubmission(
     chainStatusUpdater = updateTemporaryChainStatus,
     activityLogger = logUserAction,
     notificationInserter = insertNotification,
+    formConfigResolver = getFormConfig,
   } = runtimeDeps;
 
   const conn = providedConnection || (await connectionFactory());
@@ -2499,6 +2656,16 @@ export async function rejectTemporarySubmission(
       [id],
     );
     const row = rows[0];
+    const formName = row?.form_name || row?.config_name || null;
+    const notificationPreferences = await resolveTemporaryNotificationPreferences({
+      tableName: row?.table_name,
+      formName,
+      configName: row?.config_name,
+      companyId: row?.company_id,
+      formConfigResolver,
+    });
+    const rejectionNotificationValues =
+      extractPromotableValues(safeJsonParse(row?.cleaned_values_json, {})) || {};
     if (!row) {
       const err = new Error('Temporary submission not found');
       err.status = 404;
@@ -2608,6 +2775,14 @@ export async function rejectTemporarySubmission(
         relatedId: id,
         message: rejectionMessage,
         type: 'response',
+        channelPreferences: notificationPreferences,
+        temporaryContext: {
+          tableName: row.table_name,
+          formName: row.form_name ?? row.config_name ?? null,
+          status: 'rejected',
+          action: 'rejected',
+          values: rejectionNotificationValues,
+        },
       });
     }
     await notificationInserter(conn, {
@@ -2617,6 +2792,14 @@ export async function rejectTemporarySubmission(
       relatedId: id,
       message: `You rejected temporary submission #${id} for ${row.table_name}`,
       type: 'response',
+      channelPreferences: notificationPreferences,
+      temporaryContext: {
+        tableName: row.table_name,
+        formName: row.form_name ?? row.config_name ?? null,
+        status: 'rejected',
+        action: 'rejected',
+        values: rejectionNotificationValues,
+      },
     });
     await conn.query('COMMIT');
     return { id, status: 'rejected' };
