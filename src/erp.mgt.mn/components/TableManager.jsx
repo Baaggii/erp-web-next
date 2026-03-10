@@ -4598,6 +4598,30 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
     }
+    const requiredAnyGroups = Array.isArray(formConfig?.requiredAnyGroups)
+      ? formConfig.requiredAnyGroups
+      : [];
+    for (const group of requiredAnyGroups) {
+      if (!Array.isArray(group) || group.length === 0) continue;
+      const hasAny = group.some((field) => {
+        const value = merged[field];
+        return value !== undefined && value !== null && value !== '';
+      });
+      if (!hasAny) {
+        const first = group[0];
+        addToast(
+          t('please_fill_one_of_fields', 'Please fill at least one of: {{fields}}', {
+            fields: group.map((field) => labels[field] || field).join(', '),
+          }),
+          'error',
+        );
+        if (first) {
+          const element = document.querySelector(`[name="${first}"]`);
+          if (element && typeof element.focus === 'function') element.focus();
+        }
+        return;
+      }
+    }
 
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
@@ -9479,6 +9503,7 @@ const TableManager = forwardRef(function TableManager({
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
+        requiredAnyGroups={formConfig?.requiredAnyGroups || []}
         defaultValues={rowDefaults}
         dateField={formConfig?.dateField || []}
         headerFields={headerFields}
