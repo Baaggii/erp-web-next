@@ -576,6 +576,39 @@ function emitNotificationEvent(rooms, payload) {
   });
 }
 
+function parseNotificationMessagePayload(rawMessage) {
+  if (typeof rawMessage !== 'string') return null;
+  const trimmed = rawMessage.trim();
+  if (!trimmed || !(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function buildWebPushBody(payload) {
+  const parsedMessage = parseNotificationMessagePayload(payload?.message);
+  if (!parsedMessage || parsedMessage.kind !== 'transaction') {
+    return payload?.message || '';
+  }
+  const summaryFields = Array.isArray(parsedMessage.summaryFields)
+    ? parsedMessage.summaryFields
+    : [];
+  const summaryParts = summaryFields
+    .map((entry) => (entry?.value !== undefined && entry?.value !== null ? String(entry.value).trim() : ''))
+    .filter((value) => value);
+  if (summaryParts.length) {
+    return summaryParts.join(' · ');
+  }
+  if (typeof parsedMessage.summaryText === 'string' && parsedMessage.summaryText.trim()) {
+    return parsedMessage.summaryText.trim();
+  }
+  const transactionName = String(parsedMessage.transactionName || 'Transaction').trim();
+  const action = String(parsedMessage.action || 'updated').trim();
+  return `${transactionName} ${action}`.trim();
+}
+
 function enqueueWebPushForPayload(room, payload, companyId) {
   const empid = String(room || '').startsWith('user:')
     ? String(room).slice('user:'.length).trim().toUpperCase()
@@ -586,7 +619,7 @@ function enqueueWebPushForPayload(room, payload, companyId) {
     empid,
     notificationId: payload?.id ?? null,
     kind: payload?.kind || payload?.type || 'notification',
-    message: payload?.message || '',
+    message: buildWebPushBody(payload),
     relatedId: payload?.related_id ?? null,
     title: 'ERP notification',
     url: '/#/notifications',
@@ -702,9 +735,9 @@ async function handleTransactionNotification(job) {
   const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
   const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
   const configuredSummaryFields =
-    dashboardSummaryBase.summaryFields.length > 0
-      ? dashboardSummaryBase.summaryFields
-      : notificationSummaryBase.summaryFields;
+    notificationSummaryBase.summaryFields.length > 0
+      ? notificationSummaryBase.summaryFields
+      : dashboardSummaryBase.summaryFields;
   let existingReferenceKeys;
   if (job.action === 'update' || job.action === 'delete') {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
@@ -792,22 +825,24 @@ async function handleTransactionNotification(job) {
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
-        buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
-      const deleteSummaryFields = dashboardSummaryBase.summaryFields.length
-        ? dashboardSummaryBase.summaryFields
-        : notificationSummaryBase.summaryFields;
+        buildSummary(
+          referenceRow,
+          config?.notificationFields?.length
+            ? config.notificationFields
+            : config?.notificationDashboardFields ?? [],
+        );
       const summaryFields =
         job.action === 'update' || job.action === 'delete'
           ? configuredSummaryFields
-          : dashboardSummaryBase.summaryFields.length
-            ? dashboardSummaryBase.summaryFields
+          : notificationSummaryBase.summaryFields.length
+            ? notificationSummaryBase.summaryFields
             : referenceSummaryFields;
       const summaryText =
         job.action === 'update' && editSummary.summaryText
           ? editSummary.summaryText
           : job.action === 'delete'
             ? 'Transaction deleted'
-            : dashboardSummaryBase.summaryText || referenceSummaryText;
+            : notificationSummaryBase.summaryText || referenceSummaryText;
       const referenceKey = buildReferenceKey(relation.table, referenceId);
       const isExistingRecipient =
         job.action === 'update' &&
