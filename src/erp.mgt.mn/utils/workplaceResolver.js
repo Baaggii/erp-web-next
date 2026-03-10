@@ -79,9 +79,16 @@ function normalizeRelationEntry(entry) {
   return rel;
 }
 
-async function fetchRelations(signal) {
+async function fetchRelations({ companyId, signal } = {}) {
   try {
-    const res = await fetch('/api/tables/code_workplace/relations', {
+    const params = new URLSearchParams();
+    if (companyId !== null && companyId !== undefined && companyId !== '') {
+      params.set('companyId', String(companyId));
+    }
+    const relationUrl = params.toString()
+      ? `/api/tables/code_workplace/relations?${params.toString()}`
+      : '/api/tables/code_workplace/relations';
+    const res = await fetch(relationUrl, {
       credentials: 'include',
       signal,
     });
@@ -97,10 +104,13 @@ async function fetchRelations(signal) {
   }
 }
 
-async function fetchDisplayConfig(table, relation = null, signal) {
+async function fetchDisplayConfig(table, relation = null, { companyId, signal } = {}) {
   if (!table) return { idField: undefined, displayFields: [] };
   try {
     const params = new URLSearchParams({ table });
+    if (companyId !== null && companyId !== undefined && companyId !== '') {
+      params.set('companyId', String(companyId));
+    }
     const relFilterColumn = relation?.filterColumn ?? relation?.filter_column;
     const relFilterValue = relation?.filterValue ?? relation?.filter_value;
     const relTargetColumn =
@@ -233,8 +243,8 @@ export async function resolveWorkplacePositionMap({
 
   try {
     const [relations, workplaceDisplayCfg] = await Promise.all([
-      fetchRelations(signal),
-      fetchDisplayConfig('code_workplace', null, signal),
+      fetchRelations({ companyId, signal }),
+      fetchDisplayConfig('code_workplace', null, { companyId, signal }),
     ]);
     if (signal?.aborted) return seedMap;
 
@@ -243,7 +253,10 @@ export async function resolveWorkplacePositionMap({
       relations.find((rel) => rel.columnLower.includes('position')) ||
       null;
     const positionTable = positionRelation?.table || 'code_position';
-    const positionDisplayCfg = await fetchDisplayConfig(positionTable, positionRelation, signal);
+    const positionDisplayCfg = await fetchDisplayConfig(positionTable, positionRelation, {
+      companyId,
+      signal,
+    });
     if (signal?.aborted) return seedMap;
 
     const positionLabelFields =

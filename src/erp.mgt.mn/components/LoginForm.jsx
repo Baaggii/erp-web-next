@@ -40,6 +40,115 @@ function pickRelationDisplayValue(relationResult, relationRow) {
   return null;
 }
 
+function normalizeCompanyId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function resolveSessionDisplayMetadata(session, empid, selectedCompanyId = null) {
+  if (!session || typeof session !== 'object') return session ?? null;
+
+  const normalizedCompanyId = normalizeCompanyId(
+    selectedCompanyId ?? session?.company_id ?? session?.companyId,
+  );
+
+  const workplaceAssignments = Array.isArray(session?.workplace_assignments)
+    ? session.workplace_assignments
+    : [];
+
+  const sourceRows = [
+    {
+      employment_company_id: session?.company_id ?? session?.companyId ?? null,
+      employment_branch_id: session?.branch_id ?? session?.branchId ?? null,
+      employment_department_id: session?.department_id ?? session?.departmentId ?? null,
+      employment_workplace_id: session?.workplace_id ?? session?.workplaceId ?? null,
+    },
+    ...workplaceAssignments.map((assignment) => ({
+      employment_company_id:
+        assignment?.company_id ?? assignment?.companyId ?? session?.company_id ?? null,
+      employment_branch_id: assignment?.branch_id ?? assignment?.branchId ?? null,
+      employment_department_id: assignment?.department_id ?? assignment?.departmentId ?? null,
+      employment_workplace_id: assignment?.workplace_id ?? assignment?.workplaceId ?? null,
+    })),
+  ];
+
+  const relationColumns = [
+    'employment_branch_id',
+    'employment_department_id',
+    'employment_workplace_id',
+  ];
+
+  const resolvedByColumn = new Map();
+  await Promise.all(
+    relationColumns.map(async (sourceColumn) => {
+      const result = await resolveRelationRowsFromSource({
+        sourceTable: 'tbl_employment',
+        sourceRows,
+        sourceColumn,
+        ...(normalizedCompanyId !== null ? { companyId: normalizedCompanyId } : {}),
+      });
+      resolvedByColumn.set(sourceColumn, result);
+    }),
+  );
+
+  const pickResolvedLabel = (sourceColumn, sourceValue) => {
+    const relationResult = resolvedByColumn.get(sourceColumn);
+    const relationRow = relationResult?.rowById?.get(String(sourceValue ?? '').trim());
+    return pickRelationDisplayValue(relationResult, relationRow);
+  };
+
+  const enrichedAssignments = workplaceAssignments.map((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return assignment;
+    const branchName = pickResolvedLabel(
+      'employment_branch_id',
+      assignment?.branch_id ?? assignment?.branchId,
+    );
+    const departmentName = pickResolvedLabel(
+      'employment_department_id',
+      assignment?.department_id ?? assignment?.departmentId,
+    );
+    const workplaceName = pickResolvedLabel(
+      'employment_workplace_id',
+      assignment?.workplace_id ?? assignment?.workplaceId,
+    );
+    return {
+      ...assignment,
+      ...(branchName ? { branch_name: branchName } : {}),
+      ...(departmentName ? { department_name: departmentName } : {}),
+      ...(workplaceName ? { workplace_name: workplaceName } : {}),
+    };
+  });
+
+  const sessionBranchName =
+    pickResolvedLabel('employment_branch_id', session?.branch_id ?? session?.branchId) ??
+    session?.branch_name ??
+    session?.branchName ??
+    null;
+  const sessionDepartmentName =
+    pickResolvedLabel('employment_department_id', session?.department_id ?? session?.departmentId) ??
+    session?.department_name ??
+    session?.departmentName ??
+    null;
+  const sessionWorkplaceName =
+    pickResolvedLabel('employment_workplace_id', session?.workplace_id ?? session?.workplaceId) ??
+    session?.workplace_name ??
+    session?.workplaceName ??
+    null;
+
+  return {
+    ...session,
+    ...(sessionBranchName ? { branch_name: sessionBranchName } : {}),
+    ...(sessionDepartmentName ? { department_name: sessionDepartmentName } : {}),
+    ...(sessionWorkplaceName ? { workplace_name: sessionWorkplaceName } : {}),
+    ...(enrichedAssignments.length
+      ? { workplace_assignments: enrichedAssignments }
+      : {}),
+    ...(normalizedCompanyId !== null ? { company_id: normalizedCompanyId } : {}),
+    ...(empid ? { empid } : {}),
+  };
+}
+
 export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
@@ -156,6 +265,7 @@ export default function LoginForm() {
           enrichedSession = await resolveSessionDisplayMetadata(
             normalizedSession,
             loggedIn?.empid,
+            loggedIn?.company ?? normalizedSession?.company_id ?? null,
           );
         } catch (err) {
           console.warn('Failed to resolve session relation metadata after login', err);

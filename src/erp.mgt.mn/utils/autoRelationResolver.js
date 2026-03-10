@@ -111,7 +111,15 @@ export async function resolveRelationRowsFromSource({
     // Fallback to legacy relation resolution path.
   }
 
-  const relationRes = await fetch(`/api/tables/${encodeURIComponent(normalizedSourceTable)}/relations`, {
+  const relationParams = new URLSearchParams();
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    relationParams.set('companyId', String(companyId));
+  }
+  const relationUrl = relationParams.toString()
+    ? `/api/tables/${encodeURIComponent(normalizedSourceTable)}/relations?${relationParams.toString()}`
+    : `/api/tables/${encodeURIComponent(normalizedSourceTable)}/relations`;
+
+  const relationRes = await fetch(relationUrl, {
     credentials: 'include',
     skipErrorToast: true,
     skipLoader: true,
@@ -138,6 +146,9 @@ export async function resolveRelationRowsFromSource({
     targetColumn: relation.column,
   });
   if (relation.filterColumn) displayParams.set('filterColumn', relation.filterColumn);
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    displayParams.set('companyId', String(companyId));
+  }
   if (relation.filterColumn && relation.filterValue !== undefined && relation.filterValue !== null) {
     displayParams.set('filterValue', String(relation.filterValue));
   }
