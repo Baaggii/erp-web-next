@@ -56,61 +56,6 @@ async function getToken() {
 }
 
 const originalFetch = window.fetch.bind(window);
-
-function readTenantCompanyId() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-    const companyId = stored?.company;
-    if (companyId === undefined || companyId === null || companyId === '') return null;
-    return Number.isFinite(Number(companyId)) ? String(companyId) : null;
-  } catch {
-    return null;
-  }
-}
-
-function shouldSkipTenantIsolation(pathname = '') {
-  return pathname.startsWith('/api/companies');
-}
-
-function withTenantIsolation(rawUrl, options = {}) {
-  const companyId = readTenantCompanyId();
-  if (!companyId) return { url: rawUrl, options };
-
-  const requestUrl = typeof rawUrl === 'string' ? rawUrl : rawUrl?.url;
-  if (!requestUrl) return { url: rawUrl, options };
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(requestUrl, window.location.origin);
-  } catch {
-    return { url: rawUrl, options };
-  }
-
-  if (!parsedUrl.pathname.startsWith('/api/') || shouldSkipTenantIsolation(parsedUrl.pathname)) {
-    return { url: rawUrl, options };
-  }
-
-  if (!parsedUrl.searchParams.has('companyId')) {
-    parsedUrl.searchParams.set('companyId', companyId);
-  }
-  if (!parsedUrl.searchParams.has('company_id')) {
-    parsedUrl.searchParams.set('company_id', companyId);
-  }
-
-  const headers = new Headers(options?.headers || {});
-  if (!headers.has('X-Company-Id')) {
-    headers.set('X-Company-Id', companyId);
-  }
-
-  return {
-    url: parsedUrl.toString(),
-    options: {
-      ...options,
-      headers,
-    },
-  };
-}
-
 window.fetch = async (url, options = {}, _retry) => {
   const controller = new AbortController();
   controllers.add(controller);
@@ -141,8 +86,7 @@ window.fetch = async (url, options = {}, _retry) => {
       opts.credentials = opts.credentials || 'include';
     }
 
-    const scopedRequest = withTenantIsolation(url, opts);
-    const res = await originalFetch(scopedRequest.url, scopedRequest.options);
+    const res = await originalFetch(url, opts);
 
     if (res.status === 401 && !_retry) {
       let msg;
@@ -157,7 +101,7 @@ window.fetch = async (url, options = {}, _retry) => {
           headers: { 'X-CSRF-Token': await getToken() },
         });
         if (refreshRes.ok) {
-          return window.fetch(scopedRequest.url, { ...scopedRequest.options, skipLoader }, true);
+          return window.fetch(url, { ...opts, skipLoader }, true);
         }
       }
       if (!url.toString().includes('/auth/login')) {
