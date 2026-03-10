@@ -14,6 +14,7 @@ import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
 import { isModulePermissionGranted } from '../utils/moduleAccess.js';
+import { normalizeAtLeastOneGroups } from '../utils/atLeastOneRequirements.js';
 
 
 function normalizeFormConfig(info = {}) {
@@ -55,6 +56,7 @@ function normalizeFormConfig(info = {}) {
   return {
     visibleFields: toArray(info.visibleFields),
     requiredFields: toArray(info.requiredFields),
+    atLeastOneRequiredGroups: normalizeAtLeastOneGroups(info.atLeastOneRequiredGroups),
     defaultValues: toObject(info.defaultValues),
     editableDefaultFields: toArray(info.editableDefaultFields),
     editableFields:
@@ -734,6 +736,31 @@ export default function FormsManagement() {
     });
   }
 
+  function addAtLeastOneGroup() {
+    setConfig((c) => ({
+      ...c,
+      atLeastOneRequiredGroups: [...(c.atLeastOneRequiredGroups || []), []],
+    }));
+  }
+
+  function removeAtLeastOneGroup(index) {
+    setConfig((c) => ({
+      ...c,
+      atLeastOneRequiredGroups: (c.atLeastOneRequiredGroups || []).filter((_, i) => i !== index),
+    }));
+  }
+
+  function toggleAtLeastOneField(index, field) {
+    setConfig((c) => {
+      const groups = [...(c.atLeastOneRequiredGroups || [])];
+      const selected = new Set(groups[index] || []);
+      if (selected.has(field)) selected.delete(field);
+      else selected.add(field);
+      groups[index] = Array.from(selected);
+      return { ...c, atLeastOneRequiredGroups: groups };
+    });
+  }
+
   function changeDefault(field, value) {
     setConfig((c) => ({
       ...c,
@@ -845,6 +872,7 @@ export default function FormsManagement() {
         config.temporaryAllowedWorkplaces,
       ),
       temporaryProcedures: normalizeProcedures(config.temporaryProcedures),
+      atLeastOneRequiredGroups: normalizeAtLeastOneGroups(config.atLeastOneRequiredGroups),
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
@@ -1323,6 +1351,53 @@ export default function FormsManagement() {
                     </small>
                   </label>
                 )}
+              </div>
+            </section>
+
+            <section style={sectionStyle}>
+              <h3 style={sectionTitleStyle}>At least one required fields</h3>
+              <p style={{ margin: '0 0 0.75rem', color: '#666' }}>
+                Configure one or more field groups where at least one field in each group must be filled.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {(config.atLeastOneRequiredGroups || []).map((group, groupIndex) => (
+                  <div
+                    key={`at-least-one-${groupIndex}`}
+                    style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '0.75rem' }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      <strong>Group {groupIndex + 1}</strong>
+                      <button type="button" onClick={() => removeAtLeastOneGroup(groupIndex)}>
+                        Remove
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
+                      {columns.map((col) => (
+                        <label
+                          key={`at-least-one-${groupIndex}-${col}`}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={group.includes(col)}
+                            onChange={() => toggleAtLeastOneField(groupIndex, col)}
+                          />
+                          <span>{columnHeaderMap[col] || col}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <button type="button" onClick={addAtLeastOneGroup}>Add group</button>
+                </div>
               </div>
             </section>
 

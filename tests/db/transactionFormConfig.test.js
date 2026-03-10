@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
-import { setFormConfig, deleteFormConfig } from '../../api-server/services/transactionFormConfig.js';
+import {
+  setFormConfig,
+  deleteFormConfig,
+  getFormConfig,
+} from '../../api-server/services/transactionFormConfig.js';
 import { tenantConfigPath } from '../../api-server/utils/configPaths.js';
 import * as db from '../../db/index.js';
 
@@ -164,4 +168,52 @@ await test('tenant form config does not overwrite company 0', async () => {
   assert.equal(data1.tbl.Name.moduleKey, 'm');
   await base.restore();
   await tenant.restore();
+});
+
+
+await test('setFormConfig persists at-least-one required groups', async () => {
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(file, '{}');
+
+  await setFormConfig('tbl', 'GroupCfg', {
+    atLeastOneRequiredGroups: [
+      ['email', 'phone', 'phone'],
+      ['tax_id', ''],
+      null,
+    ],
+  });
+
+  const data = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual(data.tbl.GroupCfg.atLeastOneRequiredGroups, [
+    ['email', 'phone'],
+    ['tax_id'],
+  ]);
+
+  await restore();
+});
+
+await test('getFormConfig parses at-least-one required groups from file', async () => {
+  const { file, restore } = await withTempFile();
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      tbl: {
+        GroupRead: {
+          atLeastOneRequiredGroups: [
+            ['mobile', 'mobile', ''],
+            ['email'],
+            'invalid',
+          ],
+        },
+      },
+    }),
+  );
+
+  const { config } = await getFormConfig('tbl', 'GroupRead');
+  assert.deepEqual(config.atLeastOneRequiredGroups, [
+    ['mobile'],
+    ['email'],
+  ]);
+
+  await restore();
 });
