@@ -8,6 +8,9 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 - `2025-10-16_pending_request_record_id_varchar.sql`: Converts `pending_request.record_id` and `user_activity_log.record_id` to `VARCHAR(191)` and re-applies related indexes/constraints.
 - `2025-11-02_report_transactions_test_fixture.sql`: Seeds the `transactions_test` and `transactions_test_detail` tables and adds the `dynrep_1_sp_transactions_test_report` stored procedure with expanded lock candidate metadata used by report tests.
 - `2026-02-11_messaging_thread_constraints.sql`: Tightens messaging integrity by enforcing `company_id` non-nullability on message/thread tables, requiring consistent `linked_type` + `linked_id`, and capping insert-time thread depth to 3 via trigger validation.
+- `2026-03-10_planning_budgeting_phase1_tables.sql`: Adds Phase 1 planning/budgeting/rule foundation tables (`plan_*`, `budget_*`, `business_rule_*`, `business_dimension_map`, `rule_execution_log`) with audit columns, foreign keys, and performance indexes.
+- `2026-03-10_planning_budgeting_phase1_constraint_alignment.sql`: Aligns natural key uniqueness to tenant scope by enforcing (`company_id`, code/no) uniqueness for plan, budget, and rule headers.
+- `2026-03-10_planning_budgeting_phase2_phase3.sql`: Implements Phase 2/3 integration: extends dynamic transaction and notification tables, seeds planning/budgeting module keys, adds dashboard metric storage, and creates stored procedures for rule evaluation, budget validation/consumption, plan rollups/resource checks/follow-ups, and dashboard refresh.
 
 No migrations are pending. The baseline schema now mirrors the production snapshot in `db/mgtmn_erp_db.sql` (generated 2025-10-03) so fresh databases already contain the identifier columns and audit metadata that earlier scripts added.
 
