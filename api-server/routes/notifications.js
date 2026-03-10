@@ -146,7 +146,13 @@ function formatTransactionAction(value) {
 function buildTransactionPreview(payload) {
   const actionLabel = formatTransactionAction(payload?.action);
   const formName = formatTransactionFormName(payload);
-  const summaryFields = Array.isArray(payload?.summaryFields) ? payload.summaryFields : [];
+  const summaryFieldsRaw =
+    payload?.summaryFields ||
+    payload?.summary_fields ||
+    payload?.summary_fields_list ||
+    payload?.summary?.fields ||
+    [];
+  const summaryFields = Array.isArray(summaryFieldsRaw) ? summaryFieldsRaw : [];
   const summaryParts = summaryFields
     .map((entry) => {
       const rawValue = entry?.value;
@@ -157,7 +163,7 @@ function buildTransactionPreview(payload) {
   if (summaryParts.length) {
     return `${actionLabel} • ${formName} • ${summaryParts.join(' · ')}`;
   }
-  const summary = String(payload?.summaryText || '').trim();
+  const summary = String(payload?.summaryText || payload?.summary_text || '').trim();
   if (summary) {
     return `${actionLabel} • ${formName} • ${summary}`;
   }
@@ -248,7 +254,13 @@ function formatTemporaryFormName(temporaryRow, payload) {
 function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
   const actionLabel = formatTemporaryAction(status);
   const formName = formatTemporaryFormName(temporaryRow, payload);
-  const summaryFields = Array.isArray(payload?.summaryFields) ? payload.summaryFields : [];
+  const summaryFieldsRaw =
+    payload?.summaryFields ||
+    payload?.summary_fields ||
+    payload?.summary_fields_list ||
+    payload?.summary?.fields ||
+    [];
+  const summaryFields = Array.isArray(summaryFieldsRaw) ? summaryFieldsRaw : [];
   const summaryParts = summaryFields
     .map((entry) => {
       const rawValue = entry?.value;
@@ -259,7 +271,9 @@ function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
   if (summaryParts.length) {
     return `${actionLabel} • ${formName} • ${summaryParts.join(' · ')}`;
   }
-  const summary = String(payload?.summaryText || payload?.summary_text || message || '').trim();
+  const summary = String(
+    payload?.summaryText || payload?.summary_text || payload?.summary?.text || message || '',
+  ).trim();
   if (summary) return `${actionLabel} • ${formName} • ${summary}`;
   return `${actionLabel} • ${formName}`;
 }
