@@ -19,6 +19,12 @@ import { normalizeAtLeastOneGroups } from '../utils/atLeastOneRequirements.js';
 
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
+  const toArrayFrom = (...values) => {
+    for (const value of values) {
+      if (Array.isArray(value)) return [...value];
+    }
+    return [];
+  };
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
@@ -82,12 +88,25 @@ function normalizeFormConfig(info = {}) {
     isAllowedField: toString(info.isAllowedField),
     transactionTypeField: toString(info.transactionTypeField),
     transactionTypeValue: toString(info.transactionTypeValue),
-    detectFields: toArray(info.detectFields),
-    notifyFields: toArray(info.notifyFields),
-    notificationFields: toArray(info.notificationFields),
-    notificationDashboardFields: toArray(info.notificationDashboardFields),
-    notificationPhoneFields: toArray(info.notificationPhoneFields),
-    notificationEmailFields: toArray(info.notificationEmailFields),
+    detectFields: toArrayFrom(info.detectFields, info.detect_field),
+    notifyFields: toArrayFrom(info.notifyFields, info.notify_fields),
+    notificationFields: toArrayFrom(
+      info.notificationFields,
+      info.notification_fields,
+    ),
+    notificationDashboardFields: toArrayFrom(
+      info.notificationDashboardFields,
+      info.notification_dashboard_fields,
+      info.notification_dashboard_field,
+    ),
+    notificationPhoneFields: toArrayFrom(
+      info.notificationPhoneFields,
+      info.notification_phone_fields,
+    ),
+    notificationEmailFields: toArrayFrom(
+      info.notificationEmailFields,
+      info.notification_email_fields,
+    ),
     notificationRedirectTab:
       toTabValue(info.notificationRedirectTab ?? info.notification_redirect_tab) ||
       'audition',
