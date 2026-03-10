@@ -51,10 +51,31 @@ function normalizeFormConfig(info = {}) {
   );
   const procedures = toArray(info.procedures).map((v) => String(v));
   const temporaryProcedures = toArray(info.temporaryProcedures).map((v) => String(v));
+  const normalizeRequiredAnyGroups = (value) =>
+    Array.isArray(value)
+      ? value
+          .map((group) =>
+            Array.isArray(group)
+              ? Array.from(
+                  new Set(
+                    group
+                      .map((field) =>
+                        typeof field === 'string' ? field.trim() : String(field || '').trim(),
+                      )
+                      .filter(Boolean),
+                  ),
+                )
+              : [],
+          )
+          .filter((group) => group.length > 0)
+      : [];
 
   return {
     visibleFields: toArray(info.visibleFields),
     requiredFields: toArray(info.requiredFields),
+    requiredAnyGroups: normalizeRequiredAnyGroups(
+      info.requiredAnyGroups ?? info.requiredOneOfGroups,
+    ),
     defaultValues: toObject(info.defaultValues),
     editableDefaultFields: toArray(info.editableDefaultFields),
     editableFields:
@@ -801,6 +822,24 @@ export default function FormsManagement() {
             ),
           )
         : [];
+    const normalizeRequiredAnyGroups = (groups = []) =>
+      Array.isArray(groups)
+        ? groups
+            .map((group) =>
+              Array.isArray(group)
+                ? Array.from(
+                    new Set(
+                      group
+                        .map((field) =>
+                          typeof field === 'string' ? field.trim() : String(field || '').trim(),
+                        )
+                        .filter(Boolean),
+                    ),
+                  )
+                : [],
+            )
+            .filter((group) => group.length > 0)
+        : [];
     const {
       transactionEndpointOptions = [],
       endpointReceiptTypes = [],
@@ -848,6 +887,7 @@ export default function FormsManagement() {
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
+      requiredAnyGroups: normalizeRequiredAnyGroups(config.requiredAnyGroups),
     };
     [
       'posApiEnableReceiptTypes',
@@ -1644,6 +1684,37 @@ export default function FormsManagement() {
               ))}
             </tbody>
           </table>
+              </div>
+              <div style={{ marginTop: '1rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <strong>Require at least one field in each group</strong>
+                  <small style={{ color: '#6b7280' }}>
+                    One group per line, separated by comma. Example: customer_id, customer_name
+                  </small>
+                  <textarea
+                    rows={4}
+                    value={(config.requiredAnyGroups || [])
+                      .map((group) => group.join(', '))
+                      .join('\n')}
+                    onChange={(e) => {
+                      const groups = e.target.value
+                        .split('\n')
+                        .map((line) =>
+                          Array.from(
+                            new Set(
+                              line
+                                .split(',')
+                                .map((field) => field.trim())
+                                .filter(Boolean),
+                            ),
+                          ),
+                        )
+                        .filter((group) => group.length > 0);
+                      setConfig((c) => ({ ...c, requiredAnyGroups: groups }));
+                    }}
+                    placeholder="field_a, field_b\nfield_c, field_d, field_e"
+                  />
+                </label>
               </div>
             </section>
 

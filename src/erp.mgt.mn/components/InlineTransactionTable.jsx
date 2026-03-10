@@ -60,6 +60,7 @@ function InlineTransactionTable(
     onRowSubmit = () => {},
     onRowsChange = () => {},
     requiredFields = [],
+    requiredAnyGroups = [],
     defaultValues = {},
     onNextForm = null,
     rows: initRows = [],
@@ -127,6 +128,33 @@ function InlineTransactionTable(
   const general = generalConfig.general || {};
   const { t } = useTranslation(['translation']);
   const userIdSet = new Set(userIdFields);
+  const requiredAnyFieldGroups = React.useMemo(
+    () =>
+      Array.isArray(requiredAnyGroups)
+        ? requiredAnyGroups
+            .map((group) =>
+              Array.isArray(group)
+                ? group
+                    .map((field) => (typeof field === 'string' ? field.trim() : ''))
+                    .filter(Boolean)
+                : [],
+            )
+            .filter((group) => group.length > 0)
+        : [],
+    [requiredAnyGroups],
+  );
+  const isValueMissing = React.useCallback(
+    (field, value) => {
+      const isJson = fieldTypeMap[field] === 'json';
+      return (
+        value === '' ||
+        value === null ||
+        value === undefined ||
+        (isJson && Array.isArray(value) && value.length === 0)
+      );
+    },
+    [fieldTypeMap],
+  );
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
@@ -1892,6 +1920,21 @@ function InlineTransactionTable(
           }
         }
       }
+      for (const group of requiredAnyFieldGroups) {
+        const hasAny = group.some((field) => !isValueMissing(field, prev[field]));
+        if (hasAny) continue;
+        const focusField = group.find((field) => fields.includes(field));
+        if (focusField) {
+          setErrorMsg(`Шинэ мөр нэмэхийн өмнө ${labels[focusField] || focusField} бүлгээс дор хаяж нэг талбарыг бөглөнө үү.`);
+          setInvalidCell({ row: rows.length - 1, field: focusField });
+          const el = inputRefs.current[`${rows.length - 1}-${fields.indexOf(focusField)}`];
+          if (el) {
+            el.focus();
+            if (el.select) el.select();
+          }
+          return;
+        }
+      }
     }
     const newIndex = rows.length;
     focusRow.current = newIndex;
@@ -2119,6 +2162,21 @@ function InlineTransactionTable(
         setErrorMsg((labels[f] || f) + ' талбарт буруу огноо байна');
         setInvalidCell({ row: idx, field: f });
         const el = inputRefs.current[`${idx}-${fields.indexOf(f)}`];
+        if (el) {
+          el.focus();
+          if (el.select) el.select();
+        }
+        return;
+      }
+    }
+    for (const group of requiredAnyFieldGroups) {
+      const hasAny = group.some((field) => !isValueMissing(field, row[field]));
+      if (hasAny) continue;
+      const focusField = group.find((field) => fields.includes(field));
+      if (focusField) {
+        setErrorMsg(`${labels[focusField] || focusField} бүлгээс дор хаяж нэг талбарыг бөглөнө үү.`);
+        setInvalidCell({ row: idx, field: focusField });
+        const el = inputRefs.current[`${idx}-${fields.indexOf(focusField)}`];
         if (el) {
           el.focus();
           if (el.select) el.select();
