@@ -1352,49 +1352,6 @@ test('createTemporarySubmission builds temporary notification summary from confi
   ]);
 });
 
-test('createTemporarySubmission falls back to dashboard notification fields for temporary summary when notification fields are empty', async () => {
-  const { conn } = createStubConnection();
-  const notifications = [];
-
-  await createTemporarySubmission(
-    {
-      tableName: 'transactions_contract',
-      formName: 'contract_form',
-      payload: {},
-      rawValues: {},
-      cleanedValues: {
-        contract_no: 'CN-002',
-        amount: 1800,
-      },
-      companyId: 1,
-      createdBy: 'EMP009',
-    },
-    {
-      connectionFactory: async () => conn,
-      employmentSessionFetcher: async () => ({ senior_empid: 'EMP100' }),
-      formConfigResolver: async () => ({
-        config: {
-          notificationFields: [],
-          notificationDashboardFields: ['contract_no', 'amount'],
-          notificationPhoneFields: [],
-          notificationEmailFields: [],
-        },
-      }),
-      notificationInserter: async (_c, payload) => notifications.push(payload),
-    },
-  );
-
-  assert.equal(notifications.length, 1);
-  const parsedMessage = JSON.parse(notifications[0].message);
-  assert.equal(parsedMessage.kind, 'temporary');
-  assert.equal(parsedMessage.action, 'pending');
-  assert.deepEqual(parsedMessage.summaryFields, [
-    { field: 'contract_no', value: 'CN-002' },
-    { field: 'amount', value: '1800' },
-  ]);
-});
-
-
 test('promote/reject temporary submissions pass notification channel preferences from form config', async () => {
   const temporaryRow = {
     id: 55,
