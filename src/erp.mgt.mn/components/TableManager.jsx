@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { findMissingAtLeastOneGroups } from '../utils/atLeastOneRequirements.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -4597,6 +4598,23 @@ const TableManager = forwardRef(function TableManager({
         );
         return;
       }
+    }
+
+    const missingAtLeastOneGroups = findMissingAtLeastOneGroups(
+      merged,
+      formConfig?.atLeastOneRequiredGroups || [],
+    );
+    if (missingAtLeastOneGroups.length > 0) {
+      const labelText = missingAtLeastOneGroups[0]
+        .map((field) => labels[field] || field)
+        .join(', ');
+      addToast(
+        t('please_fill_at_least_one_field', 'Please fill at least one field: {{fields}}', {
+          fields: labelText,
+        }),
+        'error',
+      );
+      return;
     }
 
     const cleaned = {};
@@ -9479,6 +9497,7 @@ const TableManager = forwardRef(function TableManager({
         disabledFields={disabledFields}
         labels={labels}
         requiredFields={formConfig?.requiredFields || []}
+        atLeastOneRequiredGroups={formConfig?.atLeastOneRequiredGroups || []}
         defaultValues={rowDefaults}
         dateField={formConfig?.dateField || []}
         headerFields={headerFields}

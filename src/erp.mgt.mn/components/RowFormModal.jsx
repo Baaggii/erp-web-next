@@ -29,6 +29,7 @@ import {
 } from '../utils/jsonValueFormatting.js';
 import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
+import { findMissingAtLeastOneGroups, isValueFilled } from '../utils/atLeastOneRequirements.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
@@ -101,6 +102,7 @@ const RowFormModal = function RowFormModal({
   disabledFieldReasons = {},
   labels = {},
   requiredFields = [],
+  atLeastOneRequiredGroups = [],
   onChange = () => {},
   onRowsChange = () => {},
   headerFields = [],
@@ -278,6 +280,13 @@ const RowFormModal = function RowFormModal({
   const requiredFieldSet = React.useMemo(
     () => new Set((requiredFields || []).map((f) => f.toLowerCase())),
     [requiredFields],
+  );
+  const normalizedAtLeastOneGroups = React.useMemo(
+    () =>
+      Array.isArray(atLeastOneRequiredGroups)
+        ? atLeastOneRequiredGroups.filter((group) => Array.isArray(group) && group.length > 0)
+        : [],
+    [atLeastOneRequiredGroups],
   );
   const branchIdLowerSet = React.useMemo(
     () => new Set((branchIdFields || []).map((f) => f.toLowerCase())),
@@ -2542,6 +2551,15 @@ const RowFormModal = function RowFormModal({
       setErrors((er) => ({ ...er, [col]: 'Утга оруулна уу' }));
       return;
     }
+    const currentGroup = normalizedAtLeastOneGroups.find((group) => group.includes(col));
+    if (currentGroup && !currentGroup.some((field) => isValueFilled(nextSnapshot[field]))) {
+      const groupErrors = {};
+      currentGroup.forEach((field) => {
+        groupErrors[field] = 'Дор хаяж нэг утга оруулна уу';
+      });
+      setErrors((er) => ({ ...er, ...groupErrors }));
+      return;
+    }
     const skipNum = /code/i.test(col) || /код/i.test(labels[col] || '');
     if (
       (totalAmountSet.has(col) || totalCurrencySet.has(col)) &&
@@ -3336,8 +3354,15 @@ const RowFormModal = function RowFormModal({
           cleanedRows.push(normalized);
           rawRows.push(r);
         });
+        const hasMissingAtLeastOne = normalizedAtLeastOneGroups.some(
+          (group) => !group.some((field) => isValueFilled(normalized[field])),
+        );
         if (hasMissing) {
           alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+          return;
+        }
+        if (hasMissingAtLeastOne) {
+          alert('Сонгосон бүлгээс дор хаяж нэг талбар бөглөнө үү.');
           return;
         }
         if (hasInvalid) {
@@ -3498,8 +3523,18 @@ const RowFormModal = function RowFormModal({
         rowIndices.push(idx);
       });
 
+      const hasMissingAtLeastOne = cleanedRows.some((normalized) =>
+        normalizedAtLeastOneGroups.some(
+          (group) => !group.some((field) => isValueFilled(normalized[field])),
+        ),
+      );
       if (hasMissing) {
         alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        setSubmitLocked(false);
+        return;
+      }
+      if (hasMissingAtLeastOne) {
+        alert('Сонгосон бүлгээс дор хаяж нэг талбар бөглөнө үү.');
         setSubmitLocked(false);
         return;
       }
@@ -3604,6 +3639,17 @@ const RowFormModal = function RowFormModal({
         errs[f] = 'Утга оруулна уу';
       }
     });
+    const missingAtLeastOneGroups = findMissingAtLeastOneGroups(
+      formVals,
+      normalizedAtLeastOneGroups,
+    );
+    if (missingAtLeastOneGroups.length > 0) {
+      const groupError = {};
+      missingAtLeastOneGroups[0].forEach((field) => {
+        groupError[field] = 'Дор хаяж нэг утга оруулна уу';
+      });
+      Object.assign(errs, groupError);
+    }
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
       const merged = { ...extraVals, ...formVals };
@@ -4210,6 +4256,7 @@ const RowFormModal = function RowFormModal({
             onRowSubmit={onSubmit}
             onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
+            atLeastOneRequiredGroups={normalizedAtLeastOneGroups}
             disabledFields={disabledFields}
             disabledFieldReasons={disabledFieldReasons}
             defaultValues={defaultValues}
