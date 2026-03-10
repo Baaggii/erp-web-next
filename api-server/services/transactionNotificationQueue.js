@@ -576,6 +576,39 @@ function emitNotificationEvent(rooms, payload) {
   });
 }
 
+function parseNotificationMessagePayload(rawMessage) {
+  if (typeof rawMessage !== 'string') return null;
+  const trimmed = rawMessage.trim();
+  if (!trimmed || !(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function buildWebPushBody(payload) {
+  const parsedMessage = parseNotificationMessagePayload(payload?.message);
+  if (!parsedMessage || parsedMessage.kind !== 'transaction') {
+    return payload?.message || '';
+  }
+  const summaryFields = Array.isArray(parsedMessage.summaryFields)
+    ? parsedMessage.summaryFields
+    : [];
+  const summaryParts = summaryFields
+    .map((entry) => (entry?.value !== undefined && entry?.value !== null ? String(entry.value).trim() : ''))
+    .filter((value) => value);
+  if (summaryParts.length) {
+    return summaryParts.join(' · ');
+  }
+  if (typeof parsedMessage.summaryText === 'string' && parsedMessage.summaryText.trim()) {
+    return parsedMessage.summaryText.trim();
+  }
+  const transactionName = String(parsedMessage.transactionName || 'Transaction').trim();
+  const action = String(parsedMessage.action || 'updated').trim();
+  return `${transactionName} ${action}`.trim();
+}
+
 function enqueueWebPushForPayload(room, payload, companyId) {
   const empid = String(room || '').startsWith('user:')
     ? String(room).slice('user:'.length).trim().toUpperCase()
@@ -586,7 +619,7 @@ function enqueueWebPushForPayload(room, payload, companyId) {
     empid,
     notificationId: payload?.id ?? null,
     kind: payload?.kind || payload?.type || 'notification',
-    message: payload?.message || '',
+    message: buildWebPushBody(payload),
     relatedId: payload?.related_id ?? null,
     title: 'ERP notification',
     url: '/#/notifications',
