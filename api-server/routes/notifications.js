@@ -248,6 +248,17 @@ function formatTemporaryFormName(temporaryRow, payload) {
 function buildTemporaryPreview({ temporaryRow, payload, status, message }) {
   const actionLabel = formatTemporaryAction(status);
   const formName = formatTemporaryFormName(temporaryRow, payload);
+  const summaryFields = Array.isArray(payload?.summaryFields) ? payload.summaryFields : [];
+  const summaryParts = summaryFields
+    .map((entry) => {
+      const rawValue = entry?.value;
+      if (rawValue === undefined || rawValue === null) return '';
+      return String(rawValue).trim();
+    })
+    .filter((value) => value);
+  if (summaryParts.length) {
+    return `${actionLabel} • ${formName} • ${summaryParts.join(' · ')}`;
+  }
   const summary = String(payload?.summaryText || payload?.summary_text || message || '').trim();
   if (summary) return `${actionLabel} • ${formName} • ${summary}`;
   return `${actionLabel} • ${formName}`;

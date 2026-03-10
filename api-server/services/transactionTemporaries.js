@@ -886,7 +886,7 @@ async function insertNotification(
       type,
       kind,
       relatedId,
-      message,
+      message: persistedMessage,
       createdBy,
       connection: conn,
     });
