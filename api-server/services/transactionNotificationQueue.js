@@ -702,9 +702,9 @@ async function handleTransactionNotification(job) {
   const phoneSummaryBase = buildSummary(transactionRow, phoneFieldList);
   const emailSummaryBase = buildSummary(transactionRow, emailFieldList);
   const configuredSummaryFields =
-    dashboardSummaryBase.summaryFields.length > 0
-      ? dashboardSummaryBase.summaryFields
-      : notificationSummaryBase.summaryFields;
+    notificationSummaryBase.summaryFields.length > 0
+      ? notificationSummaryBase.summaryFields
+      : dashboardSummaryBase.summaryFields;
   let existingReferenceKeys;
   if (job.action === 'update' || job.action === 'delete') {
     const transactionName = deriveTransactionName(transactionRow, job.tableName);
@@ -792,22 +792,24 @@ async function handleTransactionNotification(job) {
       if (!role || !NOTIFICATION_ROLE_SET.has(role)) continue;
 
       const { summaryFields: referenceSummaryFields, summaryText: referenceSummaryText } =
-        buildSummary(referenceRow, config?.notificationDashboardFields ?? []);
-      const deleteSummaryFields = dashboardSummaryBase.summaryFields.length
-        ? dashboardSummaryBase.summaryFields
-        : notificationSummaryBase.summaryFields;
+        buildSummary(
+          referenceRow,
+          config?.notificationFields?.length
+            ? config.notificationFields
+            : config?.notificationDashboardFields ?? [],
+        );
       const summaryFields =
         job.action === 'update' || job.action === 'delete'
           ? configuredSummaryFields
-          : dashboardSummaryBase.summaryFields.length
-            ? dashboardSummaryBase.summaryFields
+          : notificationSummaryBase.summaryFields.length
+            ? notificationSummaryBase.summaryFields
             : referenceSummaryFields;
       const summaryText =
         job.action === 'update' && editSummary.summaryText
           ? editSummary.summaryText
           : job.action === 'delete'
             ? 'Transaction deleted'
-            : dashboardSummaryBase.summaryText || referenceSummaryText;
+            : notificationSummaryBase.summaryText || referenceSummaryText;
       const referenceKey = buildReferenceKey(relation.table, referenceId);
       const isExistingRecipient =
         job.action === 'update' &&
