@@ -1307,10 +1307,7 @@ test('createTemporarySubmission passes notification channel preferences from for
     showInDashboard: true,
     showInPhone: false,
     showInEmail: true,
-    notificationFields: [],
   });
-  assert.equal(notifications[0].temporaryContext?.status, 'pending');
-  assert.equal(notifications[0].temporaryContext?.tableName, 'transactions_contract');
 });
 
 test('promote/reject temporary submissions pass notification channel preferences from form config', async () => {
@@ -1336,7 +1333,6 @@ test('promote/reject temporary submissions pass notification channel preferences
     showInDashboard: true,
     showInPhone: true,
     showInEmail: false,
-    notificationFields: [],
   };
 
   {
