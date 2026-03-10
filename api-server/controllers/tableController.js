@@ -533,6 +533,13 @@ export async function getTableColumnsMeta(req, res, next) {
 
 export async function updateRow(req, res, next) {
   try {
+    const isTransactionTable = /^transactions_/i.test(String(req.params.table || ''));
+    const editReasonRaw = req.body?.edit_reason;
+    const editReason =
+      editReasonRaw == null || editReasonRaw === '' ? '' : String(editReasonRaw).trim();
+    if (isTransactionTable && !editReason) {
+      return res.status(400).json({ message: 'edit_reason is required for transaction edits' });
+    }
     let original;
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
@@ -546,8 +553,14 @@ export async function updateRow(req, res, next) {
         original = rows[0];
       }
     } catch {}
-    if (original) res.locals.logDetails = original;
+    if (original || editReason) {
+      res.locals.logDetails = {
+        before: original ?? null,
+        ...(editReason ? { edit_reason: editReason } : {}),
+      };
+    }
     const updates = { ...req.body };
+    delete updates.edit_reason;
     delete updates.created_by;
     delete updates.created_at;
     const columns = await listTableColumns(req.params.table);
