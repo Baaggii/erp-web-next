@@ -29,6 +29,22 @@ function arrify(val) {
   return [String(val)];
 }
 
+function normalizeAtLeastOneRequiredGroups(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((group) => {
+      if (!Array.isArray(group)) return [];
+      return Array.from(
+        new Set(
+          group
+            .map((field) => (typeof field === 'string' ? field.trim() : ''))
+            .filter((field) => field),
+        ),
+      );
+    })
+    .filter((group) => group.length > 0);
+}
+
 function normalizeMixedAccessList(list) {
   if (!Array.isArray(list) || list.length === 0) return [];
   const normalized = [];
@@ -669,6 +685,9 @@ function parseEntry(raw = {}) {
     requiredFields: Array.isArray(raw.requiredFields)
       ? raw.requiredFields.map(String)
       : [],
+    atLeastOneRequiredGroups: normalizeAtLeastOneRequiredGroups(
+      raw.atLeastOneRequiredGroups,
+    ),
     defaultValues: raw.defaultValues || {},
     editableDefaultFields: Array.isArray(raw.editableDefaultFields)
       ? raw.editableDefaultFields.map(String)
@@ -1082,6 +1101,7 @@ export async function setFormConfig(
   const {
     visibleFields = [],
     requiredFields = [],
+    atLeastOneRequiredGroups = [],
     defaultValues = {},
     editableDefaultFields = [],
     editableFields,
@@ -1185,6 +1205,9 @@ export async function setFormConfig(
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
     requiredFields: arrify(requiredFields),
+    atLeastOneRequiredGroups: normalizeAtLeastOneRequiredGroups(
+      atLeastOneRequiredGroups,
+    ),
     defaultValues,
     editableDefaultFields: arrify(editableDefaultFields),
     editableFields: arrify(editableFields),
