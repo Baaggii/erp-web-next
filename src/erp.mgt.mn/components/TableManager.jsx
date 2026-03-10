@@ -4839,6 +4839,25 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const method = isAdding ? 'POST' : 'PUT';
+    const isTransactionEdit = !isAdding && /^transactions_/i.test(String(table || ''));
+    let editReason = null;
+    if (isTransactionEdit) {
+      const reasonInput = window.prompt(
+        t(
+          'transaction_edit_reason_prompt',
+          'Please provide a reason for editing this transaction.',
+        ),
+      );
+      editReason = String(reasonInput || '').trim();
+      if (!editReason) {
+        addToast(
+          t('transaction_edit_reason_required', 'Edit reason is required.'),
+          'error',
+        );
+        return false;
+      }
+    }
+    const payload = isTransactionEdit ? { ...cleaned, edit_reason: editReason } : cleaned;
     const url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
       : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
@@ -4857,7 +4876,7 @@ const TableManager = forwardRef(function TableManager({
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(cleaned),
+        body: JSON.stringify(payload),
       });
       const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
       const savedRowHasData =

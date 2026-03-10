@@ -726,6 +726,83 @@ test('updateRow forwards user companyId to updateTableRow', async () => {
   assert.equal(res.code, 204);
 });
 
+
+test('updateRow requires edit_reason for transaction table edits', async () => {
+  let updateCalled = false;
+  const restore = mockPool(async (sql) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      updateCalled = true;
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: 'transactions_income', id: '1' },
+    body: { amount: 100 },
+    user: { empid: 'E1', companyId: 1 },
+  };
+  const res = {
+    locals: {},
+    status(code) {
+      this.code = code;
+      return this;
+    },
+    json(payload) {
+      this.payload = payload;
+      return this;
+    },
+  };
+  await controller.updateRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.equal(res.code, 400);
+  assert.equal(res.payload?.message, 'edit_reason is required for transaction edits');
+  assert.equal(updateCalled, false);
+});
+
+test('updateRow records edit_reason in log details and excludes it from update columns', async () => {
+  let updateParams;
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.startsWith('SELECT * FROM `transactions_income`')) {
+      return [[{ id: 1, amount: 90 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'amount' }]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      updateParams = params;
+      return [{}];
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: 'transactions_income', id: '1' },
+    body: { amount: 100, edit_reason: '  Fix typo  ' },
+    user: { empid: 'E1', companyId: 1 },
+  };
+  const res = { locals: {}, sendStatus(code) { this.code = code; } };
+  await controller.updateRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.equal(res.code, 204);
+  assert.ok(updateParams, 'expected update query to run');
+  assert.deepEqual(updateParams, ['transactions_income', 100, '1', 1]);
+  assert.deepEqual(res.locals.logDetails, {
+    before: { id: 1, amount: 90 },
+    edit_reason: 'Fix typo',
+  });
+});
 test('updateRow supports JSON-encoded composite ids', async () => {
   const tableName = 'json_update_invoices';
   const idParts = ['10', 'INV-1', '2023-05-10'];
