@@ -620,6 +620,7 @@ function isUnreadCandidateMessage(message, selfEmpid) {
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
+const COMPOSER_EMOTICONS = ['😀', '😂', '😍', '😎', '🤔', '😢', '😡', '👍', '🎉', '❤️', '🙏', '🔥'];
 
 function normalizeReactionList(message) {
   const raw = message?.reactions ?? message?.reaction_summary ?? message?.reactionSummary;
@@ -1367,6 +1368,7 @@ export default function MessagingWidget() {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStart, setMentionStart] = useState(-1);
+  const [emoticonPickerOpen, setEmoticonPickerOpen] = useState(false);
   const [networkState, setNetworkState] = useState('loading');
   const [error, setError] = useState('');
   const [composerAnnouncement, setComposerAnnouncement] = useState('');
@@ -1388,6 +1390,7 @@ export default function MessagingWidget() {
   const closeOpenMessageMenus = useCallback(() => {
     setAttachmentsOpen(false);
     setMentionOpen(false);
+    setEmoticonPickerOpen(false);
     setOpenMessageMenuId(null);
   }, []);
   const widgetRootRef = useRef(null);
@@ -3459,6 +3462,30 @@ export default function MessagingWidget() {
     });
   };
 
+  const insertComposerEmoticon = (emoticon) => {
+    const body = state.composer.body || '';
+    const composer = composerRef.current;
+    const start = composer?.selectionStart ?? body.length;
+    const end = composer?.selectionEnd ?? start;
+    const safeEmoticon = sanitizeMessageText(emoticon || '').trim();
+    if (!safeEmoticon) return;
+
+    const needsLeadingSpace = start > 0 && !/\s$/.test(body.slice(0, start));
+    const needsTrailingSpace = end < body.length && !/^\s/.test(body.slice(end));
+    const prefix = needsLeadingSpace ? ' ' : '';
+    const suffix = needsTrailingSpace ? ' ' : '';
+    const insertText = `${prefix}${safeEmoticon}${suffix}`;
+    const nextBody = `${body.slice(0, start)}${insertText}${body.slice(end)}`;
+    dispatch({ type: 'composer/setBody', payload: nextBody });
+    setEmoticonPickerOpen(false);
+
+    requestAnimationFrame(() => {
+      const nextPos = start + insertText.length;
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(nextPos, nextPos);
+    });
+  };
+
   const onRemoveDraftRecipient = (id) => {
     if (!isDraftConversation) {
       setComposerAnnouncement('Recipients can only be changed when creating a new conversation.');
@@ -3933,6 +3960,25 @@ export default function MessagingWidget() {
               Message
             </label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', marginTop: 2 }}>
+              <button
+                type="button"
+                onClick={() => setEmoticonPickerOpen((previous) => !previous)}
+                aria-label="Toggle emoticon picker"
+                title="Insert emoticon"
+                style={{
+                  flex: '0 0 auto',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 10,
+                  background: emoticonPickerOpen ? '#dbeafe' : '#fff',
+                  color: '#1e293b',
+                  minWidth: 42,
+                  padding: '0 10px',
+                  fontSize: composerTextFontSize,
+                  lineHeight: 1,
+                }}
+              >
+                😊
+              </button>
               <textarea
                 id="messaging-composer"
                 ref={composerRef}
@@ -3980,6 +4026,22 @@ export default function MessagingWidget() {
                 Send
               </button>
             </div>
+
+            {emoticonPickerOpen && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', border: '1px solid #dbeafe', borderRadius: 10, padding: 8, background: '#f8fbff' }}>
+                {COMPOSER_EMOTICONS.map((emoticon) => (
+                  <button
+                    key={emoticon}
+                    type="button"
+                    onClick={() => insertComposerEmoticon(emoticon)}
+                    aria-label={`Insert ${emoticon}`}
+                    style={{ border: '1px solid #bfdbfe', borderRadius: 8, background: '#fff', padding: '4px 8px', fontSize: composerTextFontSize, cursor: 'pointer' }}
+                  >
+                    {emoticon}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div style={{ marginTop: 8, border: '1px solid #dbeafe', borderRadius: 10, padding: 8, background: '#f8fbff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
