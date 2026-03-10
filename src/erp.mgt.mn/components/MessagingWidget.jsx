@@ -40,17 +40,29 @@ function normalizeSearchValue(value) {
   return sanitizeMessageText(value || '').toLowerCase();
 }
 
+function normalizeSearchToken(value) {
+  return normalizeSearchValue(value).replace(/[_.-]+/g, ' ').trim();
+}
+
+function compactSearchValue(value) {
+  return normalizeSearchValue(value).replace(/[^a-z0-9]/g, '');
+}
+
 function matchesUserSearch(entry, rawQuery) {
-  const normalizedQuery = normalizeSearchValue(rawQuery).trim();
+  const normalizedQuery = normalizeSearchToken(rawQuery);
   if (!normalizedQuery) return true;
   const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean);
   if (queryTerms.length === 0) return true;
 
-  const haystack = [entry?.label, entry?.id, entry?.employeeCode]
-    .map((value) => normalizeSearchValue(value))
+  const normalizedHaystack = [entry?.label, entry?.id, entry?.employeeCode]
+    .map((value) => normalizeSearchToken(value))
     .join(' ');
+  const compactHaystack = compactSearchValue([entry?.label, entry?.id, entry?.employeeCode].join(' '));
 
-  return queryTerms.every((term) => haystack.includes(term));
+  const compactQuery = compactSearchValue(rawQuery);
+  if (compactQuery && compactHaystack.includes(compactQuery)) return true;
+
+  return queryTerms.every((term) => normalizedHaystack.includes(term));
 }
 
 function buildParticipantCacheKey(sessionId, companyId) {
