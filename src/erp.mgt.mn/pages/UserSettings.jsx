@@ -19,6 +19,7 @@ export default function UserSettingsPage() {
     { key: 'printer', label: t('printer', 'Printer') },
     { key: 'manual', label: t('user_manual', 'User manual') },
     { key: 'profile', label: t('profile', 'Profile') },
+    { key: 'performance', label: t('performance', 'Performance') },
   ];
   const [active, setActive] = useState('general');
   return (
@@ -45,6 +46,75 @@ export default function UserSettingsPage() {
       {active === 'printer' && <PrinterSettingsTab />}
       {active === 'manual' && <UserManualTab />}
       {active === 'profile' && <ProfileSettingsTab />}
+      {active === 'performance' && <PerformanceSettingsTab />}
+    </div>
+  );
+}
+
+function PerformanceSettingsTab() {
+  const { t } = useTranslation(['translation', 'tooltip']);
+  const { userSettings, updateUserSettings } = useAuth();
+  const performanceStatsEnabled = userSettings.performanceStatsEnabled ?? false;
+  const performanceProbeUrl = userSettings.performanceProbeUrl || `${API_BASE}/auth/me`;
+
+  return (
+    <div style={{ display: 'grid', gap: '0.85rem', maxWidth: 760 }}>
+      <p style={{ margin: 0, color: '#475569' }}>
+        {t(
+          'performance_tab_help',
+          'Enable a live floating monitor to quickly isolate slowdown source: web server load, local device load, or internet/network quality.',
+        )}
+      </p>
+
+      <TooltipWrapper
+        title={t('performance_stats_toggle_tooltip', {
+          ns: 'tooltip',
+          defaultValue: 'Show a floating real-time performance monitor for the current logged-in user only',
+        })}
+      >
+        <label>
+          <input
+            type="checkbox"
+            checked={performanceStatsEnabled}
+            onChange={(e) => updateUserSettings({ performanceStatsEnabled: e.target.checked })}
+          />{' '}
+          {t('performance_stats_toggle', 'Enable floating performance stats')}
+        </label>
+      </TooltipWrapper>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <span>{t('performance_probe_url', 'Backend probe URL')}</span>
+        <input
+          type="text"
+          value={performanceProbeUrl}
+          onChange={(e) => updateUserSettings({ performanceProbeUrl: e.target.value })}
+          placeholder={`${API_BASE}/auth/me`}
+        />
+      </label>
+
+      <div style={{ fontSize: '0.9rem', color: '#334155' }}>
+        <strong>{t('performance_diagnostics_guide', 'How to read the monitor')}:</strong>
+        <ul style={{ marginTop: '0.4rem' }}>
+          <li>
+            {t(
+              'performance_diagnostics_server',
+              'Server latency high + local metrics healthy = likely backend / web server bottleneck.',
+            )}
+          </li>
+          <li>
+            {t(
+              'performance_diagnostics_local',
+              'Event-loop lag, long tasks, FPS drop, or JS heap growth = local browser/device load.',
+            )}
+          </li>
+          <li>
+            {t(
+              'performance_diagnostics_network',
+              'Poor RTT/downlink, offline state, or internet probe failures = network / internet path issue.',
+            )}
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

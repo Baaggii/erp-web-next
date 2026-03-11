@@ -36,6 +36,7 @@ import TransactionNotificationDropdown from "./TransactionNotificationDropdown.j
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
 import MessagingWidget from "./MessagingWidget.jsx";
 import useWebPushNotifications from "../hooks/useWebPushNotifications.js";
+import PerformanceStatsFloat from './PerformanceStatsFloat.jsx';
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3672,6 +3673,7 @@ export default function ERPLayout() {
               </div>
               {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
               <MessagingWidget />
+              <PerformanceStatsFloat />
             </div>
           </PendingRequestContext.Provider>
         </TransactionNotificationContext.Provider>
