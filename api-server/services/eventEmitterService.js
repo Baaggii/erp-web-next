@@ -1,19 +1,5 @@
 import crypto from 'crypto';
 import { pool } from '../../db/index.js';
-import { tenantHasPolicies, tenantHasRecordedEvents } from './eventEngineFastCheck.js';
-
-function parseBool(value) {
-  if (value === undefined || value === null) return null;
-  const normalized = String(value).trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
-  return null;
-}
-
-function isEventFastFallbackEnabled() {
-  const envValue = parseBool(process.env.EVENT_FAST_FALLBACK_ENABLED);
-  return envValue ?? true;
-}
 
 function uuid() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -52,14 +38,6 @@ export async function emitCanonicalEvent(eventInput, conn = pool) {
   const event = toCanonicalEvent(eventInput);
   if (!event.companyId) {
     throw new Error('companyId is required to emit event');
-  }
-
-  if (isEventFastFallbackEnabled()) {
-    const hasPolicies = await tenantHasPolicies(event.companyId, conn);
-    if (!hasPolicies) {
-      await tenantHasRecordedEvents(event.companyId, conn);
-      return null;
-    }
   }
 
   const [result] = await conn.query(
