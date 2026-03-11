@@ -18,6 +18,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
+      skipErrorToast: true,
       body: JSON.stringify({ empid, password, companyId }),
     });
   } catch (err) {
@@ -28,11 +29,14 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
   if (!res.ok) {
     const contentType = res.headers.get('content-type') || '';
     let message = t('loginFailed', 'Login failed');
+    let data = null;
     if (contentType.includes('application/json')) {
-      const data = await res.json().catch(() => ({}));
-      if (data && data.message) message = data.message;
-    } else if (res.status === 503) {
+      data = await res.json().catch(() => ({}));
+    }
+    if (res.status === 503) {
       message = t('serviceUnavailable', 'Service unavailable');
+    } else if (data && data.message) {
+      message = data.message;
     } else {
       message = res.statusText || message;
     }

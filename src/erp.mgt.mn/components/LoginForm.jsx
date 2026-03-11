@@ -309,7 +309,15 @@ export default function LoginForm() {
       navigate('/');
     } catch (err) {
       console.error('Login failed:', err);
-      setError(err.message || t('loginError', 'Login error'));
+      const message = err.message || t('loginError', 'Login error');
+      setError(message);
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message, type: 'error' },
+          }),
+        );
+      }
     }
   }
 
