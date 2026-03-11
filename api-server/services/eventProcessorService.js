@@ -1,6 +1,7 @@
 import { pool } from '../../db/index.js';
 import { evaluateConditionTree } from './eventPolicyEvaluator.js';
 import { executePolicyActions } from './eventActionExecutor.js';
+import { isEventEngineEnabled } from './eventEngineConfigService.js';
 
 function parseJson(value, fallback = {}) {
   if (!value) return fallback;
@@ -52,6 +53,10 @@ async function writePolicyRun(conn, payload) {
 }
 
 export async function processPendingEvents({ companyId, eventId = null, limit = 50, conn = pool } = {}) {
+  if (!(await isEventEngineEnabled(conn))) {
+    return { processed: 0, failed: 0, ignored: 0, events: [], skipped: true };
+  }
+
   const params = [];
   let where = `status IN ('pending','failed') AND deleted_at IS NULL`;
   if (companyId) {
@@ -81,10 +86,39 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
         [event.companyId, event.eventType],
       );
 
+      if (!Array.isArray(policies) || policies.length === 0) {
+        await conn.query(
+          `UPDATE core_events SET status = 'ignored', processed_at = NOW(), error_message = NULL, updated_at = NOW() WHERE event_id = ?`,
+          [event.eventId],
+        );
+        summary.processed += 1;
+        summary.ignored += 1;
+        summary.events.push({ eventId: event.eventId, status: 'ignored' });
+        continue;
+      }
+
       let matchedAny = false;
       for (const policy of policies) {
         const conditionJson = parseJson(policy.condition_json, {});
-        const conditionResult = evaluateConditionTree(conditionJson, event);
+        let conditionResult;
+        try {
+          conditionResult = evaluateConditionTree(conditionJson, event);
+        } catch (evaluationError) {
+          console.error('Event policy evaluation failed', {
+            eventId: event.eventId,
+            policyId: policy?.policy_id,
+            error: evaluationError?.message,
+          });
+          await writePolicyRun(conn, {
+            eventId: event.eventId,
+            policyId: policy.policy_id,
+            runStatus: 'failed',
+            conditionResult: { matched: false, reason: 'evaluation_error' },
+            errorMessage: evaluationError?.message || 'policy_evaluation_failed',
+            companyId: event.companyId,
+          });
+          throw evaluationError;
+        }
         if (!conditionResult.matched) {
           await writePolicyRun(conn, {
             eventId: event.eventId,
