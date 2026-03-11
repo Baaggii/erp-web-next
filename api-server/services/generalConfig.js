@@ -60,7 +60,6 @@ const defaults = {
     webPushEnabled: false,
   },
   eventsPolicy: {
-    operationsEnabled: false,
     eventToastEnabled: false,
     policyToastEnabled: false,
   },
@@ -206,18 +205,6 @@ async function readConfig(companyId = 0) {
       result.notifications.webPushEnabled,
       defaults.notifications.webPushEnabled,
     );
-    result.eventsPolicy.operationsEnabled = coerceBoolean(
-      result.eventsPolicy.operationsEnabled,
-      defaults.eventsPolicy.operationsEnabled,
-    );
-    result.eventsPolicy.eventToastEnabled = coerceBoolean(
-      result.eventsPolicy.eventToastEnabled,
-      defaults.eventsPolicy.eventToastEnabled,
-    );
-    result.eventsPolicy.policyToastEnabled = coerceBoolean(
-      result.eventsPolicy.policyToastEnabled,
-      defaults.eventsPolicy.policyToastEnabled,
-    );
     return { config: withSystemInfo(result, companyId), isDefault };
   } catch {
     return { config: withSystemInfo({ ...defaults }, companyId), isDefault: true };
@@ -279,10 +266,6 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   if (updates.eventsPolicy) {
     Object.assign(cfg.eventsPolicy, updates.eventsPolicy);
   }
-  cfg.eventsPolicy.operationsEnabled = coerceBoolean(
-    cfg.eventsPolicy.operationsEnabled,
-    defaults.eventsPolicy.operationsEnabled,
-  );
   cfg.eventsPolicy.eventToastEnabled = coerceBoolean(
     cfg.eventsPolicy.eventToastEnabled,
     defaults.eventsPolicy.eventToastEnabled,
