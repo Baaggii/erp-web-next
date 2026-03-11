@@ -14,6 +14,11 @@ const lastSentAt = new Map();
 const DEDUPE_WINDOW_MS = 30 * 1000;
 const MIN_SEND_INTERVAL_MS = 1000;
 const MAX_RETRIES = 3;
+const PERMANENT_ENDPOINT_FAILURE_PATTERNS = [
+  'permanently-removed.invalid',
+  'getaddrinfo enotfound',
+  'dns lookup failed',
+];
 
 
 async function getWebPushClient() {
@@ -271,6 +276,11 @@ async function markSubscriptionInactive(subscriptionId) {
   );
 }
 
+function isPermanentEndpointFailure(err) {
+  const message = String(err?.message || '').toLowerCase();
+  return PERMANENT_ENDPOINT_FAILURE_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
 async function processJob(job) {
   const vapidReady = await ensureVapidConfigured();
   if (!vapidReady) return;
@@ -326,7 +336,8 @@ async function processJob(job) {
       }
     } catch (err) {
       const statusCode = Number(err?.statusCode || err?.status || 0);
-      if (statusCode === 404 || statusCode === 410) {
+      const permanentEndpointFailure = isPermanentEndpointFailure(err);
+      if (statusCode === 404 || statusCode === 410 || permanentEndpointFailure) {
         await markSubscriptionInactive(subscription.id);
       }
       console.warn('web-push:send-failed', {
@@ -335,7 +346,8 @@ async function processJob(job) {
         statusCode: statusCode || null,
         message: err?.message || 'send failed',
       });
-      if ((statusCode >= 500 || !statusCode) && (job.retryCount || 0) < MAX_RETRIES) {
+      const shouldRetry = (statusCode >= 500 || !statusCode) && !permanentEndpointFailure;
+      if (shouldRetry && (job.retryCount || 0) < MAX_RETRIES) {
         queue.push({ ...job, retryCount: (job.retryCount || 0) + 1 });
       }
     }
