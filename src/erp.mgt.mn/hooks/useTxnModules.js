@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from 'react';
+import { useEffect, useState, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
@@ -123,30 +123,62 @@ export function useTxnModules() {
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
 
+  const userRightId =
+    user?.userLevel ??
+    user?.userlevel_id ??
+    user?.userlevelId ??
+    session?.user_level ??
+    session?.userlevel_id ??
+    session?.userlevelId ??
+    null;
+  const userRightName =
+    session?.user_level_name ??
+    session?.userLevelName ??
+    user?.userLevelName ??
+    user?.userlevel_name ??
+    user?.userlevelName ??
+    null;
+  const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
+  const positionId =
+    position ??
+    session?.employment_position_id ??
+    session?.position_id ??
+    session?.position ??
+    null;
+  const workplacePositionId =
+    resolveWorkplacePositionForContext({
+      workplaceId,
+      session,
+      workplacePositionMap,
+    })?.positionId ??
+    session?.workplace_position_id ??
+    session?.workplacePositionId ??
+    null;
+  const fetchScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        branch,
+        department,
+        company,
+        userRightId,
+        userRightName,
+        workplaceId,
+        positionId,
+        workplacePositionId,
+      }),
+    [
+      branch,
+      department,
+      company,
+      userRightId,
+      userRightName,
+      workplaceId,
+      positionId,
+      workplacePositionId,
+    ],
+  );
+
   function applyDerivedState(data) {
-    const userRightId =
-      user?.userLevel ??
-      user?.userlevel_id ??
-      user?.userlevelId ??
-      session?.user_level ??
-      session?.userlevel_id ??
-      session?.userlevelId ??
-      null;
-    const userRightName =
-      session?.user_level_name ??
-      session?.userLevelName ??
-      user?.userLevelName ??
-      user?.userlevel_name ??
-      user?.userlevelName ??
-      null;
-    const workplaceId =
-      workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
-    const positionId =
-      position ??
-      session?.employment_position_id ??
-      session?.position_id ??
-      session?.position ??
-      null;
     const resolvedWorkplacePosition =
       resolveWorkplacePositionForContext({
         workplaceId,
@@ -282,61 +314,28 @@ export function useTxnModules() {
 
   useEffect(() => {
     debugLog('useTxnModules effect: initial fetch');
-    const expectedWorkplacePositionId =
-      resolveWorkplacePositionForContext({
-        workplaceId: workplace ?? session?.workplace_id ?? session?.workplaceId ?? null,
-        session,
-        workplacePositionMap,
-      })?.positionId ??
-      session?.workplace_position_id ??
-      session?.workplacePositionId ??
-      null;
     if (
       !cache.forms ||
       cache.branchId !== branch ||
       cache.departmentId !== department ||
       cache.companyId !== company ||
-      cache.userRightId !==
-        (user?.userLevel ??
-          user?.userlevel_id ??
-          user?.userlevelId ??
-          session?.user_level ??
-          session?.userlevel_id ??
-          session?.userlevelId ??
-          null) ||
-      cache.userRightName !==
-        (session?.user_level_name ??
-          session?.userLevelName ??
-          user?.userLevelName ??
-          user?.userlevel_name ??
-          user?.userlevelName ??
-          null) ||
-      cache.workplaceId !== (workplace ?? session?.workplace_id ?? session?.workplaceId ?? null) ||
-      cache.positionId !==
-        (position ??
-          session?.employment_position_id ??
-          session?.position_id ??
-          session?.position ??
-          null) ||
-      cache.workplacePositionId !== expectedWorkplacePositionId
+      cache.userRightId !== userRightId ||
+      cache.userRightName !== userRightName ||
+      cache.workplaceId !== workplaceId ||
+      cache.positionId !== positionId ||
+      cache.workplacePositionId !== workplacePositionId
     ) {
       setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
       fetchForms();
     } else {
       applyDerivedState(cache.forms);
     }
-  }, [
-    branch,
-    department,
-    company,
-    perms,
-    licensed,
-    session,
-    user,
-    workplace,
-    position,
-    workplacePositionMap,
-  ]);
+  }, [fetchScopeKey]);
+
+  useEffect(() => {
+    if (!cache.forms) return;
+    applyDerivedState(cache.forms);
+  }, [perms, licensed]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
