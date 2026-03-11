@@ -346,7 +346,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
       `SELECT notification_id, type, related_id, message, is_read, created_at, updated_at
          FROM {{table}}
         WHERE recipient_empid = ?
-        ORDER BY created_at DESC
+        ORDER BY COALESCE(updated_at, created_at) DESC, notification_id DESC
         LIMIT ?`,
       [req.user.empid, sourceLimit],
     );
@@ -493,7 +493,7 @@ router.get('/feed', requireAuth, feedRateLimiter, async (req, res, next) => {
         title,
         preview: buildTransactionPreview(payload),
         status: payload?.action || 'new',
-        timestamp: payload?.updatedAt || row.created_at,
+        timestamp: payload?.updatedAt || payload?.updated_at || row.updated_at || row.created_at,
         unread: Number(row.is_read) === 0,
         action: {
           type: 'navigate',
