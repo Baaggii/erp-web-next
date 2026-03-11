@@ -3,21 +3,8 @@ import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { evaluateConditionTree } from '../services/eventPolicyEvaluator.js';
 import { resolvePolicyPath } from '../services/policyExpressionEngine.js';
-import { isEventEngineEnabled } from '../services/eventEngineConfigService.js';
 
 const router = express.Router();
-
-router.use(requireAuth);
-router.use(async (_req, res, next) => {
-  try {
-    if (!(await isEventEngineEnabled())) {
-      return res.status(503).json({ message: 'Event & policy operations are disabled' });
-    }
-    return next();
-  } catch (error) {
-    return next(error);
-  }
-});
 
 function parseJson(value, fallback) {
   if (!value) return fallback;
@@ -38,7 +25,7 @@ function resolveMapping(mapping = {}, event = {}) {
   return out;
 }
 
-router.post('/simulate', async (req, res, next) => {
+router.post('/simulate', requireAuth, async (req, res, next) => {
   try {
     if (!req.user?.permissions?.system_settings) return res.sendStatus(403);
 
