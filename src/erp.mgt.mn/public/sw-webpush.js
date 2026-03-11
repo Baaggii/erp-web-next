@@ -96,13 +96,14 @@ self.addEventListener('push', (event) => {
 
   const resolvedTitle = resolveNotificationTitle(notificationItem);
   const resolvedBody = resolveNotificationBody(notificationItem);
-
-  const notificationKind = String(notificationItem?.kind || payload?.data?.kind || '').trim().toLowerCase();
-  const preferResolvedBody = notificationKind === 'temporary' || Boolean(notificationItem?.temporarySubmission);
+  const fallbackBody =
+    typeof payload.body === 'string' && payload.body.trim() && !parseMaybeJson(payload.body)
+      ? payload.body.trim()
+      : '';
 
   const title = payload.title || resolvedTitle || 'ERP notification';
   const options = {
-    body: (preferResolvedBody ? resolvedBody || payload.body : payload.body || resolvedBody) || 'You have a new notification',
+    body: resolvedBody || fallbackBody || 'You have a new notification',
     icon: payload.icon || '/icon-192.png',
     badge: payload.badge || '/icon-192.png',
     data: payload.data || { url: '/#/notifications' },
