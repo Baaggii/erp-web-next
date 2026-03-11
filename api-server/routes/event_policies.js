@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
+import { invalidateTenantEventEngineFastCheck } from '../services/eventEngineFastCheck.js';
 
 const router = express.Router();
 
@@ -254,6 +255,7 @@ router.post('/', async (req, res, next) => {
         req.user.empid,
       ],
     );
+    invalidateTenantEventEngineFastCheck(req.user.companyId);
     res.status(201).json({ policy_id: result.insertId });
   } catch (error) {
     next(error);
@@ -287,6 +289,7 @@ router.put('/:id(\d+)', async (req, res, next) => {
         req.user.companyId,
       ],
     );
+    invalidateTenantEventEngineFastCheck(req.user.companyId);
     res.sendStatus(204);
   } catch (error) {
     next(error);
@@ -420,6 +423,7 @@ router.post('/deploy/:draftId', async (req, res, next) => {
     );
 
     await conn.commit();
+    invalidateTenantEventEngineFastCheck(req.user.companyId);
     res.json({ ok: true, policy_id: policyId, version_number: nextVersion });
   } catch (error) {
     await conn.rollback();
