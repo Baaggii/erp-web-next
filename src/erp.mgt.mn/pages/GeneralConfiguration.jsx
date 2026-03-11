@@ -799,24 +799,6 @@ export default function GeneralConfiguration() {
         <>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
-              title={t('event_policy_operations_enabled', {
-                ns: 'tooltip',
-                defaultValue: 'Enable event and policy checks/operations across the whole system',
-              })}
-            >
-              <label>
-                Enable Event & Policy Operations{' '}
-                <input
-                  name="operationsEnabled"
-                  type="checkbox"
-                  checked={normalizeBoolean(active.operationsEnabled, false)}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
               title={t('events_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue: 'Show toasts for event-engine operations (emit/process/skip) where event APIs are used',
@@ -827,7 +809,7 @@ export default function GeneralConfiguration() {
                 <input
                   name="eventToastEnabled"
                   type="checkbox"
-                  checked={normalizeBoolean(active.eventToastEnabled, false)}
+                  checked={active.eventToastEnabled ?? false}
                   onChange={handleChange}
                 />
               </label>
@@ -845,7 +827,7 @@ export default function GeneralConfiguration() {
                 <input
                   name="policyToastEnabled"
                   type="checkbox"
-                  checked={normalizeBoolean(active.policyToastEnabled, false)}
+                  checked={active.policyToastEnabled ?? false}
                   onChange={handleChange}
                 />
               </label>
