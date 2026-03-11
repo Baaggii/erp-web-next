@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 import { pool } from '../../db/index.js';
-import { tenantHasRecordedEvents } from './eventEngineFastCheck.js';
-import { hasMatchingPolicies } from './eventPolicyMatchFastCheck.js';
-import { extractEventSourceTransactionCode } from './eventPolicyMatching.js';
+import { tenantHasPolicies, tenantHasRecordedEvents } from './eventEngineFastCheck.js';
 
 function parseBool(value) {
   if (value === undefined || value === null) return null;
@@ -57,14 +55,7 @@ export async function emitCanonicalEvent(eventInput, conn = pool) {
   }
 
   if (isEventFastFallbackEnabled()) {
-    const hasPolicies = await hasMatchingPolicies({
-      companyId: event.companyId,
-      eventType: event.eventType,
-      sourceTable: event.source.table,
-      sourceTransactionType: event.source.transactionType,
-      sourceTransactionCode: extractEventSourceTransactionCode(event),
-      conn,
-    });
+    const hasPolicies = await tenantHasPolicies(event.companyId, conn);
     if (!hasPolicies) {
       await tenantHasRecordedEvents(event.companyId, conn);
       return null;
