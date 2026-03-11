@@ -62,7 +62,11 @@ export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
 
     async function pollForUpdates() {
       try {
-        const response = await fetch('/index.html', { cache: 'no-store' });
+        const response = await fetch('/index.html', {
+          cache: 'no-store',
+          skipLoader: true,
+          skipErrorToast: true,
+        });
         if (!response?.ok) return;
         const html = await response.text();
         const moduleUrl = extractModuleUrlFromHtml(html);
