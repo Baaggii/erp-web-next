@@ -3,14 +3,17 @@ import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { evaluateConditionTree } from '../services/eventPolicyEvaluator.js';
 import { resolvePolicyPath } from '../services/policyExpressionEngine.js';
-import { evaluateGraphPolicy, convertLegacyPolicyToGraph } from '../services/graphPolicyEngine.js';
 
 const router = express.Router();
 
 function parseJson(value, fallback) {
   if (!value) return fallback;
   if (typeof value === 'object') return value;
-  try { return JSON.parse(value); } catch { return fallback; }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function resolveMapping(mapping = {}, event = {}) {
@@ -47,25 +50,16 @@ router.post('/simulate', requireAuth, async (req, res, next) => {
     const actionsGenerated = [];
     const notifications = [];
     const twinChanges = [];
-    const executionPath = [];
-    const delays = [];
 
     for (const policy of policies) {
       const conditionJson = parseJson(policy.condition_json, { logic: 'and', rules: [] });
       const actionJson = parseJson(policy.action_json, { actions: [] });
-      const graphJson = payload.graph_json || parseJson(policy.graph_json, null) || convertLegacyPolicyToGraph({ eventType: event.eventType, conditionJson, actionJson });
-
-      const graphResult = evaluateGraphPolicy({ graphJson, event });
-      executionPath.push(...(graphResult.executionPath || []));
-      delays.push(...(graphResult.delays || []));
-
       const evaluation = evaluateConditionTree(conditionJson, event);
-      conditionResults.push({ policyKey: policy.policy_key, matched: evaluation.matched, evaluation, graph: graphResult });
-      if (!evaluation.matched && !graphResult.matched) continue;
+      conditionResults.push({ policyKey: policy.policy_key, matched: evaluation.matched, evaluation });
+      if (!evaluation.matched) continue;
 
       matchedPolicies.push(policy.policy_key);
-      const actions = graphResult.actions?.length ? graphResult.actions : (Array.isArray(actionJson.actions) ? actionJson.actions : []);
-      for (const action of actions) {
+      for (const action of Array.isArray(actionJson.actions) ? actionJson.actions : []) {
         const type = String(action?.type || 'unknown');
         actionsGenerated.push(type);
         if (type === 'notify') notifications.push({ message: action.message || event.eventType, target: action.target || null });
@@ -77,9 +71,10 @@ router.post('/simulate', requireAuth, async (req, res, next) => {
       matchedPolicies,
       conditionResults,
       actionsGenerated,
-      executionPath,
-      delays,
-      preview: { twinChanges, notifications },
+      preview: {
+        twinChanges,
+        notifications,
+      },
       simulationMode: true,
     });
   } catch (error) {
