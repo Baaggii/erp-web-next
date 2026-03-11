@@ -1303,10 +1303,14 @@ test('createTemporarySubmission passes notification channel preferences from for
   assert.equal(result.reviewerEmpId, 'EMP100');
   assert.equal(notifications.length, 1);
   assert.deepEqual(notifications[0].channelPreferences, {
-    showInNotification: false,
+    showInNotification: true,
     showInDashboard: true,
-    showInPhone: false,
+    showInPhone: true,
     showInEmail: true,
+    notificationFields: [],
+    notificationDashboardFields: ['id'],
+    notificationPhoneFields: [],
+    notificationEmailFields: ['email'],
   });
 });
 
@@ -1329,10 +1333,14 @@ test('promote/reject temporary submissions pass notification channel preferences
     status: 'pending',
   };
   const preferences = {
-    showInNotification: false,
+    showInNotification: true,
     showInDashboard: true,
     showInPhone: true,
-    showInEmail: false,
+    showInEmail: true,
+    notificationFields: [],
+    notificationDashboardFields: ['id'],
+    notificationPhoneFields: ['phone'],
+    notificationEmailFields: [],
   };
 
   {
