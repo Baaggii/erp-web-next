@@ -6,13 +6,28 @@ self.addEventListener('push', (event) => {
     payload = {};
   }
 
-  const title = payload.title || 'ERP notification';
+  const notification =
+    payload?.notification && typeof payload.notification === 'object'
+      ? payload.notification
+      : payload;
+
+  const title = notification.title || payload.title || 'ERP notification';
   const options = {
-    body: payload.body || 'You have a new notification',
-    icon: payload.icon || '/icon-192.png',
-    badge: payload.badge || '/icon-192.png',
-    data: payload.data || { url: '/#/notifications' },
-    tag: payload.tag || undefined,
+    ...notification,
+    body: notification.body || payload.body || 'You have a new notification',
+    icon: notification.icon || payload.icon || '/icon-192.png',
+    badge: notification.badge || payload.badge || '/icon-192.png',
+    data: {
+      ...(notification.data || payload.data || {}),
+      payload,
+      url:
+        notification?.data?.url ||
+        payload?.data?.url ||
+        notification.url ||
+        payload.url ||
+        '/#/notifications',
+    },
+    tag: notification.tag || payload.tag || undefined,
     renotify: true,
   };
 
