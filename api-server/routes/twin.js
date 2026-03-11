@@ -2,9 +2,15 @@ import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import { listTwinState } from '../services/twinStateService.js';
 import rateLimit from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
+const twinRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs for these routes
+});
 
+router.get('/plan', twinRateLimiter, requireAuth, async (req, res, next) => {
 const twinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs for these routes
@@ -12,7 +18,7 @@ const twinLimiter = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
-router.use(twinLimiter);
+router.get('/budget', twinRateLimiter, requireAuth, async (req, res, next) => {
 
 router.get('/plan', requireAuth, async (req, res, next) => {
   try {
@@ -20,7 +26,7 @@ router.get('/plan', requireAuth, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+router.get('/risk', twinRateLimiter, requireAuth, async (req, res, next) => {
 
 router.get('/budget', requireAuth, async (req, res, next) => {
   try {
@@ -28,7 +34,7 @@ router.get('/budget', requireAuth, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+router.get('/task-load', twinRateLimiter, requireAuth, async (req, res, next) => {
 
 router.get('/risk', requireAuth, async (req, res, next) => {
   try {
@@ -36,7 +42,7 @@ router.get('/risk', requireAuth, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+router.get('/resource', twinRateLimiter, requireAuth, async (req, res, next) => {
 
 router.get('/task-load', requireAuth, async (req, res, next) => {
   try {
