@@ -32,23 +32,5 @@ Flow:
 - Replay endpoint is admin-only.
 - Event policy execution is logged for auditability.
 
-
-## Source-aware policy matching
-This ERP has separate transaction domains by physical table (`transactions_*`) and by transaction type code. Matching only by `(company_id, event_type)` is too broad and can trigger unrelated automation.
-
-Policies now support source scoping fields:
-- `source_table` (nullable): exact table gate, e.g. `transactions_plan`.
-- `source_transaction_type` (nullable): exact transaction type name gate, typically the `transactions_` suffix.
-- `source_transaction_code` (nullable): exact transaction type code gate (`code_transaction.UITransType`).
-
-Matching behavior:
-- Generic policy: if all source fields are `NULL`, it remains tenant-wide for that `event_type`.
-- Source-specific policy: any non-null source field must exactly match the canonical event source/payload.
-- Production safety: `is_sample=1` policies are ignored in `NODE_ENV=production`.
-
-Performance behavior:
-- Transaction CRUD and journal routes now run a fast `SELECT 1 LIMIT 1` source-aware pre-check before event creation.
-- If no matching policy exists for the exact source domain, event emit/processing is skipped so POST/CRUD latency stays low.
-
 ## Suggested next step
 Run event processing from a cron/worker by calling `POST /api/events/process` on an interval.
