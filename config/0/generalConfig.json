@@ -57,6 +57,7 @@
     "webPushEnabled": false
   },
   "eventsPolicy": {
+    "operationsEnabled": false,
     "eventToastEnabled": false,
     "policyToastEnabled": false
   },

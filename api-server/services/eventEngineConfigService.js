@@ -1,4 +1,5 @@
 import { pool } from '../../db/index.js';
+import { getGeneralConfig } from './generalConfig.js';
 
 function parseBool(value) {
   if (value === undefined || value === null) return null;
@@ -9,6 +10,15 @@ function parseBool(value) {
 }
 
 export async function isEventEngineEnabled(conn = pool) {
+  try {
+    const { config } = await getGeneralConfig();
+    if (parseBool(config?.eventsPolicy?.operationsEnabled) === true) {
+      return true;
+    }
+  } catch {
+    // ignore config read errors and keep evaluating other enablement sources
+  }
+
   const envValue = parseBool(process.env.EVENT_ENGINE_ENABLED);
   if (envValue !== null) return envValue;
 
