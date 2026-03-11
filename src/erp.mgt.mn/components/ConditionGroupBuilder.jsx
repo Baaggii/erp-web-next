@@ -2,16 +2,7 @@ import React from 'react';
 
 const OPERATORS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'not_in', 'contains', 'exists', 'not_exists'];
 
-function parseValueByType(raw, type, operator) {
-  if (['in', 'not_in'].includes(operator)) {
-    return raw.split(',').map((v) => v.trim()).filter(Boolean);
-  }
-  if (type === 'number') return Number(raw || 0);
-  if (type === 'boolean') return String(raw).toLowerCase() === 'true';
-  return raw;
-}
-
-export default function ConditionGroupBuilder({ condition, fieldOptions = [], fieldTypes = {}, onChange }) {
+export default function ConditionGroupBuilder({ condition, onChange }) {
   const rules = Array.isArray(condition.rules) ? condition.rules : [];
 
   const patchRule = (index, key, value) => {
@@ -31,22 +22,15 @@ export default function ConditionGroupBuilder({ condition, fieldOptions = [], fi
       </label>
       {rules.map((rule, idx) => (
         <div key={idx} className="row">
-          <select value={rule.field || ''} onChange={(e) => patchRule(idx, 'field', e.target.value)}>
-            <option value="">Select field</option>
-            {fieldOptions.map((field) => <option key={field} value={field}>{field}</option>)}
-          </select>
+          <input placeholder="payload.shortageQty" value={rule.field || ''} onChange={(e) => patchRule(idx, 'field', e.target.value)} />
           <select value={rule.operator || '='} onChange={(e) => patchRule(idx, 'operator', e.target.value)}>
             {OPERATORS.map((op) => <option key={op} value={op}>{op}</option>)}
           </select>
-          <input
-            placeholder="value or comma list"
-            type={fieldTypes[rule.field] === 'number' ? 'number' : 'text'}
-            value={Array.isArray(rule.value) ? rule.value.join(',') : (rule.value ?? '')}
+          <input placeholder="value or comma list" value={Array.isArray(rule.value) ? rule.value.join(',') : (rule.value ?? '')}
             onChange={(e) => {
               const raw = e.target.value;
-              patchRule(idx, 'value', parseValueByType(raw, fieldTypes[rule.field], rule.operator));
+              patchRule(idx, 'value', ['in', 'not_in'].includes(rule.operator) ? raw.split(',').map((v) => v.trim()).filter(Boolean) : raw);
             }} />
-          <button type="button" onClick={() => onChange({ ...condition, rules: rules.filter((_, ruleIndex) => ruleIndex !== idx) })}>Remove</button>
         </div>
       ))}
       <button type="button" onClick={() => onChange({ ...condition, rules: [...rules, { field: '', operator: '=', value: '' }] })}>Add Condition</button>
