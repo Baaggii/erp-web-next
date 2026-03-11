@@ -26,15 +26,39 @@ async function createNotification(action, event, companyId, conn = pool) {
   for (const recipient of recipients) {
     const recipientEmpid = String(recipient || '').trim().toUpperCase();
     if (!recipientEmpid) continue;
-    const [result] = await conn.query(
-      `INSERT INTO notifications
-      (company_id, recipient_empid, type, related_id, message, created_by, created_at)
-      VALUES (?, ?, 'request', ?, ?, ?, NOW())`,
-      [companyId, recipientEmpid, event.source?.recordId ?? null, action.message || event.eventType, event.actorEmpid || null],
-    );
-    created.push({ notificationId: result.insertId, recipientEmpid, mode });
+    const idempotencyKey = `event:${event.eventId}:policy:${action.__policyId || 'na'}:notify:${recipientEmpid}`;
+    try {
+      const [result] = await conn.query(
+        `INSERT INTO notifications
+        (company_id, recipient_empid, type, related_id, message, created_by, idempotency_key, created_at)
+        VALUES (?, ?, 'request', ?, ?, ?, ?, NOW())`,
+        [companyId, recipientEmpid, event.source?.recordId ?? null, action.message || event.eventType, event.actorEmpid || null, idempotencyKey],
+      );
+      created.push({ notificationId: result.insertId, recipientEmpid, mode });
+    } catch (error) {
+      if (error?.code === 'ER_DUP_ENTRY') {
+        created.push({ recipientEmpid, mode, skipped: true, reason: 'duplicate_notification' });
+        continue;
+      }
+      throw error;
+    }
   }
   return { created };
+}
+
+async function reserveActionExecution({ eventId, policyId, actionType, actionIndex, companyId, conn }) {
+  const actionKey = `event:${eventId}:policy:${policyId}:action:${actionType}:${actionIndex}`;
+  try {
+    await conn.query(
+      `INSERT INTO core_event_action_dedup (event_id, policy_id, action_type, action_index, action_key, company_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [eventId, policyId, actionType, actionIndex, actionKey, companyId],
+    );
+    return { actionKey, reserved: true };
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') return { actionKey, reserved: false };
+    throw error;
+  }
 }
 
 async function callProcedureSafely(action, companyId, conn = pool) {
@@ -59,11 +83,25 @@ export async function executePolicyActions({ event, policy, companyId, conn = po
   const actions = Array.isArray(actionJson.actions) ? actionJson.actions : [];
   const results = [];
 
-  for (const action of actions) {
+  for (const [actionIndex, actionInput] of actions.entries()) {
+    const action = { ...actionInput, __policyId: policy?.policy_id || null };
     const type = String(action?.type || '').trim().toLowerCase();
     if (!type) continue;
 
-    if (type === 'create_transaction') {
+    const dedup = await reserveActionExecution({
+      eventId: event.eventId,
+      policyId: policy?.policy_id || 0,
+      actionType: type,
+      actionIndex,
+      companyId,
+      conn,
+    });
+    if (!dedup.reserved) {
+      results.push({ type, skipped: true, reason: 'already_executed', actionKey: dedup.actionKey });
+      continue;
+    }
+
+    if (type === 'create_transaction' || type === 'create_plan') {
       const tableName = String(action?.tableName || `transactions_${action?.transactionType || 'dynamic'}`);
       const row = resolveMapping(action.mapping, event);
       row.company_id = companyId;

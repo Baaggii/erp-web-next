@@ -48,13 +48,44 @@ async function writePolicyRun(conn, payload) {
   return result.insertId;
 }
 
+const MAX_RETRIES = 8;
+
+function computeRetryBackoff(retryCount) {
+  const safeRetry = Math.max(0, Number(retryCount) || 0);
+  const seconds = Math.min(3600, 2 ** safeRetry);
+  return new Date(Date.now() + (seconds * 1000));
+}
+
+async function beginTx(conn) {
+  if (typeof conn.beginTransaction === 'function') await conn.beginTransaction();
+}
+
+async function commitTx(conn) {
+  if (typeof conn.commit === 'function') await conn.commit();
+}
+
+async function rollbackTx(conn) {
+  if (typeof conn.rollback === 'function') await conn.rollback();
+}
+
 export async function processPendingEvents({ companyId, eventId = null, limit = 50, conn = pool } = {}) {
   if (!(await isEventEngineEnabled(conn))) return { processed: 0, failed: 0, ignored: 0, events: [], skipped: true };
 
   const params = [];
-  let where = `status IN ('pending','failed') AND deleted_at IS NULL`;
-  if (companyId) { where += ' AND company_id = ?'; params.push(companyId); }
-  if (eventId != null) { where += ' AND event_id = ?'; params.push(eventId); }
+  let where = `status IN ('pending','failed') AND deleted_at IS NULL AND (next_retry_at IS NULL OR next_retry_at <= NOW())`;
+  if (companyId) {
+    where += ' AND company_id = ?';
+    params.push(companyId);
+  }
+  if (eventId != null) {
+    where += ' AND event_id = ?';
+    params.push(eventId);
+  }
+
+  const [events] = await conn.query(
+    `SELECT * FROM core_events WHERE ${where} ORDER BY occurred_at ASC LIMIT ?`,
+    [...params, Number(limit) || 50],
+  );
 
   const [events] = await conn.query(`SELECT * FROM core_events WHERE ${where} ORDER BY occurred_at ASC LIMIT ?`, [...params, Number(limit) || 50]);
   const summary = { processed: 0, failed: 0, ignored: 0, events: [] };
@@ -63,20 +94,24 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
     const event = normalizeEventRow(row);
     const tx = conn.getConnection ? await conn.getConnection() : await pool.getConnection();
     try {
-      if (tx.beginTransaction) await tx.beginTransaction();
-      await tx.query(`UPDATE core_events SET status='processing', updated_at=NOW() WHERE event_id = ?`, [event.eventId]);
-      const [policies] = await tx.query(
+      await beginTx(conn);
+      await conn.query(`UPDATE core_events SET status='processing', updated_at=NOW() WHERE event_id = ?`, [event.eventId]);
+      const [policies] = await conn.query(
         `SELECT * FROM core_event_policies
          WHERE company_id = ? AND event_type = ? AND is_active = 1 AND deleted_at IS NULL
          ORDER BY priority ASC, policy_id ASC`,
         [event.companyId, event.eventType],
       );
 
-      if (!policies.length) {
-        await tx.query(`UPDATE core_events SET status='ignored', processed_at=NOW(), error_message=NULL, updated_at=NOW() WHERE event_id=?`, [event.eventId]);
-        if (tx.commit) await tx.commit();
-        if (tx.release) tx.release();
-        summary.processed += 1; summary.ignored += 1; summary.events.push({ eventId: event.eventId, status: 'ignored' });
+      if (!Array.isArray(policies) || policies.length === 0) {
+        await conn.query(
+          `UPDATE core_events SET status = 'ignored', processed_at = NOW(), error_message = NULL, updated_at = NOW() WHERE event_id = ?`,
+          [event.eventId],
+        );
+        summary.processed += 1;
+        summary.ignored += 1;
+        summary.events.push({ eventId: event.eventId, status: 'ignored' });
+        await commitTx(conn);
         continue;
       }
 
@@ -122,17 +157,37 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
       summary.processed += 1;
       if (!matchedAny) summary.ignored += 1;
       summary.events.push({ eventId: event.eventId, status: finalStatus });
+      await commitTx(conn);
     } catch (error) {
-      try {
-        if (tx.rollback) await tx.rollback();
-        await tx.query(`UPDATE core_events SET status='failed', retry_count=retry_count+1, error_message=?, updated_at=NOW() WHERE event_id=?`, [error?.message || 'event_processing_failed', event.eventId]);
-      } catch {}
-      if (tx.release) tx.release();
+      await rollbackTx(conn);
+      const nextRetryAt = computeRetryBackoff((row.retry_count || 0) + 1);
       await conn.query(
-        `INSERT INTO core_event_dead_letters (event_id, company_id, failure_stage, error_message, event_snapshot_json, retry_count)
-         VALUES (?, ?, 'event_processor', ?, ?, (SELECT retry_count FROM core_events WHERE event_id = ?))`,
-        [event.eventId, event.companyId, error?.message || 'event_processing_failed', JSON.stringify(event), event.eventId],
+        `UPDATE core_events
+         SET status='failed', retry_count = retry_count + 1, error_message = ?, next_retry_at = ?, updated_at = NOW()
+         WHERE event_id = ?`,
+        [error?.message || 'event_processing_failed', nextRetryAt, event.eventId],
       );
+      if ((row.retry_count || 0) + 1 >= MAX_RETRIES) {
+        await conn.query(
+          `INSERT INTO core_event_dead_letters (event_id, company_id, failure_stage, error_message, event_snapshot_json, retry_count)
+           VALUES (?, ?, 'event_processor', ?, ?, (SELECT retry_count FROM core_events WHERE event_id = ?))`,
+          [event.eventId, event.companyId, error?.message || 'event_processing_failed', JSON.stringify(event), event.eventId],
+        );
+        console.error('Event moved to dead letter queue after repeated failures', {
+          eventId: event.eventId,
+          companyId: event.companyId,
+          retryCount: (row.retry_count || 0) + 1,
+          error: error?.message || 'event_processing_failed',
+        });
+      } else {
+        console.error('Event processing failed; scheduled retry', {
+          eventId: event.eventId,
+          companyId: event.companyId,
+          retryCount: (row.retry_count || 0) + 1,
+          nextRetryAt: nextRetryAt.toISOString(),
+          error: error?.message || 'event_processing_failed',
+        });
+      }
       summary.failed += 1;
       summary.events.push({ eventId: event.eventId, status: 'failed', error: error?.message });
     }
