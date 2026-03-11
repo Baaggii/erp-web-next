@@ -41,8 +41,6 @@ async function sampleLatency(url, options = {}) {
     credentials: options.credentials || 'include',
     headers: options.headers,
     signal: options.signal,
-    skipErrorToast: options.skipErrorToast ?? true,
-    skipLoader: options.skipLoader ?? true,
   });
   const duration = performance.now() - start;
   return {
@@ -81,7 +79,7 @@ export default function PerformanceStatsFloat() {
   const longTaskRef = useRef({ count: 0, worst: 0 });
 
   const testUrl = useMemo(
-    () => userSettings?.performanceProbeUrl || `${API_BASE}/csrf-token`,
+    () => userSettings?.performanceProbeUrl || `${API_BASE}/auth/me`,
     [userSettings?.performanceProbeUrl],
   );
 
