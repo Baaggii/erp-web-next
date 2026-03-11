@@ -23,6 +23,25 @@ function requireSystemSettings(req, res) {
   return true;
 }
 
+function resolveCompanyId(req) {
+  return req.user?.companyId
+    ?? req.user?.company_id
+    ?? req.session?.companyId
+    ?? req.session?.company_id
+    ?? null;
+}
+
+
+function parseJsonSafely(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 router.get('/event-types', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
@@ -54,8 +73,23 @@ router.get('/event-types', async (req, res, next) => {
 router.get('/list', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT
+    const companyId = resolveCompanyId(req);
+    const [rows] = companyId == null
+      ? await pool.query(
+        `SELECT
+          policy_id,
+          policy_name,
+          policy_key,
+          event_type,
+          module_key,
+          priority,
+          is_active
+         FROM core_event_policies
+         WHERE deleted_at IS NULL
+         ORDER BY priority ASC, policy_id ASC`,
+      )
+      : await pool.query(
+        `SELECT
         policy_id,
         policy_name,
         policy_key,
@@ -67,8 +101,8 @@ router.get('/list', async (req, res, next) => {
        WHERE company_id = ?
          AND deleted_at IS NULL
        ORDER BY priority ASC, policy_id ASC`,
-      [req.user.companyId],
-    );
+        [companyId],
+      );
     res.json(rows);
   } catch (error) {
     next(error);
@@ -78,24 +112,43 @@ router.get('/list', async (req, res, next) => {
 router.get('/:id(\d+)', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT
-        policy_id,
-        policy_name,
-        policy_key,
-        event_type,
-        module_key,
-        priority,
-        is_active,
-        condition_json,
-        action_json
-       FROM core_event_policies
-       WHERE policy_id = ?
-         AND company_id = ?
-         AND deleted_at IS NULL
-       LIMIT 1`,
-      [req.params.id, req.user.companyId],
-    );
+    const companyId = resolveCompanyId(req);
+    const [rows] = companyId == null
+      ? await pool.query(
+        `SELECT
+          policy_id,
+          policy_name,
+          policy_key,
+          event_type,
+          module_key,
+          priority,
+          is_active,
+          condition_json,
+          action_json
+         FROM core_event_policies
+         WHERE policy_id = ?
+           AND deleted_at IS NULL
+         LIMIT 1`,
+        [req.params.id],
+      )
+      : await pool.query(
+        `SELECT
+          policy_id,
+          policy_name,
+          policy_key,
+          event_type,
+          module_key,
+          priority,
+          is_active,
+          condition_json,
+          action_json
+         FROM core_event_policies
+         WHERE policy_id = ?
+           AND company_id = ?
+           AND deleted_at IS NULL
+         LIMIT 1`,
+        [req.params.id, companyId],
+      );
     if (!rows.length) return res.sendStatus(404);
     const row = rows[0];
     let conditionJson = row.condition_json;
@@ -115,11 +168,60 @@ router.get('/:id(\d+)', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT * FROM core_event_policies WHERE company_id = ? AND deleted_at IS NULL ORDER BY priority ASC, policy_id ASC`,
-      [req.user.companyId],
-    );
+    const companyId = resolveCompanyId(req);
+    const [rows] = companyId == null
+      ? await pool.query(
+        `SELECT * FROM core_event_policies WHERE deleted_at IS NULL ORDER BY priority ASC, policy_id ASC`,
+      )
+      : await pool.query(
+        `SELECT * FROM core_event_policies WHERE company_id = ? AND deleted_at IS NULL ORDER BY priority ASC, policy_id ASC`,
+        [companyId],
+      );
     res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/scenarios', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const companyId = resolveCompanyId(req);
+    const [rows] = companyId == null
+      ? await pool.query(
+        `SELECT
+          scenario_key,
+          scenario_name,
+          event_type,
+          default_condition_json,
+          default_action_json,
+          default_policy_name,
+          default_policy_key
+         FROM event_scenarios
+         WHERE is_active = 1
+         ORDER BY sort_order ASC, scenario_name ASC`,
+      )
+      : await pool.query(
+        `SELECT
+          scenario_key,
+          scenario_name,
+          event_type,
+          default_condition_json,
+          default_action_json,
+          default_policy_name,
+          default_policy_key
+         FROM event_scenarios
+         WHERE is_active = 1
+           AND (company_id IS NULL OR company_id = ?)
+         ORDER BY sort_order ASC, scenario_name ASC`,
+        [companyId],
+      );
+    const scenarios = rows.map((row) => ({
+      ...row,
+      default_condition_json: parseJsonSafely(row.default_condition_json, { logic: 'and', rules: [] }),
+      default_action_json: parseJsonSafely(row.default_action_json, { actions: [] }),
+    }));
+    res.json(scenarios);
   } catch (error) {
     next(error);
   }
