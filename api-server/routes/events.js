@@ -49,7 +49,7 @@ router.post('/replay/:id', requireAuth, async (req, res, next) => {
        WHERE event_id = ? AND company_id = ?`,
       [req.params.id, req.user.companyId],
     );
-    const result = await processPendingEvents({ companyId: req.user.companyId, limit: 1 });
+    const result = await processPendingEvents({ companyId: req.user.companyId, eventId: req.params.id, limit: 1 });
     res.json(result);
   } catch (error) {
     next(error);
