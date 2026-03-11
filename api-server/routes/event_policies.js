@@ -3,8 +3,19 @@ import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
 import rateLimit from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
+// Apply rate limiting to all event policy routes to mitigate abuse of database-backed endpoints.
+const eventPoliciesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs for these routes
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.use(eventPoliciesLimiter);
+
 
 const eventPoliciesLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
