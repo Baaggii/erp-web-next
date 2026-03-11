@@ -6,6 +6,14 @@ import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
+const eventPolicyLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 30, // limit each IP to 30 write requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+import rateLimit from 'express-rate-limit';
 const eventPoliciesLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs for these routes
@@ -17,7 +25,7 @@ const eventPolicyLimiter = rateLimit({
   max: 100, // limit each IP to 100 requests per windowMs for these routes
 });
 
-router.get('/', eventPolicyLimiter, requireAuth, async (req, res, next) => {
+router.post('/', requireAuth, eventPolicyLimiter, async (req, res, next) => {
 // Apply rate limiting to all event policy routes to mitigate abuse of database-backed endpoints.
 const eventPoliciesLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -49,7 +57,7 @@ router.get('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
 router.post('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
   try {
     const validation = validateEventPolicySchema(req.body || {});
-    if (!validation.ok) return res.status(400).json(validation);
+router.put('/:id', requireAuth, eventPolicyLimiter, async (req, res, next) => {
 
     const payload = req.body || {};
     const [result] = await pool.query(
