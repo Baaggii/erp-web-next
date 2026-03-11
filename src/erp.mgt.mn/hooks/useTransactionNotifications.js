@@ -12,6 +12,15 @@ function getNotificationTimestamp(notification) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function pickActor(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const normalized = String(value).trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function parseNotificationRow(row) {
   if (!row?.message) return null;
   let payload = row.message;
@@ -40,13 +49,24 @@ function parseNotificationRow(row) {
     summaryFields,
     summaryText: payload.summaryText || payload.summary_text || '',
     excluded: Boolean(payload.excluded),
-    actor:
-      payload.actor ||
-      payload.createdBy ||
-      payload.updatedBy ||
-      row.updated_by ||
-      row.created_by ||
-      null,
+    actor: pickActor(
+      payload.actor,
+      payload.actorEmpid,
+      payload.actor_empid,
+      payload.sender,
+      payload.senderEmpid,
+      payload.sender_empid,
+      payload.triggeredBy,
+      payload.triggered_by,
+      payload.triggeredByEmpid,
+      payload.triggered_by_empid,
+      payload.createdBy,
+      payload.created_by,
+      payload.updatedBy,
+      payload.updated_by,
+      row.updated_by,
+      row.created_by,
+    ),
     createdAt: row.created_at,
     updatedAt,
     isRead: Boolean(row.is_read),
@@ -86,12 +106,27 @@ function parseNotificationPayload(payload) {
     summaryFields,
     summaryText: parsed.summaryText || parsed.summary_text || '',
     excluded: Boolean(parsed.excluded),
-    actor:
-      parsed.actor ||
-      parsed.createdBy ||
-      parsed.updatedBy ||
-      payload.sender ||
-      null,
+    actor: pickActor(
+      parsed.actor,
+      parsed.actorEmpid,
+      parsed.actor_empid,
+      parsed.sender,
+      parsed.senderEmpid,
+      parsed.sender_empid,
+      parsed.triggeredBy,
+      parsed.triggered_by,
+      parsed.triggeredByEmpid,
+      parsed.triggered_by_empid,
+      parsed.createdBy,
+      parsed.created_by,
+      parsed.updatedBy,
+      parsed.updated_by,
+      payload.sender,
+      payload.senderEmpid,
+      payload.sender_empid,
+      payload.created_by,
+      payload.updated_by,
+    ),
     createdAt: payload.created_at,
     updatedAt,
     isRead: Boolean(payload.is_read) || false,
