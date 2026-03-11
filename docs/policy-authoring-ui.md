@@ -1,67 +1,35 @@
-# Policy Authoring UI
+# Policy Authoring UI (Visual Workflow Graph)
 
-## Architecture overview
+The Event Policy Builder now uses a **visual graph editor** instead of separate condition/action forms.
 
-The visual policy authoring feature adds a policy builder page (`/settings/event-policy-builder`) that writes policy drafts, validates generated `condition_json` and `action_json`, simulates policy outcomes using a non-mutating API, and deploys active policies with version snapshots.
+## What changed
 
-## UI workflow
+- Policies and drafts support `graph_json` with nodes:
+  - `id`
+  - `type` (`trigger`, `condition`, `action`, `delay`, `merge`)
+  - `properties`
+  - `nextIds`
+- Legacy `condition_json` and `action_json` are still persisted for compatibility.
+- A **Convert to Visual Flow** action creates a default graph from legacy JSON.
 
-1. Select event trigger metadata (event type, policy identity, priority, enabled).
-2. Build condition expressions visually (`field`, `operator`, `value`, `logic`).
-3. Build a list of actions and field mappings.
-4. Run simulation against test payloads (`POST /api/events/simulate`).
-5. Save draft and deploy to active policy table.
+## Authoring steps
 
-## Rule examples
+1. Fill policy metadata (name/key/module/priority/enabled).
+2. Add nodes from the left palette.
+3. Select a node and edit its properties.
+4. Connect nodes with `nextIds` (side panel).
+5. Verify graph validation and save draft/deploy.
 
-Condition example:
+## Simulation
 
-- `payload.shortageQty > 10`
-- `payload.severity in [high,critical]`
+Simulation now accepts `graph_json` and shows:
 
-Serialized:
+- Execution path of nodes
+- Delay annotations (`Wait X then continue`)
+- Generated action preview
 
-```json
-{
-  "logic": "and",
-  "rules": [
-    { "field": "payload.shortageQty", "operator": ">", "value": 10 },
-    { "field": "payload.severity", "operator": "in", "value": ["high", "critical"] }
-  ]
-}
-```
+## Accessibility and usability
 
-Action example:
-
-```json
-{
-  "actions": [
-    {
-      "type": "create_transaction",
-      "transactionType": "plan_investigation",
-      "mapping": {
-        "linked_record_id": "source.recordId",
-        "priority": "payload.severity"
-      }
-    }
-  ]
-}
-```
-
-## Sandbox testing instructions
-
-Use the builder sandbox panel:
-
-- Choose event type
-- Provide payload JSON
-- Set company/branch
-- Run simulation
-
-Simulation returns:
-
-- matched policies
-- per-policy condition evaluations
-- generated action types
-- twin/notification previews
-
-Simulation route is read-only and does not insert/update business records.
+- Keyboard shortcuts: `Delete` (remove node), `Ctrl/Cmd + C` (copy selected node)
+- Zoom controls on canvas
+- Tooltips and inline node help in the palette

@@ -11,18 +11,12 @@ test('event processor marks unmatched events ignored', async () => {
         return [[{ event_engine_enabled: 1 }]];
       }
       if (sql.includes('SELECT * FROM core_events')) {
-        return [[{
-          event_id: 1,
-          event_type: 'transaction.updated',
-          company_id: 1,
-          payload_json: JSON.stringify({}),
-        }]];
+        return [[{ event_id: 1, event_type: 'transaction.updated', company_id: 1, payload_json: '{}' }]];
       }
-      if (sql.includes('SELECT * FROM core_event_policies')) {
-        return [[]];
-      }
+      if (sql.includes('SELECT * FROM core_event_policies')) return [[]];
       return [[{ insertId: 1 }]];
     },
+    async getConnection() { return this; },
   };
 
   const result = await processPendingEvents({ companyId: 1, conn, limit: 10 });

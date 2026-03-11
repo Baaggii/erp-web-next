@@ -2,11 +2,18 @@ import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PolicyEventSelector from '../components/PolicyEventSelector.jsx';
 import PolicySelector from '../components/PolicySelector.jsx';
-import ConditionGroupBuilder from '../components/ConditionGroupBuilder.jsx';
-import ActionListBuilder from '../components/ActionListBuilder.jsx';
 import PolicySimulationPanel from '../components/PolicySimulationPanel.jsx';
 import PolicyVersionHistory from '../components/PolicyVersionHistory.jsx';
-import PayloadExplorer from '../components/PayloadExplorer.jsx';
+import GraphEditor from '../components/GraphEditor.jsx';
+import { convertLegacyPolicyToGraph } from '../utils/graphPolicy.js';
+
+const defaultGraph = {
+  version: 1,
+  nodes: [
+    { id: 'node_trigger', type: 'trigger', properties: { eventType: '' }, nextIds: ['node_action_1'] },
+    { id: 'node_action_1', type: 'action', properties: { type: 'notify', message: '' }, nextIds: [] },
+  ],
+};
 
 const defaultDraft = {
   policy_name: '',
@@ -17,25 +24,15 @@ const defaultDraft = {
   is_active: false,
   condition_json: { logic: 'and', rules: [] },
   action_json: { actions: [] },
+  graph_json: defaultGraph,
 };
-
-function slugifyPolicyKey(value = '') {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 export default function EventPolicyBuilder() {
   const { session } = useContext(AuthContext);
   const canEdit = Boolean(session?.permissions?.system_settings);
   const [draft, setDraft] = useState(defaultDraft);
   const [eventTypes, setEventTypes] = useState([]);
-  const [observedEvents, setObservedEvents] = useState([]);
   const [policies, setPolicies] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [selectedScenarioKey, setSelectedScenarioKey] = useState('');
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [loadedPolicy, setLoadedPolicy] = useState(null);
@@ -45,159 +42,49 @@ export default function EventPolicyBuilder() {
   const [versions, setVersions] = useState([]);
   const [simulationResult, setSimulationResult] = useState(null);
   const [simulationInput, setSimulationInput] = useState({ eventType: '', payloadText: '{}', companyId: '', branchId: '' });
-  const [payloadFields, setPayloadFields] = useState([]);
-  const [samplePayload, setSamplePayload] = useState({});
-  const [selectedField, setSelectedField] = useState('');
 
   useEffect(() => {
     if (!canEdit) return;
-
     fetch('/api/events/list', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((rows) => {
-        const list = Array.isArray(rows) ? rows : [];
-        setObservedEvents(list);
-        const types = Array.from(new Set(list.map((row) => row?.event_type).filter(Boolean))).sort();
+        const types = Array.from(new Set((rows || []).map((row) => row?.event_type).filter(Boolean))).sort();
         setEventTypes(types);
-        if (types?.[0]) setDraft((prev) => ({ ...prev, event_type: prev.event_type || types[0] }));
       })
-      .catch(() => {
-        setObservedEvents([]);
-        setEventTypes([]);
-      });
+      .catch(() => setEventTypes([]));
 
     fetch('/api/event-policies/list', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
       .catch(() => setPolicies([]));
 
-    fetch('/api/event-policies/scenarios', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => setScenarios(Array.isArray(rows) ? rows : []))
-      .catch(() => setScenarios([]));
-  }, [canEdit]);
-
-  useEffect(() => {
-    const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
-    const fallbackBranchId = session?.branch_id ?? session?.branchId ?? session?.branch ?? '';
-    setSimulationInput((prev) => ({
-      ...prev,
-      companyId: prev.companyId || String(fallbackCompanyId || ''),
-      branchId: prev.branchId || String(fallbackBranchId || ''),
-    }));
-  }, [session]);
-
-  useEffect(() => {
-    if (!canEdit) return;
-
     fetch('/api/modules', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => {
-        const keys = Array.from(new Set((rows || []).map((row) => row?.module_key).filter(Boolean))).sort();
-        setModuleKeys(keys);
-      })
+      .then((rows) => setModuleKeys(Array.from(new Set((rows || []).map((row) => row?.module_key).filter(Boolean))).sort()))
       .catch(() => setModuleKeys([]));
 
     fetch('/api/transaction_forms', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => {
-        const items = Object.entries(data || {})
-          .filter(([key, value]) => key !== 'isDefault' && value && typeof value === 'object')
-          .map(([name]) => name)
-          .sort();
-        setTransactionTypes(items);
-      })
+      .then((data) => setTransactionTypes(Object.keys(data || {}).filter((key) => key !== 'isDefault').sort()))
       .catch(() => setTransactionTypes([]));
 
     fetch('/api/procedures', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { procedures: [] }))
-      .then((data) => {
-        const list = Array.isArray(data?.procedures)
-          ? data.procedures.map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean)
-          : [];
-        setProcedureNames(Array.from(new Set(list)).sort());
-      })
+      .then((data) => setProcedureNames((data?.procedures || []).map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean)))
       .catch(() => setProcedureNames([]));
   }, [canEdit]);
 
-  useEffect(() => {
-    if (!canEdit || !draft.event_type) {
-      setPayloadFields([]);
-      setSamplePayload({});
-      return;
-    }
-
-    fetch(`/api/events/fields/${encodeURIComponent(draft.event_type)}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { fields: [] }))
-      .then((data) => setPayloadFields(Array.isArray(data?.fields) ? data.fields : []))
-      .catch(() => setPayloadFields([]));
-
-    fetch(`/api/events/sample/${encodeURIComponent(draft.event_type)}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { payload: {} }))
-      .then((data) => {
-        const payload = data?.payload && typeof data.payload === 'object' ? data.payload : {};
-        setSamplePayload(payload);
-        setSimulationInput((prev) => ({ ...prev, eventType: draft.event_type, payloadText: JSON.stringify(payload, null, 2) }));
-      })
-      .catch(() => setSamplePayload({}));
-  }, [canEdit, draft.event_type]);
-
-  const highlightedSampleValue = useMemo(() => {
-    if (!selectedField) return undefined;
-    const normalizedPath = selectedField.startsWith('payload.') ? selectedField.slice('payload.'.length) : selectedField;
-    if (!normalizedPath) return samplePayload;
-    return normalizedPath
-      .split('.')
-      .reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), samplePayload);
-  }, [samplePayload, selectedField]);
-
-  const fieldTypes = useMemo(() => {
-    const map = {};
-    payloadFields.forEach((field) => {
-      map[field.path] = field.type;
-    });
-    return map;
-  }, [payloadFields]);
-
-  const validationMessages = [];
-  if (!draft.policy_name?.trim()) validationMessages.push('Policy name is required.');
-  if (!draft.policy_key?.trim()) validationMessages.push('Policy key is required.');
-  if (!draft.event_type?.trim()) validationMessages.push('Event type is required.');
-  if ((draft.condition_json?.rules || []).some((rule) => !rule?.field || !rule?.operator)) {
-    validationMessages.push('Every condition needs a field and operator.');
-  }
-  if ((draft.action_json?.actions || []).some((action) => !action?.type)) {
-    validationMessages.push('Every action needs an action type.');
-  }
-
-  const invalidMapping = (draft.action_json?.actions || []).some((action) => {
-    const mapping = action?.mapping || {};
-    return Object.values(mapping).some((source) => {
-      if (!source) return false;
-      if (source === 'source.recordId' || source === 'system.now') return false;
-      return !payloadFields.some((field) => field.path === source);
-    });
-  });
-  if (invalidMapping) validationMessages.push('Action mapping source fields must exist in Payload Explorer (or be source.recordId/system.now).');
-
-  if (!canEdit) return <div>You need system_settings permission to author policies.</div>;
+  const validationMessages = useMemo(() => {
+    const messages = [];
+    if (!draft.policy_name?.trim()) messages.push('Policy name is required.');
+    if (!draft.policy_key?.trim()) messages.push('Policy key is required.');
+    const nodes = draft.graph_json?.nodes || [];
+    if (!nodes.some((node) => node.type === 'trigger')) messages.push('Graph needs a trigger node.');
+    if (!nodes.some((node) => node.type === 'action')) messages.push('Graph needs at least one action node.');
+    return messages;
+  }, [draft]);
 
   const updateDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
-
-  const applyScenario = (scenarioKey) => {
-    setSelectedScenarioKey(scenarioKey);
-    const selected = scenarios.find((entry) => entry.scenario_key === scenarioKey);
-    if (!selected) return;
-    setDraft((prev) => ({
-      ...prev,
-      event_type: selected.event_type || prev.event_type,
-      condition_json: selected.default_condition_json || { logic: 'and', rules: [] },
-      action_json: selected.default_action_json || { actions: [] },
-      policy_name: selected.default_policy_name || selected.scenario_name || prev.policy_name,
-      policy_key: selected.default_policy_key || slugifyPolicyKey(selected.scenario_key || selected.scenario_name || prev.policy_key),
-      is_active: true,
-    }));
-  };
 
   const loadSelectedPolicy = async () => {
     if (!selectedPolicyId) return;
@@ -215,12 +102,17 @@ export default function EventPolicyBuilder() {
         is_active: Boolean(data.is_active),
         condition_json: data.condition_json || { logic: 'and', rules: [] },
         action_json: data.action_json || { actions: [] },
+        graph_json: data.graph_json || convertLegacyPolicyToGraph({ eventType: data.event_type, conditionJson: data.condition_json, actionJson: data.action_json }),
       });
       setLoadedPolicy(data);
-      setSelectedScenarioKey('');
     } finally {
       setLoadingPolicy(false);
     }
+  };
+
+  const convertLegacy = () => {
+    const graphJson = convertLegacyPolicyToGraph({ eventType: draft.event_type, conditionJson: draft.condition_json, actionJson: draft.action_json });
+    updateDraftField('graph_json', graphJson);
   };
 
   const saveDraft = async () => {
@@ -232,9 +124,7 @@ export default function EventPolicyBuilder() {
     });
     const data = await res.json();
     if (data?.policy_draft_id) {
-      const deployRes = await fetch(`/api/event-policies/deploy/${data.policy_draft_id}`, {
-        method: 'POST', credentials: 'include',
-      });
+      const deployRes = await fetch(`/api/event-policies/deploy/${data.policy_draft_id}`, { method: 'POST', credentials: 'include' });
       const deploy = await deployRes.json();
       if (deploy.policy_id) {
         const versionsRes = await fetch(`/api/event-policies/${deploy.policy_id}/versions`, { credentials: 'include' });
@@ -250,10 +140,12 @@ export default function EventPolicyBuilder() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventType: simulationInput.eventType || draft.event_type, payload, companyId: simulationInput.companyId, branchId: simulationInput.branchId }),
+      body: JSON.stringify({ eventType: simulationInput.eventType || draft.event_type, payload, companyId: simulationInput.companyId, branchId: simulationInput.branchId, graph_json: draft.graph_json }),
     });
     setSimulationResult(await res.json());
   };
+
+  if (!canEdit) return <div>You need system_settings permission to author policies.</div>;
 
   return (
     <div>
@@ -267,113 +159,31 @@ export default function EventPolicyBuilder() {
         currentPolicy={loadedPolicy}
       />
 
-      <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#f8fafc' }}>
-        <h3 style={{ marginTop: 0 }}>Event Wizard</h3>
-        <div style={{ color: '#4b5563', marginBottom: 8 }}>Choose a scenario to auto-generate event type, conditions, and actions.</div>
-        <label>
-          Scenario
-          <select value={selectedScenarioKey} onChange={(e) => applyScenario(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 480 }}>
-            <option value="">-- Select Scenario --</option>
-            {scenarios.map((scenario) => (
-              <option key={scenario.scenario_key} value={scenario.scenario_key}>
-                {scenario.scenario_name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'start' }}>
-        <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Existing Policies</h3>
-          <div style={{ color: '#6b7280' }}>{policies.length} policies found</div>
-        </div>
-        <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Observed Events</h3>
-          {observedEvents.length === 0 ? (
-            <div style={{ color: '#6b7280' }}>No events found.</div>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              {observedEvents.map((evt, idx) => (
-                <li key={`${evt.event_type}-${idx}`}>
-                  <button
-                    type="button"
-                    style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 0 }}
-                    onClick={() => updateDraftField('event_type', evt.event_type)}
-                  >
-                    {evt.event_type}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <PayloadExplorer
-          fields={payloadFields}
-          selectedField={selectedField}
-          onSelectField={(fieldPath) => {
-            setSelectedField(fieldPath);
-            const currentRules = Array.isArray(draft.condition_json?.rules) ? draft.condition_json.rules : [];
-            updateDraftField('condition_json', {
-              ...(draft.condition_json || { logic: 'and', rules: [] }),
-              rules: [...currentRules, { field: fieldPath, operator: '=', value: '' }],
-            });
-          }}
-        />
-      </div>
-
       <h3>Event Trigger</h3>
       <PolicyEventSelector form={draft} eventTypes={eventTypes} moduleKeys={moduleKeys} onChange={updateDraftField} />
 
-      <ConditionGroupBuilder
-        condition={draft.condition_json}
-        fields={payloadFields}
-        fieldTypes={fieldTypes}
-        highlightedField={selectedField}
-        onFieldHighlight={setSelectedField}
-        onChange={(value) => updateDraftField('condition_json', value)}
-      />
-      <ActionListBuilder
-        actionJson={draft.action_json}
+      <button type="button" onClick={convertLegacy} style={{ marginBottom: 10 }}>Convert to Visual Flow</button>
+
+      <GraphEditor
+        graphJson={draft.graph_json || defaultGraph}
+        eventType={draft.event_type}
+        onChange={(value) => updateDraftField('graph_json', value)}
         transactionTypes={transactionTypes}
         procedureNames={procedureNames}
-        payloadFields={payloadFields.map((field) => field.path)}
-        highlightedField={selectedField}
-        onFieldHighlight={setSelectedField}
-        onChange={(value) => updateDraftField('action_json', value)}
       />
 
-      <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Sample Event Payload</h3>
-        {selectedField ? <div style={{ marginBottom: 8, color: '#1d4ed8' }}>Highlighted field: <code>{selectedField}</code></div> : null}
-        <pre>{JSON.stringify(samplePayload, null, 2)}</pre>
-        {selectedField ? <pre style={{ background: '#eff6ff', padding: 8, borderRadius: 6 }}>
-{JSON.stringify({ [selectedField]: highlightedSampleValue }, null, 2)}
-        </pre> : null}
-      </div>
-
-      <h3>Test Sandbox</h3>
       <PolicySimulationPanel
         simulationInput={simulationInput}
         onInputChange={(key, value) => setSimulationInput((prev) => ({ ...prev, [key]: value }))}
         onRun={runSimulation}
         result={simulationResult}
       />
+
       {validationMessages.length > 0 ? (
-        <div style={{ color: '#b45309', margin: '8px 0' }}>
-          <strong>Validation:</strong>
-          <ul>
-            {validationMessages.map((message) => <li key={message}>{message}</li>)}
-          </ul>
-        </div>
-      ) : (
-        <div style={{ color: '#166534', margin: '8px 0' }}>Validation: looks good.</div>
-      )}
-      <details>
-        <summary>Live JSON Preview</summary>
-        <pre>{JSON.stringify({ condition_json: draft.condition_json, action_json: draft.action_json }, null, 2)}</pre>
-      </details>
-      <button type="button" onClick={saveDraft}>Save Draft + Deploy</button>
+        <div style={{ color: '#b45309', margin: '8px 0' }}><ul>{validationMessages.map((message) => <li key={message}>{message}</li>)}</ul></div>
+      ) : <div style={{ color: '#166534', margin: '8px 0' }}>Validation: looks good.</div>}
+
+      <button type="button" onClick={saveDraft} disabled={validationMessages.length > 0}>Save Draft + Deploy</button>
       <h3>Policy Version History</h3>
       <PolicyVersionHistory versions={versions} />
     </div>

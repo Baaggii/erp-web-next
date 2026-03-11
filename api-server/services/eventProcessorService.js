@@ -2,15 +2,12 @@ import { pool } from '../../db/index.js';
 import { evaluateConditionTree } from './eventPolicyEvaluator.js';
 import { executePolicyActions } from './eventActionExecutor.js';
 import { isEventEngineEnabled } from './eventEngineConfigService.js';
+import { evaluateGraphPolicy, convertLegacyPolicyToGraph } from './graphPolicyEngine.js';
 
 function parseJson(value, fallback = {}) {
   if (!value) return fallback;
   if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
+  try { return JSON.parse(value); } catch { return fallback; }
 }
 
 function normalizeEventRow(row) {
@@ -37,15 +34,14 @@ function normalizeEventRow(row) {
 async function writePolicyRun(conn, payload) {
   const [result] = await conn.query(
     `INSERT INTO core_event_policy_runs
-    (event_id, policy_id, run_status, condition_result_json, action_result_json, error_message, company_id, finished_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+    (policy_id, event_id, run_id, status, graph_json_snapshot, executed_at, company_id)
+    VALUES (?, ?, ?, ?, ?, NOW(), ?)`,
     [
-      payload.eventId,
       payload.policyId,
-      payload.runStatus,
-      payload.conditionResult ? JSON.stringify(payload.conditionResult) : null,
-      payload.actionResult ? JSON.stringify(payload.actionResult) : null,
-      payload.errorMessage || null,
+      payload.eventId,
+      payload.runId,
+      payload.status,
+      payload.graphJsonSnapshot ? JSON.stringify(payload.graphJsonSnapshot) : null,
       payload.companyId,
     ],
   );
@@ -73,9 +69,7 @@ async function rollbackTx(conn) {
 }
 
 export async function processPendingEvents({ companyId, eventId = null, limit = 50, conn = pool } = {}) {
-  if (!(await isEventEngineEnabled(conn))) {
-    return { processed: 0, failed: 0, ignored: 0, events: [], skipped: true };
-  }
+  if (!(await isEventEngineEnabled(conn))) return { processed: 0, failed: 0, ignored: 0, events: [], skipped: true };
 
   const params = [];
   let where = `status IN ('pending','failed') AND deleted_at IS NULL AND (next_retry_at IS NULL OR next_retry_at <= NOW())`;
@@ -93,10 +87,12 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
     [...params, Number(limit) || 50],
   );
 
+  const [events] = await conn.query(`SELECT * FROM core_events WHERE ${where} ORDER BY occurred_at ASC LIMIT ?`, [...params, Number(limit) || 50]);
   const summary = { processed: 0, failed: 0, ignored: 0, events: [] };
 
   for (const row of events) {
     const event = normalizeEventRow(row);
+    const tx = conn.getConnection ? await conn.getConnection() : await pool.getConnection();
     try {
       await beginTx(conn);
       await conn.query(`UPDATE core_events SET status='processing', updated_at=NOW() WHERE event_id = ?`, [event.eventId]);
@@ -122,75 +118,42 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
       let matchedAny = false;
       for (const policy of policies) {
         const conditionJson = parseJson(policy.condition_json, {});
-        let conditionResult;
-        try {
-          conditionResult = evaluateConditionTree(conditionJson, event);
-        } catch (evaluationError) {
-          console.error('Event policy evaluation failed', {
-            eventId: event.eventId,
-            policyId: policy?.policy_id,
-            error: evaluationError?.message,
-          });
-          await writePolicyRun(conn, {
-            eventId: event.eventId,
-            policyId: policy.policy_id,
-            runStatus: 'failed',
-            conditionResult: { matched: false, reason: 'evaluation_error' },
-            errorMessage: evaluationError?.message || 'policy_evaluation_failed',
-            companyId: event.companyId,
-          });
-          throw evaluationError;
-        }
-        if (!conditionResult.matched) {
-          await writePolicyRun(conn, {
-            eventId: event.eventId,
-            policyId: policy.policy_id,
-            runStatus: 'skipped',
-            conditionResult,
-            companyId: event.companyId,
-          });
+        const actionJson = parseJson(policy.action_json, { actions: [] });
+        const graphJson = parseJson(policy.graph_json, null) || convertLegacyPolicyToGraph({ eventType: event.eventType, conditionJson, actionJson });
+
+        const conditionResult = evaluateConditionTree(conditionJson, event);
+        const graphResult = evaluateGraphPolicy({ graphJson, event });
+        if (!conditionResult.matched && !graphResult.matched) {
           continue;
         }
 
         matchedAny = true;
-        await writePolicyRun(conn, {
-          eventId: event.eventId,
-          policyId: policy.policy_id,
-          runStatus: 'matched',
-          conditionResult,
-          companyId: event.companyId,
-        });
-
-        try {
-          const actionResult = await executePolicyActions({ event, policy, companyId: event.companyId, conn });
-          await writePolicyRun(conn, {
-            eventId: event.eventId,
+        for (const nodeId of graphResult.executionPath || []) {
+          const idempotencyKey = `${event.eventId}:${policy.policy_id}:${nodeId}`;
+          const [alreadyRun] = await tx.query(
+            `SELECT id FROM core_event_policy_runs WHERE run_id = ? AND company_id = ? LIMIT 1`,
+            [idempotencyKey, event.companyId],
+          );
+          if (alreadyRun.length) continue;
+          await writePolicyRun(tx, {
             policyId: policy.policy_id,
-            runStatus: 'completed',
-            conditionResult,
-            actionResult,
+            eventId: event.eventId,
+            runId: idempotencyKey,
+            status: 'completed',
+            graphJsonSnapshot: graphJson,
             companyId: event.companyId,
           });
-        } catch (actionError) {
-          await writePolicyRun(conn, {
-            eventId: event.eventId,
-            policyId: policy.policy_id,
-            runStatus: 'failed',
-            conditionResult,
-            errorMessage: actionError?.message || 'action_failed',
-            companyId: event.companyId,
-          });
-          throw actionError;
         }
 
+        const actionPolicy = { ...policy, action_json: JSON.stringify({ actions: graphResult.actions?.length ? graphResult.actions : (actionJson.actions || []) }) };
+        await executePolicyActions({ event, policy: actionPolicy, companyId: event.companyId, conn: tx });
         if (Number(policy.stop_on_match) === 1) break;
       }
 
       const finalStatus = matchedAny ? 'processed' : 'ignored';
-      await conn.query(
-        `UPDATE core_events SET status = ?, processed_at = NOW(), error_message = NULL, updated_at = NOW() WHERE event_id = ?`,
-        [finalStatus, event.eventId],
-      );
+      await tx.query(`UPDATE core_events SET status=?, processed_at=NOW(), error_message=NULL, updated_at=NOW() WHERE event_id=?`, [finalStatus, event.eventId]);
+      if (tx.commit) await tx.commit();
+      if (tx.release) tx.release();
       summary.processed += 1;
       if (!matchedAny) summary.ignored += 1;
       summary.events.push({ eventId: event.eventId, status: finalStatus });
