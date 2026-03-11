@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { processPendingEvents } from '../../api-server/services/eventProcessorService.js';
 
 test('event processor marks unmatched events ignored', async () => {
+  process.env.EVENT_ENGINE_ENABLED = '1';
   const calls = [];
   const conn = {
     async query(sql, params) {
@@ -18,6 +19,9 @@ test('event processor marks unmatched events ignored', async () => {
       if (sql.includes('SELECT * FROM core_event_policies')) {
         return [[]];
       }
+      if (sql.includes('SELECT run_id FROM core_event_policy_runs')) {
+        return [[]];
+      }
       return [[{ insertId: 1 }]];
     },
   };
@@ -25,5 +29,6 @@ test('event processor marks unmatched events ignored', async () => {
   const result = await processPendingEvents({ companyId: 1, conn, limit: 10 });
   assert.equal(result.processed, 1);
   assert.equal(result.ignored, 1);
-  assert.ok(calls.some((c) => c.sql.includes("status = ?")));
+  assert.ok(calls.some((c) => c.sql.includes("status = 'ignored'")));
+  delete process.env.EVENT_ENGINE_ENABLED;
 });

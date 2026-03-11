@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS core_events (
   payload_json JSON NOT NULL,
   status ENUM('pending','processing','processed','failed','ignored') NOT NULL DEFAULT 'pending',
   retry_count INT NOT NULL DEFAULT 0,
+  next_retry_at DATETIME NULL,
+  max_retry_count INT NOT NULL DEFAULT 5,
   error_message TEXT NULL,
   occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   processed_at DATETIME NULL,
@@ -24,7 +26,8 @@ CREATE TABLE IF NOT EXISTS core_events (
   INDEX idx_core_events_company_type_status_occurred (company_id, event_type, status, occurred_at),
   INDEX idx_core_events_source (source_table, source_record_id),
   INDEX idx_core_events_correlation (correlation_id),
-  INDEX idx_core_events_causation (causation_id)
+  INDEX idx_core_events_causation (causation_id),
+  INDEX idx_core_events_retry (status, next_retry_at, retry_count, max_retry_count)
 );
 
 CREATE TABLE IF NOT EXISTS core_event_policies (
@@ -76,6 +79,18 @@ CREATE TABLE IF NOT EXISTS core_event_dead_letters (
   retry_count INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_dead_letters_company_created (company_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS core_event_action_dedup (
+  dedup_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  company_id INT NOT NULL,
+  idempotency_key VARCHAR(255) NOT NULL,
+  event_id BIGINT NULL,
+  policy_id BIGINT NULL,
+  action_index INT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_event_action_dedup_company_key (company_id, idempotency_key),
+  INDEX idx_event_action_dedup_event_policy (event_id, policy_id)
 );
 
 CREATE TABLE IF NOT EXISTS twin_plan_state (
