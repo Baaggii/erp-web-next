@@ -11,6 +11,13 @@ const DISCONNECT_FALLBACK_MS = 30 * 1000;
 const SCOPES = ['created', 'review'];
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
+function isTemporaryNotificationKind(kind) {
+  if (typeof kind !== 'string') return false;
+  const normalized = kind.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized === 'temporary' || normalized.startsWith('temporary_');
+}
+
 function readCachedTemporaryFilter() {
   if (typeof window === 'undefined') return null;
   try {
@@ -282,7 +289,7 @@ export default function useTemporaryNotificationCounts(empid) {
     const handleNotification = (payload) => {
       const kind = payload?.kind;
       if (kind) {
-        if (kind !== 'temporary') return;
+        if (!isTemporaryNotificationKind(kind)) return;
         refreshSummary();
         return;
       }
