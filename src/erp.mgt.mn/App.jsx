@@ -58,9 +58,9 @@ export default function App() {
   }, []);
 
   return (
-    <I18nProvider>
-      <ToastProvider>
-        <AuthContextProvider>
+    <AuthContextProvider>
+      <I18nProvider>
+        <ToastProvider>
           <TxnSessionProvider>
             <LoadingProvider>
               <TabProvider>
@@ -77,9 +77,9 @@ export default function App() {
               </TabProvider>
             </LoadingProvider>
           </TxnSessionProvider>
-        </AuthContextProvider>
-      </ToastProvider>
-    </I18nProvider>
+        </ToastProvider>
+      </I18nProvider>
+    </AuthContextProvider>
   );
 }
 
