@@ -212,14 +212,6 @@ export default function GeneralConfiguration() {
             Images
           </button>
         </TooltipWrapper>
-        <TooltipWrapper title={t('tab_events_policy', { ns: 'tooltip', defaultValue: 'Event and policy debug toasts' })}>
-          <button
-            className={`tab-button ${tab === 'eventsPolicy' ? 'active' : ''}`}
-            onClick={() => setTab('eventsPolicy')}
-          >
-            Events & Policy
-          </button>
-        </TooltipWrapper>
         <TooltipWrapper title={t('tab_system', { ns: 'tooltip', defaultValue: 'Server paths and configuration' })}>
           <button
             className={`tab-button ${tab === 'system' ? 'active' : ''}`}
@@ -260,9 +252,6 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('images')} disabled={tab === 'images'} style={{ marginLeft: '0.5rem' }}>
           Images
-        </button>
-        <button onClick={() => setTab('eventsPolicy')} disabled={tab === 'eventsPolicy'} style={{ marginLeft: '0.5rem' }}>
-          Events & Policy
         </button>
         <button onClick={() => setTab('system')} disabled={tab === 'system'} style={{ marginLeft: '0.5rem' }}>
           System
@@ -795,46 +784,7 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
         </>
-            ) : tab === 'eventsPolicy' ? (
-        <>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
-              title={t('events_toast_enabled', {
-                ns: 'tooltip',
-                defaultValue: 'Show toasts for event-engine operations (emit/process/skip) where event APIs are used',
-              })}
-            >
-              <label>
-                Show Event Toasts{' '}
-                <input
-                  name="eventToastEnabled"
-                  type="checkbox"
-                  checked={active.eventToastEnabled ?? false}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
-              title={t('policy_toast_enabled', {
-                ns: 'tooltip',
-                defaultValue: 'Show toasts for policy operations (load/save/deploy/simulate) where policy APIs are used',
-              })}
-            >
-              <label>
-                Show Policy Toasts{' '}
-                <input
-                  name="policyToastEnabled"
-                  type="checkbox"
-                  checked={active.policyToastEnabled ?? false}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-          </div>
-        </>
-) : tab === 'system' ? (
+      ) : tab === 'system' ? (
         <div>
           <p>
             Configuration and tenant data are grouped under a single folder per
