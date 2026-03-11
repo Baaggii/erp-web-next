@@ -39,16 +39,12 @@ import { enqueueTransactionNotification } from '../services/transactionNotificat
 import { queryWithTenantScope } from '../services/tenantScope.js';
 import { getDisplayFields } from '../services/displayFieldConfig.js';
 import { emitCanonicalEvent } from '../services/eventEmitterService.js';
-import { processPendingEvents } from '../services/eventProcessorService.js';
-import { isEventEngineEnabled } from '../services/eventEngineConfigService.js';
 
 
 async function emitTransactionCrudEvent({ action, tableName, recordId, companyId, actorEmpid, before = null, after = null }) {
   if (!/^transactions_/i.test(String(tableName || ''))) return;
   try {
-    if (!(await isEventEngineEnabled())) return;
-
-    const emitted = await emitCanonicalEvent({
+    await emitCanonicalEvent({
       eventType: action === 'create' ? 'transaction.created' : action === 'delete' ? 'transaction.deleted' : 'transaction.updated',
       companyId,
       actorEmpid,
@@ -66,21 +62,6 @@ async function emitTransactionCrudEvent({ action, tableName, recordId, companyId
         after,
       },
     });
-
-    try {
-      await processPendingEvents({
-        companyId,
-        eventId: emitted.eventId,
-        limit: 1,
-      });
-    } catch (processingError) {
-      console.warn('Event processing skipped for transaction mutation', {
-        tableName,
-        recordId,
-        action,
-        error: processingError?.message,
-      });
-    }
   } catch (error) {
     console.warn('Failed to emit canonical transaction event', { tableName, recordId, action, error: error?.message });
   }
