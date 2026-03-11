@@ -1,12 +1,16 @@
 import { pool, insertTableRow, updateTableRow } from '../../db/index.js';
 import { upsertTwinState } from './twinStateService.js';
 import { runAiPolicy } from './aiPolicyService.js';
-import { resolvePolicyPath } from './policyExpressionEngine.js';
+
+function getPathValue(source, path) {
+  if (!path || typeof path !== 'string') return path;
+  return path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), source);
+}
 
 function resolveValue(template, event) {
   if (typeof template !== 'string') return template;
   if (!template.includes('.')) return template;
-  return resolvePolicyPath(event, template);
+  return getPathValue(event, template);
 }
 
 function resolveMapping(mapping = {}, event) {
