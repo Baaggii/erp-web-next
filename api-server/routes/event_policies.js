@@ -5,6 +5,7 @@ import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
 import { invalidateTenantEventEngineFastCheck } from '../services/eventEngineFastCheck.js';
 import { invalidateEventPolicyMatchFastCheck } from '../services/eventPolicyMatchFastCheck.js';
+import { isEventEngineEnabled } from '../services/eventEngineConfigService.js';
 
 const router = express.Router();
 
@@ -16,6 +17,16 @@ const limiter = rateLimit({
 });
 
 router.use(requireAuth, limiter);
+router.use(async (_req, res, next) => {
+  try {
+    if (!(await isEventEngineEnabled())) {
+      return res.status(503).json({ message: 'Event & policy operations are disabled' });
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 
 function requireSystemSettings(req, res) {
   if (!req.user?.permissions?.system_settings) {

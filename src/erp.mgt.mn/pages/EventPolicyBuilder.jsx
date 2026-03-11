@@ -48,6 +48,25 @@ export default function EventPolicyBuilder() {
     if (!isSystemAdmin || !policyToastEnabled) return;
     addToast(message, type);
   };
+
+  const toastOperationError = async (res, fallbackMessage, kind = 'policy') => {
+    let message = fallbackMessage;
+    try {
+      const body = await res.clone().json();
+      if (typeof body?.message === 'string' && body.message.trim()) {
+        message = body.message;
+      }
+    } catch {
+      // ignore JSON parse failures and keep fallback
+    }
+    if (kind === 'event') maybeToastEvent(message, 'error');
+    else if (kind === 'both') {
+      maybeToastEvent(message, 'error');
+      maybeToastPolicy(message, 'error');
+    } else {
+      maybeToastPolicy(message, 'error');
+    }
+  };
   const canEdit = Boolean(session?.permissions?.system_settings);
   const [draft, setDraft] = useState(defaultDraft);
   const [eventTypes, setEventTypes] = useState([]);
@@ -72,7 +91,13 @@ export default function EventPolicyBuilder() {
     if (!canEdit) return;
 
     fetch('/api/events/list', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
+      .then(async (res) => {
+        if (!res.ok) {
+          await toastOperationError(res, 'Failed to load events list', 'event');
+          return [];
+        }
+        return res.json();
+      })
       .then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
         setObservedEvents(list);
@@ -88,7 +113,13 @@ export default function EventPolicyBuilder() {
       });
 
     fetch('/api/event-policies/list', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
+      .then(async (res) => {
+        if (!res.ok) {
+          await toastOperationError(res, 'Failed to load policies');
+          return [];
+        }
+        return res.json();
+      })
       .then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
         setPolicies(list);
@@ -100,7 +131,13 @@ export default function EventPolicyBuilder() {
       });
 
     fetch('/api/event-policies/scenarios', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
+      .then(async (res) => {
+        if (!res.ok) {
+          await toastOperationError(res, 'Failed to load policy scenarios');
+          return [];
+        }
+        return res.json();
+      })
       .then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
         setScenarios(list);
@@ -240,7 +277,7 @@ export default function EventPolicyBuilder() {
     try {
       const res = await fetch(`/api/event-policies/${selectedPolicyId}`, { credentials: 'include' });
       if (!res.ok) {
-        maybeToastPolicy('Failed to load selected policy', 'error');
+        await toastOperationError(res, 'Failed to load selected policy');
         return;
       }
       const data = await res.json();
@@ -270,7 +307,7 @@ export default function EventPolicyBuilder() {
       body: JSON.stringify(draft),
     });
     if (!res.ok) {
-      maybeToastPolicy('Failed to save policy draft', 'error');
+      await toastOperationError(res, 'Failed to save policy draft');
       return;
     }
     const data = await res.json();
@@ -280,7 +317,7 @@ export default function EventPolicyBuilder() {
         method: 'POST', credentials: 'include',
       });
       if (!deployRes.ok) {
-        maybeToastPolicy('Policy deploy failed', 'error');
+        await toastOperationError(deployRes, 'Policy deploy failed');
         return;
       }
       const deploy = await deployRes.json();
@@ -307,8 +344,7 @@ export default function EventPolicyBuilder() {
       maybeToastEvent('Event simulation completed', 'success');
       maybeToastPolicy('Policy simulation completed', 'success');
     } else {
-      maybeToastEvent('Event simulation failed', 'error');
-      maybeToastPolicy('Policy simulation failed', 'error');
+      await toastOperationError(res, 'Policy simulation failed', 'both');
     }
   };
 

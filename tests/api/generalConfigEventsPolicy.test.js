@@ -57,3 +57,24 @@ test('eventsPolicy.operationsEnabled enables event operations globally', { concu
     await updateGeneralConfig({ eventsPolicy: { operationsEnabled: original } });
   }
 });
+
+test('eventsPolicy.operationsEnabled=false disables event operations globally', { concurrency: false }, async () => {
+  const { getGeneralConfig, updateGeneralConfig } = await import('../../api-server/services/generalConfig.js');
+  const { isEventEngineEnabled } = await import('../../api-server/services/eventEngineConfigService.js');
+  const { config: before } = await getGeneralConfig();
+  const original = before.eventsPolicy?.operationsEnabled;
+
+  try {
+    process.env.EVENT_ENGINE_ENABLED = 'true';
+    await updateGeneralConfig({ eventsPolicy: { operationsEnabled: false } });
+
+    const enabled = await isEventEngineEnabled({
+      query: async () => [[{ event_engine_enabled: 1 }]],
+    });
+
+    assert.equal(enabled, false);
+  } finally {
+    delete process.env.EVENT_ENGINE_ENABLED;
+    await updateGeneralConfig({ eventsPolicy: { operationsEnabled: original } });
+  }
+});
