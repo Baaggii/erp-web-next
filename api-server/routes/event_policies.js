@@ -26,25 +26,10 @@ function requireSystemSettings(req, res) {
 router.get('/event-types', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
-    const companyId =
-      req.user?.companyId ??
-      req.user?.company_id ??
-      req.session?.companyId ??
-      null;
-
-    const [rows] = companyId == null
-      ? await pool.query(
-        `SELECT DISTINCT event_type
-         FROM core_events
-         ORDER BY event_type`,
-      )
-      : await pool.query(
-        `SELECT DISTINCT event_type
-         FROM core_events
-         WHERE company_id = ?
-         ORDER BY event_type`,
-        [companyId],
-      );
+    const [rows] = await pool.query(
+      `SELECT DISTINCT event_type FROM core_events WHERE company_id = ? ORDER BY event_type ASC`,
+      [req.user.companyId],
+    );
     res.json(rows.map((row) => row.event_type).filter(Boolean));
   } catch (error) {
     next(error);
