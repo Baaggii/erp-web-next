@@ -21,7 +21,7 @@ function rowsToMapping(rows = []) {
   return next;
 }
 
-export default function ActionListBuilder({ actionJson, transactionTypes = [], procedureNames = [], payloadFields = [], onChange, highlightedField, onFieldHighlight }) {
+export default function ActionListBuilder({ actionJson, transactionTypes = [], procedureNames = [], payloadFields = [], onChange }) {
   const actions = Array.isArray(actionJson.actions) ? actionJson.actions : [];
   const mappingSources = ['source.recordId', 'system.now', ...payloadFields];
 
@@ -92,25 +92,22 @@ export default function ActionListBuilder({ actionJson, transactionTypes = [], p
                   />
                   <select
                     value={row.source || ''}
-                    onFocus={() => onFieldHighlight?.(row.source || '')}
                     onChange={(e) => {
                       const nextRows = [...rows];
                       nextRows[mapIdx] = { ...nextRows[mapIdx], source: e.target.value };
                       patchAction(idx, 'mapping', rowsToMapping(nextRows));
-                      onFieldHighlight?.(e.target.value);
                     }}
                   >
                     <option value="">Select source field</option>
                     {mappingSources.map((field) => <option key={field} value={field}>{field}</option>)}
                   </select>
-                  {row.source && row.source === highlightedField ? <small style={{ color: '#1d4ed8' }}>selected in payload preview</small> : null}
                 </div>
               );
             })}
             <button
               type="button"
               onClick={() => {
-                const nextRows = [...mappingToRows(action.mapping), { target: '', source: highlightedField || '' }];
+                const nextRows = [...mappingToRows(action.mapping), { target: '', source: '' }];
                 patchAction(idx, 'mapping', rowsToMapping(nextRows));
               }}
             >

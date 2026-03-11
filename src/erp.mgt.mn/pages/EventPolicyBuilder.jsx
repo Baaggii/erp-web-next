@@ -37,7 +37,6 @@ export default function EventPolicyBuilder() {
   const [simulationInput, setSimulationInput] = useState({ eventType: '', payloadText: '{}', companyId: '', branchId: '' });
   const [payloadFields, setPayloadFields] = useState([]);
   const [samplePayload, setSamplePayload] = useState({});
-  const [selectedField, setSelectedField] = useState('');
 
   useEffect(() => {
     if (!canEdit) return;
@@ -61,17 +60,6 @@ export default function EventPolicyBuilder() {
       .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
       .catch(() => setPolicies([]));
   }, [canEdit]);
-
-
-  useEffect(() => {
-    const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
-    const fallbackBranchId = session?.branch_id ?? session?.branchId ?? session?.branch ?? '';
-    setSimulationInput((prev) => ({
-      ...prev,
-      companyId: prev.companyId || String(fallbackCompanyId || ''),
-      branchId: prev.branchId || String(fallbackBranchId || ''),
-    }));
-  }, [session]);
 
   useEffect(() => {
     if (!canEdit) return;
@@ -127,16 +115,6 @@ export default function EventPolicyBuilder() {
       })
       .catch(() => setSamplePayload({}));
   }, [canEdit, draft.event_type]);
-
-
-  const highlightedSampleValue = useMemo(() => {
-    if (!selectedField) return undefined;
-    const normalizedPath = selectedField.startsWith('payload.') ? selectedField.slice('payload.'.length) : selectedField;
-    if (!normalizedPath) return samplePayload;
-    return normalizedPath
-      .split('.')
-      .reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), samplePayload);
-  }, [samplePayload, selectedField]);
 
   const fieldTypes = useMemo(() => {
     const map = {};
@@ -265,9 +243,7 @@ export default function EventPolicyBuilder() {
         </div>
         <PayloadExplorer
           fields={payloadFields}
-          selectedField={selectedField}
           onSelectField={(fieldPath) => {
-            setSelectedField(fieldPath);
             const currentRules = Array.isArray(draft.condition_json?.rules) ? draft.condition_json.rules : [];
             updateDraftField('condition_json', {
               ...(draft.condition_json || { logic: 'and', rules: [] }),
@@ -284,8 +260,6 @@ export default function EventPolicyBuilder() {
         condition={draft.condition_json}
         fields={payloadFields}
         fieldTypes={fieldTypes}
-        highlightedField={selectedField}
-        onFieldHighlight={setSelectedField}
         onChange={(value) => updateDraftField('condition_json', value)}
       />
       <ActionListBuilder
@@ -293,18 +267,12 @@ export default function EventPolicyBuilder() {
         transactionTypes={transactionTypes}
         procedureNames={procedureNames}
         payloadFields={payloadFields.map((field) => field.path)}
-        highlightedField={selectedField}
-        onFieldHighlight={setSelectedField}
         onChange={(value) => updateDraftField('action_json', value)}
       />
 
       <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
         <h3 style={{ marginTop: 0 }}>Sample Event Payload</h3>
-        {selectedField ? <div style={{ marginBottom: 8, color: '#1d4ed8' }}>Highlighted field: <code>{selectedField}</code></div> : null}
         <pre>{JSON.stringify(samplePayload, null, 2)}</pre>
-        {selectedField ? <pre style={{ background: '#eff6ff', padding: 8, borderRadius: 6 }}>
-{JSON.stringify({ [selectedField]: highlightedSampleValue }, null, 2)}
-        </pre> : null}
       </div>
 
       <h3>Test Sandbox</h3>
