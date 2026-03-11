@@ -19,78 +19,6 @@ const defaultDraft = {
   action_json: { actions: [] },
 };
 
-
-const fallbackScenarios = [
-  {
-    scenario_key: 'inventory_shortage',
-    scenario_name: 'Inventory shortage',
-    event_type: 'inventory.shortage.detected',
-    default_policy_name: 'Inventory shortage investigation',
-    default_policy_key: 'inventory_shortage_investigation',
-    default_condition_json: { logic: 'and', rules: [{ field: 'payload.shortageQty', operator: '>', value: 10 }] },
-    default_action_json: {
-      actions: [
-        { type: 'create_transaction', transactionType: 'investigation_plan', mapping: { source_record_id: 'source.recordId', created_at: 'system.now' } },
-        { type: 'notify', message: 'Inventory shortage investigation started', target: { mode: 'empids', values: ['WAREHOUSE_MANAGER'] } },
-        { type: 'update_twin', twin: 'risk_state', mapping: { severity: 'payload.severity', updated_at: 'system.now' } },
-      ],
-    },
-  },
-  {
-    scenario_key: 'budget_overrun',
-    scenario_name: 'Budget exceeded',
-    event_type: 'journal.posted',
-    default_policy_name: 'Budget limit exceeded',
-    default_policy_key: 'budget_limit_exceeded',
-    default_condition_json: { logic: 'and', rules: [{ field: 'payload.overrunAmount', operator: '>', value: 0 }] },
-    default_action_json: {
-      actions: [
-        { type: 'notify', message: 'Budget limit exceeded', target: { mode: 'empids', values: ['FINANCE_MANAGER'] } },
-        { type: 'update_twin', twin: 'budget_state', mapping: { variance: 'payload.overrunAmount', updated_at: 'system.now' } },
-      ],
-    },
-  },
-  {
-    scenario_key: 'task_overdue',
-    scenario_name: 'Task overdue',
-    event_type: 'task.overdue',
-    default_policy_name: 'Task escalation',
-    default_policy_key: 'task_escalation',
-    default_condition_json: { logic: 'and', rules: [{ field: 'payload.daysOverdue', operator: '>=', value: 1 }] },
-    default_action_json: {
-      actions: [
-        { type: 'notify', message: 'Task escalation is required', target: { mode: 'empids', values: ['TASK_OWNER', 'TEAM_LEAD'] } },
-      ],
-    },
-  },
-  {
-    scenario_key: 'asset_damage',
-    scenario_name: 'Asset damaged',
-    event_type: 'asset.damaged',
-    default_policy_name: 'Asset damage response',
-    default_policy_key: 'asset_damage_response',
-    default_condition_json: { logic: 'and', rules: [{ field: 'payload.damageSeverity', operator: '>=', value: 2 }] },
-    default_action_json: {
-      actions: [
-        { type: 'create_transaction', transactionType: 'asset_damage_report', mapping: { asset_id: 'payload.assetId', reported_at: 'system.now' } },
-      ],
-    },
-  },
-  {
-    scenario_key: 'customer_complaint',
-    scenario_name: 'Customer complaint',
-    event_type: 'customer.complaint',
-    default_policy_name: 'Customer complaint escalation',
-    default_policy_key: 'customer_complaint_escalation',
-    default_condition_json: { logic: 'and', rules: [{ field: 'payload.priority', operator: 'in', value: ['high', 'critical'] }] },
-    default_action_json: {
-      actions: [
-        { type: 'create_transaction', transactionType: 'customer_case', mapping: { customer_id: 'payload.customerId', created_at: 'system.now' } },
-      ],
-    },
-  },
-];
-
 function slugifyPolicyKey(value = '') {
   return String(value)
     .trim()
@@ -149,11 +77,8 @@ export default function EventPolicyBuilder() {
 
     fetch('/api/event-policies/scenarios', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => {
-        const list = Array.isArray(rows) ? rows : [];
-        setScenarios(list.length ? list : fallbackScenarios);
-      })
-      .catch(() => setScenarios(fallbackScenarios));
+      .then((rows) => setScenarios(Array.isArray(rows) ? rows : []))
+      .catch(() => setScenarios([]));
   }, [canEdit]);
 
   useEffect(() => {

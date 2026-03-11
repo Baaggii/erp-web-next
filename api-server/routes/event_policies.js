@@ -23,28 +23,14 @@ function requireSystemSettings(req, res) {
   return true;
 }
 
-function normalizeCompanyId(value) {
-  if (value == null) return null;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const text = String(value).trim();
-  if (!text || text === 'null' || text === 'undefined') return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : text;
+function resolveCompanyId(req) {
+  return req.user?.companyId
+    ?? req.user?.company_id
+    ?? req.session?.companyId
+    ?? req.session?.company_id
+    ?? null;
 }
 
-function resolveCompanyId(req) {
-  const candidates = [
-    req.user?.companyId,
-    req.user?.company_id,
-    req.session?.companyId,
-    req.session?.company_id,
-  ];
-  for (const candidate of candidates) {
-    const normalized = normalizeCompanyId(candidate);
-    if (normalized != null) return normalized;
-  }
-  return null;
-}
 
 function parseJsonSafely(value, fallback) {
   if (value == null) return fallback;
