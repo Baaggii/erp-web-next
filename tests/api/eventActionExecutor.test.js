@@ -73,3 +73,27 @@ test('event action executor handles create_transaction + notify + update_twin', 
   assert.ok(conn.calls.some((entry) => entry.sql.includes('INSERT INTO notifications')));
   assert.ok(conn.calls.some((entry) => entry.sql.includes('INSERT INTO `twin_risk_state`')));
 });
+
+
+test('event action executor skips duplicate action reservations', async () => {
+  const conn = {
+    async query(sql) {
+      if (String(sql).includes('INSERT INTO core_event_action_dedup')) {
+        const err = new Error('Duplicate entry');
+        err.code = 'ER_DUP_ENTRY';
+        throw err;
+      }
+      return [{ insertId: 1 }];
+    },
+  };
+
+  const results = await executePolicyActions({
+    event: { eventId: 444, eventType: 'inventory.shortage.detected', payload: {}, source: {} },
+    policy: { policy_id: 15, action_json: { actions: [{ type: 'create_transaction', transactionType: 'x' }] } },
+    companyId: 1,
+    conn,
+  });
+
+  assert.equal(results[0].skipped, true);
+  assert.equal(results[0].reason, 'already_executed');
+});
