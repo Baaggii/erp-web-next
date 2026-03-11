@@ -172,8 +172,10 @@ function buildTransactionPreview(payload) {
 
 function parseNotificationMessage(rawMessage) {
   if (!rawMessage || typeof rawMessage !== 'string') return null;
+  const trimmed = rawMessage.trim();
+  if (!trimmed || !(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
   try {
-    const parsed = JSON.parse(rawMessage);
+    const parsed = JSON.parse(trimmed);
     return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
     return null;
