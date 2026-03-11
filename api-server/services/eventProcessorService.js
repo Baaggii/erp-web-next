@@ -2,6 +2,7 @@ import { pool } from '../../db/index.js';
 import { evaluateConditionTree } from './eventPolicyEvaluator.js';
 import { executePolicyActions } from './eventActionExecutor.js';
 import { isEventEngineEnabled } from './eventEngineConfigService.js';
+import { buildEventPolicyWhereClause, extractEventSourceTransactionCode } from './eventPolicyMatching.js';
 
 function parseJson(value, fallback = {}) {
   if (!value) return fallback;
@@ -100,11 +101,19 @@ export async function processPendingEvents({ companyId, eventId = null, limit = 
     try {
       await beginTx(conn);
       await conn.query(`UPDATE core_events SET status='processing', updated_at=NOW() WHERE event_id = ?`, [event.eventId]);
+      const { whereSql, params } = buildEventPolicyWhereClause({
+        companyId: event.companyId,
+        eventType: event.eventType,
+        sourceTable: event?.source?.table ?? null,
+        sourceTransactionType: event?.source?.transactionType ?? null,
+        sourceTransactionCode: extractEventSourceTransactionCode(event),
+        includeSamplePolicies: false,
+      });
       const [policies] = await conn.query(
         `SELECT * FROM core_event_policies
-         WHERE company_id = ? AND event_type = ? AND is_active = 1 AND deleted_at IS NULL
+         WHERE ${whereSql}
          ORDER BY priority ASC, policy_id ASC`,
-        [event.companyId, event.eventType],
+        params,
       );
 
       if (!Array.isArray(policies) || policies.length === 0) {

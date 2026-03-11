@@ -32,9 +32,13 @@ CREATE TABLE IF NOT EXISTS core_event_policies (
   policy_key VARCHAR(120) NOT NULL,
   policy_name VARCHAR(255) NOT NULL,
   event_type VARCHAR(120) NOT NULL,
+  source_table VARCHAR(120) NULL,
+  source_transaction_type VARCHAR(120) NULL,
+  source_transaction_code INT NULL,
   module_key VARCHAR(80) NULL,
   priority INT NOT NULL DEFAULT 100,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
+  is_sample TINYINT(1) NOT NULL DEFAULT 0,
   stop_on_match TINYINT(1) NOT NULL DEFAULT 0,
   condition_json JSON NOT NULL,
   action_json JSON NOT NULL,
@@ -46,7 +50,9 @@ CREATE TABLE IF NOT EXISTS core_event_policies (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at DATETIME NULL,
   UNIQUE KEY uq_policy_key_company (policy_key, company_id),
-  INDEX idx_event_type_company_active_priority (event_type, company_id, is_active, priority)
+  INDEX idx_event_type_company_active_priority (event_type, company_id, is_active, priority),
+  INDEX idx_event_policy_company_event_source (company_id, event_type, is_active, source_table, source_transaction_code),
+  INDEX idx_event_policy_source_type (company_id, event_type, source_transaction_type)
 );
 
 CREATE TABLE IF NOT EXISTS core_event_policy_runs (
