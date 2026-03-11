@@ -1,49 +1,44 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
-import rateLimit from 'express-rate-limit';
-import rateLimit from 'express-rate-limit';
-import rateLimit from 'express-rate-limit';
-import rateLimit from 'express-rate-limit';
-const eventPolicyLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute window
-  max: 30, // limit each IP to 30 write requests per window
+
+const router = express.Router();
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-import rateLimit from 'express-rate-limit';
-const eventPoliciesLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs for these routes
-});
+router.use(requireAuth, limiter);
 
+function requireSystemSettings(req, res) {
+  if (!req.user?.permissions?.system_settings) {
+    res.sendStatus(403);
+    return false;
+  }
+  return true;
+}
 
-const eventPolicyLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs for these routes
-});
-
-router.post('/', requireAuth, eventPolicyLimiter, async (req, res, next) => {
-// Apply rate limiting to all event policy routes to mitigate abuse of database-backed endpoints.
-const eventPoliciesLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs for these routes
-  standardHeaders: true,
-router.post('/', requireAuth, eventPoliciesLimiter, async (req, res, next) => {
-});
-
-router.use(eventPoliciesLimiter);
-
-
-router.post('/', eventPolicyLimiter, requireAuth, async (req, res, next) => {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs for these routes
-});
-
-router.get('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
+router.get('/event-types', async (req, res, next) => {
   try {
+    if (!requireSystemSettings(req, res)) return;
+    const [rows] = await pool.query(
+      `SELECT DISTINCT event_type FROM core_events WHERE company_id = ? ORDER BY event_type ASC`,
+      [req.user.companyId],
+    );
+    res.json(rows.map((row) => row.event_type).filter(Boolean));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
     const [rows] = await pool.query(
       `SELECT * FROM core_event_policies WHERE company_id = ? AND deleted_at IS NULL ORDER BY priority ASC, policy_id ASC`,
       [req.user.companyId],
@@ -54,22 +49,23 @@ router.get('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
+    if (!requireSystemSettings(req, res)) return;
     const validation = validateEventPolicySchema(req.body || {});
-router.put('/:id', requireAuth, eventPolicyLimiter, async (req, res, next) => {
+    if (!validation.ok) return res.status(400).json(validation);
 
     const payload = req.body || {};
     const [result] = await pool.query(
       `INSERT INTO core_event_policies
       (policy_key, policy_name, event_type, module_key, priority, is_active, stop_on_match, condition_json, action_json, ai_policy_json, company_id, created_by, updated_by)
-router.put('/:id', requireAuth, eventPoliciesLimiter, async (req, res, next) => {
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.policy_key,
         payload.policy_name,
         payload.event_type,
         payload.module_key || null,
-router.put('/:id', eventPolicyLimiter, requireAuth, async (req, res, next) => {
+        Number(payload.priority || 100),
         payload.is_active === undefined ? 1 : (payload.is_active ? 1 : 0),
         payload.stop_on_match ? 1 : 0,
         JSON.stringify(payload.condition_json || {}),
@@ -86,8 +82,9 @@ router.put('/:id', eventPolicyLimiter, requireAuth, async (req, res, next) => {
   }
 });
 
-router.put('/:id', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
+router.put('/:id', async (req, res, next) => {
   try {
+    if (!requireSystemSettings(req, res)) return;
     const validation = validateEventPolicySchema(req.body || {});
     if (!validation.ok) return res.status(400).json(validation);
 
@@ -113,6 +110,156 @@ router.put('/:id', eventPoliciesLimiter, requireAuth, async (req, res, next) => 
       ],
     );
     res.sendStatus(204);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/drafts', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const [rows] = await pool.query(
+      `SELECT * FROM policy_drafts WHERE company_id = ? ORDER BY updated_at DESC`,
+      [req.user.companyId],
+    );
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/drafts', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const payload = req.body || {};
+    const [result] = await pool.query(
+      `INSERT INTO policy_drafts
+      (company_id, policy_name, policy_key, event_type, module_key, priority, is_active, condition_json, action_json, created_by, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.companyId,
+        payload.policy_name,
+        payload.policy_key,
+        payload.event_type,
+        payload.module_key || null,
+        Number(payload.priority || 100),
+        payload.is_active ? 1 : 0,
+        JSON.stringify(payload.condition_json || { logic: 'and', rules: [] }),
+        JSON.stringify(payload.action_json || { actions: [] }),
+        req.user.empid,
+        req.user.empid,
+      ],
+    );
+    res.status(201).json({ policy_draft_id: result.insertId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/drafts/:id', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const payload = req.body || {};
+    await pool.query(
+      `UPDATE policy_drafts SET policy_name=?, policy_key=?, event_type=?, module_key=?, priority=?, is_active=?,
+      condition_json=?, action_json=?, updated_by=?, updated_at=NOW()
+      WHERE policy_draft_id=? AND company_id=?`,
+      [
+        payload.policy_name,
+        payload.policy_key,
+        payload.event_type,
+        payload.module_key || null,
+        Number(payload.priority || 100),
+        payload.is_active ? 1 : 0,
+        JSON.stringify(payload.condition_json || { logic: 'and', rules: [] }),
+        JSON.stringify(payload.action_json || { actions: [] }),
+        req.user.empid,
+        req.params.id,
+        req.user.companyId,
+      ],
+    );
+    res.sendStatus(204);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/deploy/:draftId', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    await conn.beginTransaction();
+
+    const [draftRows] = await conn.query(
+      `SELECT * FROM policy_drafts WHERE policy_draft_id = ? AND company_id = ? LIMIT 1`,
+      [req.params.draftId, req.user.companyId],
+    );
+    if (!draftRows.length) {
+      await conn.rollback();
+      return res.sendStatus(404);
+    }
+    const draft = draftRows[0];
+
+    const validation = validateEventPolicySchema({ condition_json: draft.condition_json, action_json: draft.action_json });
+    if (!validation.ok) {
+      await conn.rollback();
+      return res.status(400).json(validation);
+    }
+
+    const [existingRows] = await conn.query(
+      `SELECT * FROM core_event_policies WHERE policy_key=? AND company_id=? AND deleted_at IS NULL LIMIT 1`,
+      [draft.policy_key, req.user.companyId],
+    );
+
+    let policyId = existingRows[0]?.policy_id;
+    if (policyId) {
+      await conn.query(
+        `UPDATE core_event_policies SET policy_name=?, event_type=?, module_key=?, priority=?, is_active=?,
+         condition_json=?, action_json=?, updated_by=?, updated_at=NOW() WHERE policy_id=? AND company_id=?`,
+        [draft.policy_name, draft.event_type, draft.module_key, draft.priority, draft.is_active, draft.condition_json, draft.action_json, req.user.empid, policyId, req.user.companyId],
+      );
+    } else {
+      const [insertResult] = await conn.query(
+        `INSERT INTO core_event_policies
+        (policy_key, policy_name, event_type, module_key, priority, is_active, stop_on_match, condition_json, action_json, company_id, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+        [draft.policy_key, draft.policy_name, draft.event_type, draft.module_key, draft.priority, draft.is_active, draft.condition_json, draft.action_json, req.user.companyId, req.user.empid, req.user.empid],
+      );
+      policyId = insertResult.insertId;
+    }
+
+    const [versionRows] = await conn.query(
+      `SELECT COALESCE(MAX(version_number), 0) AS max_version FROM policy_versions WHERE policy_id = ?`,
+      [policyId],
+    );
+    const nextVersion = Number(versionRows[0]?.max_version || 0) + 1;
+
+    await conn.query(
+      `INSERT INTO policy_versions
+       (policy_id, condition_json, action_json, version_number, created_by, company_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [policyId, draft.condition_json, draft.action_json, nextVersion, req.user.empid, req.user.companyId],
+    );
+
+    await conn.commit();
+    res.json({ ok: true, policy_id: policyId, version_number: nextVersion });
+  } catch (error) {
+    await conn.rollback();
+    next(error);
+  } finally {
+    conn.release();
+  }
+});
+
+router.get('/:id/versions', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const [rows] = await pool.query(
+      `SELECT version_id, policy_id, version_number, created_by, created_at
+       FROM policy_versions WHERE policy_id = ? AND company_id = ? ORDER BY version_number DESC`,
+      [req.params.id, req.user.companyId],
+    );
+    res.json(rows);
   } catch (error) {
     next(error);
   }
