@@ -67,7 +67,11 @@ export default function EventPolicyBuilder() {
       });
 
     fetch('/api/event-policies/list', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
+      .then(async (res) => {
+        if (res.ok) return res.json();
+        const fallbackRes = await fetch('/api/event-policies', { credentials: 'include' });
+        return fallbackRes.ok ? fallbackRes.json() : [];
+      })
       .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
       .catch(() => setPolicies([]));
 
