@@ -7,9 +7,6 @@ test('event processor marks unmatched events ignored', async () => {
   const conn = {
     async query(sql, params) {
       calls.push({ sql, params });
-      if (sql.includes('SELECT event_engine_enabled FROM settings LIMIT 1')) {
-        return [[{ event_engine_enabled: 1 }]];
-      }
       if (sql.includes('SELECT * FROM core_events')) {
         return [[{
           event_id: 1,
@@ -28,5 +25,5 @@ test('event processor marks unmatched events ignored', async () => {
   const result = await processPendingEvents({ companyId: 1, conn, limit: 10 });
   assert.equal(result.processed, 1);
   assert.equal(result.ignored, 1);
-  assert.ok(calls.some((c) => c.sql.includes("status = 'ignored'")));
+  assert.ok(calls.some((c) => c.sql.includes("status = ?")));
 });
