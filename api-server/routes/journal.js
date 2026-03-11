@@ -23,28 +23,21 @@ router.post('/post', requireAuth, async (req, res) => {
       });
     }
 
-    try {
-      await emitCanonicalEvent({
-        eventType: 'journal.posted',
-        companyId: Number(payload.company_id || req.user?.companyId || 0),
-        actorEmpid: req.user?.empid ?? null,
-        source: {
-          transactionType: payload.transaction_type || null,
-          table: payload.source_table || null,
-          recordId: payload.source_id != null ? String(payload.source_id) : null,
-          action: 'post',
-        },
-        payload: {
-          journalId,
-          postingRequest: payload,
-        },
-      });
-    } catch (eventErr) {
-      console.error('Journal post succeeded but event emit failed:', {
+    await emitCanonicalEvent({
+      eventType: 'journal.posted',
+      companyId: Number(payload.company_id || req.user?.companyId || 0),
+      actorEmpid: req.user?.empid ?? null,
+      source: {
+        transactionType: payload.transaction_type || null,
+        table: payload.source_table || null,
+        recordId: payload.source_id != null ? String(payload.source_id) : null,
+        action: 'post',
+      },
+      payload: {
         journalId,
-        error: eventErr?.message || eventErr,
-      });
-    }
+        postingRequest: payload,
+      },
+    });
 
     return res.json({ ok: true, journal_id: journalId });
   } catch (err) {
