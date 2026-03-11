@@ -1302,12 +1302,58 @@ test('createTemporarySubmission passes notification channel preferences from for
 
   assert.equal(result.reviewerEmpId, 'EMP100');
   assert.equal(notifications.length, 1);
+  const messagePayload = JSON.parse(notifications[0].message);
+  assert.equal(messagePayload.kind, 'temporary');
+  assert.equal(messagePayload.action, 'pending');
+  assert.deepEqual(messagePayload.summaryFields, []);
   assert.deepEqual(notifications[0].channelPreferences, {
-    showInNotification: false,
+    showInNotification: true,
     showInDashboard: true,
     showInPhone: false,
     showInEmail: true,
+    notificationFields: [],
+    notificationDashboardFields: ['id'],
+    notificationPhoneFields: [],
+    notificationEmailFields: ['email'],
   });
+});
+
+test('createTemporarySubmission uses configured notification fields as summary fields', async () => {
+  const { conn } = createStubConnection();
+  const notifications = [];
+
+  await createTemporarySubmission(
+    {
+      tableName: 'transactions_contract',
+      formName: 'contract_form',
+      payload: { contract_no: 'P-100' },
+      rawValues: { amount: 1500 },
+      cleanedValues: { contract_no: 'C-001', amount: 1200 },
+      companyId: 1,
+      createdBy: 'EMP009',
+    },
+    {
+      connectionFactory: async () => conn,
+      employmentSessionFetcher: async () => ({ senior_empid: 'EMP100' }),
+      formConfigResolver: async () => ({
+        config: {
+          notificationFields: ['contract_no', 'amount'],
+          notificationDashboardFields: [],
+          notificationPhoneFields: [],
+          notificationEmailFields: [],
+        },
+      }),
+      notificationInserter: async (_c, payload) => notifications.push(payload),
+    },
+  );
+
+  assert.equal(notifications.length, 1);
+  const payload = JSON.parse(notifications[0].message);
+  assert.deepEqual(payload.summaryFields, [
+    { field: 'contract_no', value: 'C-001' },
+    { field: 'amount', value: '1200' },
+  ]);
+  assert.equal(payload.summaryText, 'C-001 · 1200');
 });
 
 test('promote/reject temporary submissions pass notification channel preferences from form config', async () => {
@@ -1329,10 +1375,14 @@ test('promote/reject temporary submissions pass notification channel preferences
     status: 'pending',
   };
   const preferences = {
-    showInNotification: false,
+    showInNotification: true,
     showInDashboard: true,
     showInPhone: true,
     showInEmail: false,
+    notificationFields: [],
+    notificationDashboardFields: ['id'],
+    notificationPhoneFields: ['phone'],
+    notificationEmailFields: [],
   };
 
   {

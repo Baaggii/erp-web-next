@@ -179,6 +179,90 @@ function safeJsonParse(value, fallback = null) {
   }
 }
 
+function getCaseInsensitiveFieldValue(record, field) {
+  if (!isPlainObject(record) || !field) return undefined;
+  if (Object.prototype.hasOwnProperty.call(record, field)) return record[field];
+  const lookup = String(field).trim().toLowerCase();
+  if (!lookup) return undefined;
+  const matchedKey = Object.keys(record).find(
+    (key) => String(key || '').trim().toLowerCase() === lookup,
+  );
+  return matchedKey ? record[matchedKey] : undefined;
+}
+
+function normalizeNotificationFieldList(fields) {
+  if (!Array.isArray(fields)) return [];
+  return fields
+    .map((field) => (typeof field === 'string' ? field.trim() : ''))
+    .filter(Boolean);
+}
+
+function normalizeNotificationValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function buildTemporarySummaryFromFields(sources = [], fields = []) {
+  const summaryFields = [];
+  const normalizedFields = normalizeNotificationFieldList(fields);
+  if (!normalizedFields.length) {
+    return { summaryFields, summaryText: '' };
+  }
+  for (const field of normalizedFields) {
+    const source = Array.isArray(sources)
+      ? sources.find((item) => getCaseInsensitiveFieldValue(item, field) !== undefined)
+      : null;
+    const rawValue = getCaseInsensitiveFieldValue(source, field);
+    const value = normalizeNotificationValue(rawValue);
+    if (!value) continue;
+    summaryFields.push({ field, value });
+  }
+  return {
+    summaryFields,
+    summaryText: summaryFields.map((entry) => entry.value).join(' · '),
+  };
+}
+
+function buildTemporaryNotificationMessage({
+  baseMessage,
+  action,
+  status,
+  tableName,
+  formName,
+  configName,
+  moduleKey,
+  temporaryId,
+  chainId,
+  changedBy,
+  summaryFields = [],
+  summaryText = '',
+}) {
+  return safeJsonStringify({
+    kind: 'temporary',
+    temporarySubmission: true,
+    action: action || 'pending',
+    status: status || action || 'pending',
+    tableName: tableName || null,
+    formName: formName || null,
+    configName: configName || null,
+    moduleKey: moduleKey || null,
+    temporaryId: temporaryId ?? null,
+    chainId: chainId ?? null,
+    actor: changedBy || null,
+    summaryFields,
+    summaryText: summaryText || String(baseMessage || '').trim(),
+    message: String(baseMessage || '').trim(),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function isDynamicSqlTriggerError(err) {
   if (!err) return false;
   const message = String(err.sqlMessage || err.message || '').toLowerCase();
@@ -879,6 +963,8 @@ async function insertNotification(
   const normalizedRecipients = parseEmpIdList(recipients);
   if (normalizedRecipients.length === 0) return;
   for (const recipient of normalizedRecipients) {
+    const normalizedMessage =
+      typeof message === 'string' ? message : safeJsonStringify(message ?? null);
     // eslint-disable-next-line no-await-in-loop
     await notifyUser({
       companyId,
@@ -886,7 +972,7 @@ async function insertNotification(
       type,
       kind,
       relatedId,
-      message,
+      message: normalizedMessage,
       createdBy,
       connection: conn,
     });
@@ -909,6 +995,10 @@ async function resolveTemporaryNotificationPreferences({
     showInDashboard: true,
     showInPhone: true,
     showInEmail: true,
+    notificationFields: [],
+    notificationDashboardFields: [],
+    notificationPhoneFields: [],
+    notificationEmailFields: [],
   };
   const targetFormName =
     typeof formName === 'string' && formName.trim()
@@ -921,10 +1011,16 @@ async function resolveTemporaryNotificationPreferences({
     const { config } = await formConfigResolver(tableName, targetFormName, companyId);
     if (!config || typeof config !== 'object') return fallback;
     return {
-      showInNotification: hasConfiguredFields(config.notificationFields),
+      showInNotification: true,
       showInDashboard: hasConfiguredFields(config.notificationDashboardFields),
       showInPhone: hasConfiguredFields(config.notificationPhoneFields),
       showInEmail: hasConfiguredFields(config.notificationEmailFields),
+      notificationFields: normalizeNotificationFieldList(config.notificationFields),
+      notificationDashboardFields: normalizeNotificationFieldList(
+        config.notificationDashboardFields,
+      ),
+      notificationPhoneFields: normalizeNotificationFieldList(config.notificationPhoneFields),
+      notificationEmailFields: normalizeNotificationFieldList(config.notificationEmailFields),
     };
   } catch {
     return fallback;
@@ -1120,14 +1216,32 @@ export async function createTemporarySubmission({
     );
     const reviewerCount = reviewerEmpIds.length;
     if (reviewerCount > 0) {
+      const pendingMessage = `Temporary submission pending review for ${tableName}${
+        reviewerCount > 1 ? ` (shared with ${reviewerCount} senior reviewers)` : ''
+      }`;
+      const summary = buildTemporarySummaryFromFields(
+        [cleanedValuesForStorage, rawValues, payload],
+        notificationPreferences.notificationFields,
+      );
       await notificationInserter(conn, {
         companyId,
         recipientEmpIds: reviewerEmpIds,
         createdBy: normalizedCreator,
         relatedId: temporaryId,
-        message: `Temporary submission pending review for ${tableName}${
-          reviewerCount > 1 ? ` (shared with ${reviewerCount} senior reviewers)` : ''
-        }`,
+        message: buildTemporaryNotificationMessage({
+          baseMessage: pendingMessage,
+          action: 'pending',
+          status: 'pending',
+          tableName,
+          formName,
+          configName,
+          moduleKey,
+          temporaryId,
+          chainId: persistedChainId,
+          changedBy: normalizedCreator,
+          summaryFields: summary.summaryFields,
+          summaryText: summary.summaryText,
+        }),
         type: 'request',
         channelPreferences: notificationPreferences,
       });
@@ -2148,16 +2262,33 @@ export async function promoteTemporarySubmission(
         },
         conn,
       );
+      const forwardSummary = buildTemporarySummaryFromFields(
+        [sanitizedRowForInsert, sanitizedPayloadValues, payloadJson],
+        notificationPreferences.notificationFields,
+      );
       await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpIds: forwardReviewerEmpIds,
         createdBy: normalizedReviewer,
         relatedId: forwardTemporaryId ?? id,
-        message: `Temporary submission pending review for ${row.table_name}${
-          forwardReviewerEmpIds.length > 1
-            ? ` (shared with ${forwardReviewerEmpIds.length} senior reviewers)`
-            : ''
-        }`,
+        message: buildTemporaryNotificationMessage({
+          baseMessage: `Temporary submission pending review for ${row.table_name}${
+            forwardReviewerEmpIds.length > 1
+              ? ` (shared with ${forwardReviewerEmpIds.length} senior reviewers)`
+              : ''
+          }`,
+          action: 'pending',
+          status: 'pending',
+          tableName: row.table_name,
+          formName: row.form_name,
+          configName: row.config_name,
+          moduleKey: row.module_key,
+          temporaryId: forwardTemporaryId ?? id,
+          chainId: effectiveChainId,
+          changedBy: normalizedReviewer,
+          summaryFields: forwardSummary.summaryFields,
+          summaryText: forwardSummary.summaryText,
+        }),
         type: 'request',
         channelPreferences: notificationPreferences,
       });
@@ -2166,7 +2297,20 @@ export async function promoteTemporarySubmission(
         recipientEmpId: row.created_by,
         createdBy: normalizedReviewer,
         relatedId: id,
-        message: `Temporary submission #${id} forwarded for additional review`,
+        message: buildTemporaryNotificationMessage({
+          baseMessage: `Temporary submission #${id} forwarded for additional review`,
+          action: 'forwarded',
+          status: 'forwarded',
+          tableName: row.table_name,
+          formName: row.form_name,
+          configName: row.config_name,
+          moduleKey: row.module_key,
+          temporaryId: id,
+          chainId: effectiveChainId,
+          changedBy: normalizedReviewer,
+          summaryFields: forwardSummary.summaryFields,
+          summaryText: forwardSummary.summaryText,
+        }),
         type: 'response',
         channelPreferences: notificationPreferences,
       });
@@ -2465,13 +2609,30 @@ export async function promoteTemporarySubmission(
     );
     planReviewerRecipients.delete(normalizedReviewer);
     const promotionMessage = `Temporary submission for ${row.table_name} approved`;
+    const promotionSummary = buildTemporarySummaryFromFields(
+      [sanitizedRowForInsert, payloadJson],
+      notificationPreferences.notificationFields,
+    );
     for (const recipientEmpId of participantRecipients) {
       await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpId,
         createdBy: normalizedReviewer,
         relatedId: id,
-        message: promotionMessage,
+        message: buildTemporaryNotificationMessage({
+          baseMessage: promotionMessage,
+          action: 'promoted',
+          status: 'promoted',
+          tableName: row.table_name,
+          formName: row.form_name,
+          configName: row.config_name,
+          moduleKey: row.module_key,
+          temporaryId: id,
+          chainId: effectiveChainId,
+          changedBy: normalizedReviewer,
+          summaryFields: promotionSummary.summaryFields,
+          summaryText: promotionSummary.summaryText,
+        }),
         type: 'response',
         channelPreferences: notificationPreferences,
       });
@@ -2484,7 +2645,20 @@ export async function promoteTemporarySubmission(
           recipientEmpId,
           createdBy: normalizedReviewer,
           relatedId: id,
-          message: sharedMessage,
+          message: buildTemporaryNotificationMessage({
+            baseMessage: sharedMessage,
+            action: 'promoted',
+            status: 'promoted',
+            tableName: row.table_name,
+            formName: row.form_name,
+            configName: row.config_name,
+            moduleKey: row.module_key,
+            temporaryId: id,
+            chainId: effectiveChainId,
+            changedBy: normalizedReviewer,
+            summaryFields: promotionSummary.summaryFields,
+            summaryText: promotionSummary.summaryText,
+          }),
           type: 'response',
           channelPreferences: notificationPreferences,
         });
@@ -2500,7 +2674,18 @@ export async function promoteTemporarySubmission(
             recipientEmpId: resolvedCreator,
             createdBy: normalizedReviewer,
             relatedId: resolvedRow.id,
-            message: resolutionMessage,
+            message: buildTemporaryNotificationMessage({
+              baseMessage: resolutionMessage,
+              action: 'rejected',
+              status: 'rejected',
+              tableName: resolvedRow.table_name,
+              formName: resolvedRow.form_name,
+              configName: resolvedRow.config_name,
+              moduleKey: resolvedRow.module_key,
+              temporaryId: resolvedRow.id,
+              chainId: effectiveChainId,
+              changedBy: normalizedReviewer,
+            }),
             type: 'response',
             channelPreferences: notificationPreferences,
           });
@@ -2512,7 +2697,20 @@ export async function promoteTemporarySubmission(
       recipientEmpId: normalizedReviewer,
       createdBy: normalizedReviewer,
       relatedId: id,
-      message: `You approved temporary submission #${id} for ${row.table_name}`,
+      message: buildTemporaryNotificationMessage({
+        baseMessage: `You approved temporary submission #${id} for ${row.table_name}`,
+        action: 'promoted',
+        status: 'promoted',
+        tableName: row.table_name,
+        formName: row.form_name,
+        configName: row.config_name,
+        moduleKey: row.module_key,
+        temporaryId: id,
+        chainId: effectiveChainId,
+        changedBy: normalizedReviewer,
+        summaryFields: promotionSummary.summaryFields,
+        summaryText: promotionSummary.summaryText,
+      }),
       type: 'response',
       channelPreferences: notificationPreferences,
     });
@@ -2674,13 +2872,33 @@ export async function rejectTemporarySubmission(
       rejectionRecipients.add(creatorRecipient);
     }
     const rejectionMessage = `Temporary submission for ${row.table_name} rejected`;
+    const rejectionPayload = safeJsonParse(row.payload_json, {});
+    const rejectionCleaned = safeJsonParse(row.cleaned_values_json, {});
+    const rejectionRaw = safeJsonParse(row.raw_values_json, {});
+    const rejectionSummary = buildTemporarySummaryFromFields(
+      [rejectionCleaned, rejectionRaw, rejectionPayload],
+      notificationPreferences.notificationFields,
+    );
     for (const recipientEmpId of rejectionRecipients) {
       await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpId,
         createdBy: normalizedReviewer,
         relatedId: id,
-        message: rejectionMessage,
+        message: buildTemporaryNotificationMessage({
+          baseMessage: rejectionMessage,
+          action: 'rejected',
+          status: 'rejected',
+          tableName: row.table_name,
+          formName: row.form_name,
+          configName: row.config_name,
+          moduleKey: row.module_key,
+          temporaryId: id,
+          chainId: effectiveChainId,
+          changedBy: normalizedReviewer,
+          summaryFields: rejectionSummary.summaryFields,
+          summaryText: rejectionSummary.summaryText,
+        }),
         type: 'response',
         channelPreferences: notificationPreferences,
       });
@@ -2690,7 +2908,20 @@ export async function rejectTemporarySubmission(
       recipientEmpId: normalizedReviewer,
       createdBy: normalizedReviewer,
       relatedId: id,
-      message: `You rejected temporary submission #${id} for ${row.table_name}`,
+      message: buildTemporaryNotificationMessage({
+        baseMessage: `You rejected temporary submission #${id} for ${row.table_name}`,
+        action: 'rejected',
+        status: 'rejected',
+        tableName: row.table_name,
+        formName: row.form_name,
+        configName: row.config_name,
+        moduleKey: row.module_key,
+        temporaryId: id,
+        chainId: effectiveChainId,
+        changedBy: normalizedReviewer,
+        summaryFields: rejectionSummary.summaryFields,
+        summaryText: rejectionSummary.summaryText,
+      }),
       type: 'response',
       channelPreferences: notificationPreferences,
     });
