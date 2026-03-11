@@ -9,6 +9,25 @@ function resolveValue(template, event) {
   return resolvePolicyPath(event, template);
 }
 
+
+function makeActionIdempotencyKey(event, policy, action, index) {
+  const eventId = event?.eventId ?? 'event';
+  const policyId = policy?.policy_id ?? policy?.policyId ?? 'policy';
+  const actionType = String(action?.type || 'action').toLowerCase();
+  return `${eventId}-${policyId}-${actionType}-${index}`;
+}
+
+async function shouldSkipAction(conn, { event, policy, action, actionIndex, companyId }) {
+  const key = makeActionIdempotencyKey(event, policy, action, actionIndex);
+  const [result] = await conn.query(
+    `INSERT IGNORE INTO core_event_action_dedup
+      (idempotency_key, event_id, policy_id, action_type, action_index, company_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+    [key, event?.eventId || null, policy?.policy_id || null, String(action?.type || '').toLowerCase(), actionIndex, companyId],
+  );
+  return { key, skipped: Number(result?.affectedRows || 0) === 0 };
+}
+
 function resolveMapping(mapping = {}, event) {
   const out = {};
   for (const [key, value] of Object.entries(mapping || {})) {
@@ -17,7 +36,7 @@ function resolveMapping(mapping = {}, event) {
   return out;
 }
 
-async function createNotification(action, event, companyId, conn = pool) {
+async function createNotification(action, event, companyId, idempotencyKey, conn = pool) {
   const mode = action?.target?.mode || 'empids';
   const recipients = Array.isArray(action?.target?.values) ? action.target.values : [];
   if (!recipients.length) return { skipped: true, reason: 'no_recipients' };
@@ -28,9 +47,9 @@ async function createNotification(action, event, companyId, conn = pool) {
     if (!recipientEmpid) continue;
     const [result] = await conn.query(
       `INSERT INTO notifications
-      (company_id, recipient_empid, type, related_id, message, created_by, created_at)
-      VALUES (?, ?, 'request', ?, ?, ?, NOW())`,
-      [companyId, recipientEmpid, event.source?.recordId ?? null, action.message || event.eventType, event.actorEmpid || null],
+      (company_id, recipient_empid, type, related_id, message, created_by, idempotency_key, created_at)
+      VALUES (?, ?, 'request', ?, ?, ?, ?, NOW())`,
+      [companyId, recipientEmpid, event.source?.recordId ?? null, action.message || event.eventType, event.actorEmpid || null, `${idempotencyKey}:${recipientEmpid}`],
     );
     created.push({ notificationId: result.insertId, recipientEmpid, mode });
   }
@@ -59,20 +78,27 @@ export async function executePolicyActions({ event, policy, companyId, conn = po
   const actions = Array.isArray(actionJson.actions) ? actionJson.actions : [];
   const results = [];
 
-  for (const action of actions) {
+  for (const [actionIndex, action] of actions.entries()) {
     const type = String(action?.type || '').trim().toLowerCase();
     if (!type) continue;
+
+    const idempotency = await shouldSkipAction(conn, { event, policy, action, actionIndex, companyId });
+    if (idempotency.skipped) {
+      results.push({ type, skipped: true, reason: 'idempotent_replay', idempotencyKey: idempotency.key });
+      continue;
+    }
 
     if (type === 'create_transaction') {
       const tableName = String(action?.tableName || `transactions_${action?.transactionType || 'dynamic'}`);
       const row = resolveMapping(action.mapping, event);
       row.company_id = companyId;
       const createTxn = adapters.createTransaction || insertTableRow;
+      row.event_action_idempotency_key = idempotency.key;
       const created = await createTxn(tableName, row, undefined, undefined, false, event.actorEmpid, {
         conn,
         mutationContext: { changedBy: event.actorEmpid, companyId },
       });
-      results.push({ type, created });
+      results.push({ type, created, idempotencyKey: idempotency.key });
       continue;
     }
 
@@ -84,12 +110,12 @@ export async function executePolicyActions({ event, policy, companyId, conn = po
       const updated = await updateTxn(tableName, recordId, updates, companyId, conn, {
         mutationContext: { changedBy: event.actorEmpid, companyId },
       });
-      results.push({ type, updated });
+      results.push({ type, updated, idempotencyKey: idempotency.key });
       continue;
     }
 
     if (type === 'create_notification' || type === 'notify') {
-      results.push({ type, ...(await createNotification(action, event, companyId, conn)) });
+      results.push({ type, ...(await createNotification(action, event, companyId, idempotency.key, conn)), idempotencyKey: idempotency.key });
       continue;
     }
 
@@ -99,18 +125,18 @@ export async function executePolicyActions({ event, policy, companyId, conn = po
       record.company_id = companyId;
       if (event.eventId) record.last_event_id = event.eventId;
       const upserted = await upsertTwinState(twin, record, conn);
-      results.push({ type, upserted });
+      results.push({ type, upserted, idempotencyKey: idempotency.key });
       continue;
     }
 
     if (type === 'enqueue_ai_review') {
       const ai = await runAiPolicy({ policy: action.aiPolicy || {}, event, companyId });
-      results.push({ type, ai });
+      results.push({ type, ai, idempotencyKey: idempotency.key });
       continue;
     }
 
     if (type === 'call_procedure') {
-      results.push({ type, ...(await callProcedureSafely(action, companyId, conn)) });
+      results.push({ type, ...(await callProcedureSafely(action, companyId, conn)), idempotencyKey: idempotency.key });
       continue;
     }
 

@@ -7,6 +7,7 @@ import ActionListBuilder from '../components/ActionListBuilder.jsx';
 import PolicySimulationPanel from '../components/PolicySimulationPanel.jsx';
 import PolicyVersionHistory from '../components/PolicyVersionHistory.jsx';
 import PayloadExplorer from '../components/PayloadExplorer.jsx';
+import WorkflowGraphEditor from '../components/WorkflowGraphEditor.jsx';
 
 const defaultDraft = {
   policy_name: '',
@@ -324,6 +325,15 @@ export default function EventPolicyBuilder() {
 
       <h3>Event Trigger</h3>
       <PolicyEventSelector form={draft} eventTypes={eventTypes} moduleKeys={moduleKeys} onChange={updateDraftField} />
+
+
+      <WorkflowGraphEditor
+        payloadFields={payloadFields.map((field) => field.path)}
+        onPolicyJsonChange={({ condition_json, action_json }) => {
+          updateDraftField('condition_json', condition_json);
+          updateDraftField('action_json', action_json);
+        }}
+      />
 
       <ConditionGroupBuilder
         condition={draft.condition_json}
