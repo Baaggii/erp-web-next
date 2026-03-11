@@ -48,11 +48,9 @@ async function callProcedureSafely(action, companyId, conn = pool) {
     throw new Error('Procedure call blocked by policy allow-list');
   }
   const params = Array.isArray(action?.params) ? action.params : [];
-  const callWithCompanyScope = action?.includeCompanyId !== false;
-  const finalParams = callWithCompanyScope ? [...params, companyId] : params;
-  const placeholders = finalParams.map(() => '?').join(', ');
+  const placeholders = params.map(() => '?').join(', ');
   const sql = `CALL \`${procedure}\`(${placeholders})`;
-  await conn.query(sql, finalParams);
+  await conn.query(sql, [...params, companyId].slice(0, params.length));
   return { called: procedure };
 }
 

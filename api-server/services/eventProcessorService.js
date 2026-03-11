@@ -51,16 +51,12 @@ async function writePolicyRun(conn, payload) {
   return result.insertId;
 }
 
-export async function processPendingEvents({ companyId, eventId = null, limit = 50, conn = pool } = {}) {
+export async function processPendingEvents({ companyId, limit = 50, conn = pool } = {}) {
   const params = [];
   let where = `status IN ('pending','failed') AND deleted_at IS NULL`;
   if (companyId) {
     where += ' AND company_id = ?';
     params.push(companyId);
-  }
-  if (eventId != null) {
-    where += ' AND event_id = ?';
-    params.push(eventId);
   }
 
   const [events] = await conn.query(
