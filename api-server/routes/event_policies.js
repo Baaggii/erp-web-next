@@ -5,6 +5,12 @@ import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
 import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
+const eventPoliciesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs for these routes
+});
+
 
 const eventPolicyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -17,7 +23,7 @@ const eventPoliciesLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs for these routes
   standardHeaders: true,
-  legacyHeaders: false,
+router.post('/', requireAuth, eventPoliciesLimiter, async (req, res, next) => {
 });
 
 router.use(eventPoliciesLimiter);
@@ -49,7 +55,7 @@ router.post('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
     const [result] = await pool.query(
       `INSERT INTO core_event_policies
       (policy_key, policy_name, event_type, module_key, priority, is_active, stop_on_match, condition_json, action_json, ai_policy_json, company_id, created_by, updated_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+router.put('/:id', requireAuth, eventPoliciesLimiter, async (req, res, next) => {
       [
         payload.policy_key,
         payload.policy_name,
