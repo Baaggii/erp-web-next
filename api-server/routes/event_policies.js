@@ -4,6 +4,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
 import { invalidateTenantEventEngineFastCheck } from '../services/eventEngineFastCheck.js';
+import { invalidateEventPolicyMatchFastCheck } from '../services/eventPolicyMatchFastCheck.js';
 
 const router = express.Router();
 
@@ -237,8 +238,10 @@ router.post('/', async (req, res, next) => {
     const payload = req.body || {};
     const [result] = await pool.query(
       `INSERT INTO core_event_policies
-      (policy_key, policy_name, event_type, module_key, priority, is_active, stop_on_match, condition_json, action_json, ai_policy_json, company_id, created_by, updated_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (policy_key, policy_name, event_type, module_key, priority, is_active, stop_on_match, condition_json, action_json, ai_policy_json,
+       source_table, source_transaction_type, source_transaction_code, is_sample,
+       company_id, created_by, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.policy_key,
         payload.policy_name,
@@ -250,12 +253,17 @@ router.post('/', async (req, res, next) => {
         JSON.stringify(payload.condition_json || {}),
         JSON.stringify(payload.action_json || {}),
         payload.ai_policy_json ? JSON.stringify(payload.ai_policy_json) : null,
+        payload.source_table || null,
+        payload.source_transaction_type || null,
+        payload.source_transaction_code == null ? null : Number(payload.source_transaction_code),
+        payload.is_sample ? 1 : 0,
         req.user.companyId,
         req.user.empid,
         req.user.empid,
       ],
     );
     invalidateTenantEventEngineFastCheck(req.user.companyId);
+    invalidateEventPolicyMatchFastCheck(req.user.companyId);
     res.status(201).json({ policy_id: result.insertId });
   } catch (error) {
     next(error);
@@ -272,7 +280,9 @@ router.put('/:id(\d+)', async (req, res, next) => {
     await pool.query(
       `UPDATE core_event_policies
        SET policy_name = ?, module_key = ?, event_type = ?, priority = ?, is_active = ?, stop_on_match = ?,
-           condition_json = ?, action_json = ?, ai_policy_json = ?, updated_by = ?, updated_at = NOW()
+           condition_json = ?, action_json = ?, ai_policy_json = ?,
+           source_table = ?, source_transaction_type = ?, source_transaction_code = ?, is_sample = ?,
+           updated_by = ?, updated_at = NOW()
        WHERE policy_id = ? AND company_id = ? AND deleted_at IS NULL`,
       [
         payload.policy_name,
@@ -284,12 +294,17 @@ router.put('/:id(\d+)', async (req, res, next) => {
         JSON.stringify(payload.condition_json || {}),
         JSON.stringify(payload.action_json || {}),
         payload.ai_policy_json ? JSON.stringify(payload.ai_policy_json) : null,
+        payload.source_table || null,
+        payload.source_transaction_type || null,
+        payload.source_transaction_code == null ? null : Number(payload.source_transaction_code),
+        payload.is_sample ? 1 : 0,
         req.user.empid,
         req.params.id,
         req.user.companyId,
       ],
     );
     invalidateTenantEventEngineFastCheck(req.user.companyId);
+    invalidateEventPolicyMatchFastCheck(req.user.companyId);
     res.sendStatus(204);
   } catch (error) {
     next(error);
@@ -424,6 +439,7 @@ router.post('/deploy/:draftId', async (req, res, next) => {
 
     await conn.commit();
     invalidateTenantEventEngineFastCheck(req.user.companyId);
+    invalidateEventPolicyMatchFastCheck(req.user.companyId);
     res.json({ ok: true, policy_id: policyId, version_number: nextVersion });
   } catch (error) {
     await conn.rollback();

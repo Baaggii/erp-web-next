@@ -55,3 +55,16 @@ Machine-readable schema: `config/schema/eventPolicy.schema.json`.
   ]
 }
 ```
+
+
+## Policy source scope fields
+`core_event_policies` supports both generic and source-specific subscriptions:
+
+- `source_table` *(nullable)*: when set, policy only matches events from this table.
+- `source_transaction_type` *(nullable)*: when set, policy only matches this source transaction type name.
+- `source_transaction_code` *(nullable int)*: when set, policy only matches this transaction type code.
+- `is_sample` *(tinyint, default `0`)*: mark demo/sample policies; ignored in production matching.
+
+Matching logic keeps backward compatibility:
+- If a source field is `NULL` in the policy, that dimension is treated as wildcard.
+- If non-`NULL`, the event must equal the field value.

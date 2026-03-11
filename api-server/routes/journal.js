@@ -3,6 +3,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import { post_single_transaction, preview_single_transaction } from '../services/journalPostingEngine.js';
 import { validateJournalRequestBody } from '../services/journalRouteValidation.js';
 import { emitCanonicalEvent } from '../services/eventEmitterService.js';
+import { hasMatchingPolicies } from '../services/eventPolicyMatchFastCheck.js';
 
 const router = express.Router();
 
@@ -24,21 +25,34 @@ router.post('/post', requireAuth, async (req, res) => {
     }
 
     try {
-      await emitCanonicalEvent({
+      const companyId = Number(payload.company_id || req.user?.companyId || 0);
+      const sourceTransactionCode = payload.transaction_code ?? null;
+      const hasPolicies = await hasMatchingPolicies({
+        companyId,
         eventType: 'journal.posted',
-        companyId: Number(payload.company_id || req.user?.companyId || 0),
-        actorEmpid: req.user?.empid ?? null,
-        source: {
-          transactionType: payload.transaction_type || null,
-          table: payload.source_table || null,
-          recordId: payload.source_id != null ? String(payload.source_id) : null,
-          action: 'post',
-        },
-        payload: {
-          journalId,
-          postingRequest: payload,
-        },
+        sourceTable: payload.source_table || null,
+        sourceTransactionType: payload.transaction_type || null,
+        sourceTransactionCode,
       });
+
+      if (hasPolicies) {
+        await emitCanonicalEvent({
+          eventType: 'journal.posted',
+          companyId,
+          actorEmpid: req.user?.empid ?? null,
+          source: {
+            transactionType: payload.transaction_type || null,
+            table: payload.source_table || null,
+            recordId: payload.source_id != null ? String(payload.source_id) : null,
+            action: 'post',
+          },
+          payload: {
+            journalId,
+            transaction_code: sourceTransactionCode,
+            postingRequest: payload,
+          },
+        });
+      }
     } catch (eventErr) {
       console.error('Journal post succeeded but event emit failed:', {
         journalId,

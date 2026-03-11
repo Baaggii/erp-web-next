@@ -59,6 +59,10 @@ const defaults = {
     workflowToastEnabled: false,
     webPushEnabled: false,
   },
+  eventsPolicy: {
+    eventToastEnabled: false,
+    policyToastEnabled: false,
+  },
   images: {
     basePath: 'uploads',
     cleanupDays: 30,
@@ -133,7 +137,8 @@ async function readConfig(companyId = 0) {
       parsed.print ||
       parsed.reports ||
       parsed.notifications ||
-      parsed.finReporting
+      parsed.finReporting ||
+      parsed.eventsPolicy
     ) {
       const { imageStorage, ...restGeneral } = parsed.general || {};
       const images = parsed.images || imageStorage || {};
@@ -155,6 +160,10 @@ async function readConfig(companyId = 0) {
         notifications: {
           ...defaults.notifications,
           ...(parsed.notifications || {}),
+        },
+        eventsPolicy: {
+          ...defaults.eventsPolicy,
+          ...(parsed.eventsPolicy || {}),
         },
         plan: {
           ...defaults.plan,
@@ -178,6 +187,7 @@ async function readConfig(companyId = 0) {
         reports: { ...defaults.reports },
         finReporting: { ...defaults.finReporting },
         notifications: { ...defaults.notifications },
+        eventsPolicy: { ...defaults.eventsPolicy },
         plan: { ...defaults.plan },
         images: { ...defaults.images },
         print: { ...defaults.print },
@@ -252,6 +262,17 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   cfg.notifications.webPushEnabled = coerceBoolean(
     cfg.notifications.webPushEnabled,
     defaults.notifications.webPushEnabled,
+  );
+  if (updates.eventsPolicy) {
+    Object.assign(cfg.eventsPolicy, updates.eventsPolicy);
+  }
+  cfg.eventsPolicy.eventToastEnabled = coerceBoolean(
+    cfg.eventsPolicy.eventToastEnabled,
+    defaults.eventsPolicy.eventToastEnabled,
+  );
+  cfg.eventsPolicy.policyToastEnabled = coerceBoolean(
+    cfg.eventsPolicy.policyToastEnabled,
+    defaults.eventsPolicy.policyToastEnabled,
   );
   if (updates.plan) {
     cfg.plan = {
