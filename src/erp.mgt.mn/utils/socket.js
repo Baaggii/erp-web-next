@@ -8,7 +8,7 @@ const listeners = new Set();
 
 function resolveSocketUrl() {
   const socketUrl = String(import.meta.env.VITE_SOCKET_URL || '').trim();
-  if (socketUrl) return socketUrl.replace(/\/$/, '');
+  if (socketUrl) return socketUrl.replace(/\/$/, '').replace(/\/api\/?$/, '');
 
   const apiRoot = String(API_ROOT || '').trim();
   if (apiRoot) return apiRoot.replace(/\/$/, '');
@@ -59,8 +59,9 @@ export function connectSocket() {
     socket = io(baseUrl, {
       path,
       withCredentials: true,
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       autoConnect: true,
+      timeout: 10000,
     });
   }
 
