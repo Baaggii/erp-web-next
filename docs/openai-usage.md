@@ -59,6 +59,3 @@ Mongolian translations now undergo additional validation. The browser runs heuri
 ## Benchmark Image Lookup
 
 Server code also exposes `findBenchmarkCode` for resolving a transaction type code from an uploaded image name. See [Benchmark Image Verification](./benchmark-image-verification.md) for details.
-
-## Event-driven AI policy gate
-AI usage can be attached to event policies through `enqueue_ai_review` and remains optional + policy-gated.

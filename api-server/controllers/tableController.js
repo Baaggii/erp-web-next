@@ -38,34 +38,6 @@ import { formatDateForDb } from '../utils/formatDate.js';
 import { enqueueTransactionNotification } from '../services/transactionNotificationQueue.js';
 import { queryWithTenantScope } from '../services/tenantScope.js';
 import { getDisplayFields } from '../services/displayFieldConfig.js';
-import { emitCanonicalEvent } from '../services/eventEmitterService.js';
-
-
-async function emitTransactionCrudEvent({ action, tableName, recordId, companyId, actorEmpid, before = null, after = null }) {
-  if (!/^transactions_/i.test(String(tableName || ''))) return;
-  try {
-    await emitCanonicalEvent({
-      eventType: action === 'create' ? 'transaction.created' : action === 'delete' ? 'transaction.deleted' : 'transaction.updated',
-      companyId,
-      actorEmpid,
-      source: {
-        transactionType: String(tableName || '').replace(/^transactions_/i, ''),
-        table: tableName,
-        recordId,
-        action,
-      },
-      payload: {
-        tableName,
-        recordId,
-        action,
-        before,
-        after,
-      },
-    });
-  } catch (error) {
-    console.warn('Failed to emit canonical transaction event', { tableName, recordId, action, error: error?.message });
-  }
-}
 
 function getRowValueCaseInsensitive(row, fieldName) {
   if (!row || typeof row !== 'object' || !fieldName) return undefined;
@@ -620,15 +592,6 @@ export async function updateRow(req, res, next) {
       action: 'update',
       previousSnapshot: original ?? null,
     });
-    await emitTransactionCrudEvent({
-      action: 'update',
-      tableName: req.params.table,
-      recordId: req.params.id,
-      companyId: req.user.companyId,
-      actorEmpid: req.user?.empid ?? null,
-      before: original ?? null,
-      after: updates,
-    });
     res.sendStatus(204);
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
@@ -679,14 +642,6 @@ export async function addRow(req, res, next) {
       companyId: req.user.companyId,
       changedBy: req.user?.empid ?? null,
       action: 'create',
-    });
-    await emitTransactionCrudEvent({
-      action: 'create',
-      tableName: req.params.table,
-      recordId: result?.id ?? req.body?.id ?? null,
-      companyId: req.user.companyId,
-      actorEmpid: req.user?.empid ?? null,
-      after: row,
     });
     res.status(201).json(result);
   } catch (err) {
@@ -745,14 +700,6 @@ export async function deleteRow(req, res, next) {
         changedBy: req.user?.empid ?? null,
         action: 'delete',
         snapshot: row,
-      });
-      await emitTransactionCrudEvent({
-        action: 'delete',
-        tableName: table,
-        recordId: id,
-        companyId: req.user.companyId,
-        actorEmpid: req.user?.empid ?? null,
-        before: row,
       });
     }
     res.sendStatus(204);
