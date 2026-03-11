@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PolicyEventSelector from '../components/PolicyEventSelector.jsx';
+import PolicySelector from '../components/PolicySelector.jsx';
 import ConditionGroupBuilder from '../components/ConditionGroupBuilder.jsx';
 import ActionListBuilder from '../components/ActionListBuilder.jsx';
 import PolicySimulationPanel from '../components/PolicySimulationPanel.jsx';
@@ -22,6 +23,11 @@ export default function EventPolicyBuilder() {
   const canEdit = Boolean(session?.permissions?.system_settings);
   const [draft, setDraft] = useState(defaultDraft);
   const [eventTypes, setEventTypes] = useState([]);
+  const [observedEvents, setObservedEvents] = useState([]);
+  const [policies, setPolicies] = useState([]);
+  const [selectedPolicyId, setSelectedPolicyId] = useState('');
+  const [loadingPolicy, setLoadingPolicy] = useState(false);
+  const [loadedPolicy, setLoadedPolicy] = useState(null);
   const [moduleKeys, setModuleKeys] = useState([]);
   const [transactionTypes, setTransactionTypes] = useState([]);
   const [procedureNames, setProcedureNames] = useState([]);
@@ -31,12 +37,25 @@ export default function EventPolicyBuilder() {
 
   useEffect(() => {
     if (!canEdit) return;
-    fetch('/api/event-policies/event-types', { credentials: 'include' })
-      .then((res) => res.json())
+
+    fetch('/api/events/list', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
       .then((rows) => {
-        setEventTypes(rows || []);
-        if (rows?.[0]) setDraft((prev) => ({ ...prev, event_type: prev.event_type || rows[0] }));
+        const list = Array.isArray(rows) ? rows : [];
+        setObservedEvents(list);
+        const types = Array.from(new Set(list.map((row) => row?.event_type).filter(Boolean))).sort();
+        setEventTypes(types);
+        if (types?.[0]) setDraft((prev) => ({ ...prev, event_type: prev.event_type || types[0] }));
+      })
+      .catch(() => {
+        setObservedEvents([]);
+        setEventTypes([]);
       });
+
+    fetch('/api/event-policies/list', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
+      .catch(() => setPolicies([]));
   }, [canEdit]);
 
   useEffect(() => {
@@ -116,6 +135,29 @@ export default function EventPolicyBuilder() {
 
   const updateDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  const loadSelectedPolicy = async () => {
+    if (!selectedPolicyId) return;
+    setLoadingPolicy(true);
+    try {
+      const res = await fetch(`/api/event-policies/${selectedPolicyId}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setDraft({
+        policy_name: data.policy_name || '',
+        policy_key: data.policy_key || '',
+        event_type: data.event_type || '',
+        module_key: data.module_key || '',
+        priority: Number(data.priority || 100),
+        is_active: Boolean(data.is_active),
+        condition_json: data.condition_json || { logic: 'and', rules: [] },
+        action_json: data.action_json || { actions: [] },
+      });
+      setLoadedPolicy(data);
+    } finally {
+      setLoadingPolicy(false);
+    }
+  };
+
   const saveDraft = async () => {
     const res = await fetch('/api/event-policies/drafts', {
       method: 'POST',
@@ -151,6 +193,34 @@ export default function EventPolicyBuilder() {
   return (
     <div>
       <h2>Visual Policy Authoring UI</h2>
+      <PolicySelector
+        policies={policies}
+        selectedPolicyId={selectedPolicyId}
+        onSelectPolicy={setSelectedPolicyId}
+        onLoadPolicy={loadSelectedPolicy}
+        loading={loadingPolicy}
+        currentPolicy={loadedPolicy}
+      />
+      <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+        <h3 style={{ marginTop: 0 }}>Observed Events</h3>
+        {observedEvents.length === 0 ? (
+          <div style={{ color: '#6b7280' }}>No events found.</div>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {observedEvents.map((evt, idx) => (
+              <li key={`${evt.event_type}-${idx}`}>
+                <button
+                  type="button"
+                  style={{ border: 'none', background: 'transparent', color: '#2563eb', cursor: 'pointer', padding: 0 }}
+                  onClick={() => updateDraftField('event_type', evt.event_type)}
+                >
+                  {evt.event_type}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <PolicyEventSelector form={draft} eventTypes={eventTypes} moduleKeys={moduleKeys} onChange={updateDraftField} />
       <ConditionGroupBuilder
         condition={draft.condition_json}

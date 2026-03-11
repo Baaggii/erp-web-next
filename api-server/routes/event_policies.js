@@ -36,6 +36,67 @@ router.get('/event-types', async (req, res, next) => {
   }
 });
 
+router.get('/list', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const [rows] = await pool.query(
+      `SELECT
+        policy_id,
+        policy_name,
+        policy_key,
+        event_type,
+        module_key,
+        priority,
+        is_active
+       FROM core_event_policies
+       WHERE company_id = ?
+         AND deleted_at IS NULL
+       ORDER BY priority ASC, policy_id ASC`,
+      [req.user.companyId],
+    );
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id(\d+)', async (req, res, next) => {
+  try {
+    if (!requireSystemSettings(req, res)) return;
+    const [rows] = await pool.query(
+      `SELECT
+        policy_id,
+        policy_name,
+        policy_key,
+        event_type,
+        module_key,
+        priority,
+        is_active,
+        condition_json,
+        action_json
+       FROM core_event_policies
+       WHERE policy_id = ?
+         AND company_id = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [req.params.id, req.user.companyId],
+    );
+    if (!rows.length) return res.sendStatus(404);
+    const row = rows[0];
+    let conditionJson = row.condition_json;
+    let actionJson = row.action_json;
+    if (typeof conditionJson === 'string') {
+      try { conditionJson = JSON.parse(conditionJson); } catch {}
+    }
+    if (typeof actionJson === 'string') {
+      try { actionJson = JSON.parse(actionJson); } catch {}
+    }
+    res.json({ ...row, condition_json: conditionJson, action_json: actionJson });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
@@ -82,7 +143,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id(\d+)', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
     const validation = validateEventPolicySchema(req.body || {});
@@ -251,7 +312,7 @@ router.post('/deploy/:draftId', async (req, res, next) => {
   }
 });
 
-router.get('/:id/versions', async (req, res, next) => {
+router.get('/:id(\d+)/versions', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
     const [rows] = await pool.query(
