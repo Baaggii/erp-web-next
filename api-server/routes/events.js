@@ -5,30 +5,6 @@ import { processPendingEvents } from '../services/eventProcessorService.js';
 
 const router = express.Router();
 
-function requireSystemSettings(req, res) {
-  if (!req.user?.permissions?.system_settings) {
-    res.sendStatus(403);
-    return false;
-  }
-  return true;
-}
-
-router.get('/list', requireAuth, async (req, res, next) => {
-  try {
-    if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT DISTINCT event_type, source_transaction_type, source_table
-       FROM core_events
-       WHERE company_id = ?
-       ORDER BY event_type ASC`,
-      [req.user.companyId],
-    );
-    res.json(rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit || 100), 500);
