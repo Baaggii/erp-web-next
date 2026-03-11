@@ -82,14 +82,6 @@ export function GeneralSettings() {
           </Link>
         </TooltipWrapper>
       </p>
-
-      <p style={{ marginTop: '0.5rem' }}>
-        <TooltipWrapper title={t('event_policy_builder', { ns: 'tooltip', defaultValue: 'Open visual event policy authoring' })}>
-          <Link to="/settings/event-policy-builder">
-            {t('settings_event_policy_builder', 'Event Policy Builder')}
-          </Link>
-        </TooltipWrapper>
-      </p>
     </div>
   );
 }
