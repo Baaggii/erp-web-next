@@ -2,13 +2,6 @@ import React from 'react';
 
 const ACTION_TYPES = ['create_transaction', 'notify', 'update_twin', 'call_procedure', 'enqueue_ai_review', 'reserve_budget', 'reserve_resource'];
 
-const ACTION_TEMPLATES = {
-  'Create Investigation Plan': { type: 'create_transaction', transactionType: 'investigation_plan', mapping: {} },
-  'Notify Supervisor': { type: 'notify', mapping: {} },
-  'Update Risk Twin': { type: 'update_twin', twin: 'risk_state', mapping: {} },
-  'Block Transaction': { type: 'call_procedure', procedure: 'block_transaction', mapping: {} },
-};
-
 function mappingToRows(mapping = {}) {
   return Object.entries(mapping || {}).map(([target, source]) => ({ target, source }));
 }
@@ -23,8 +16,6 @@ function rowsToMapping(rows = []) {
 
 export default function ActionListBuilder({ actionJson, transactionTypes = [], procedureNames = [], payloadFields = [], onChange }) {
   const actions = Array.isArray(actionJson.actions) ? actionJson.actions : [];
-  const mappingSources = ['source.recordId', 'system.now', ...payloadFields];
-
   const patchAction = (index, key, value) => {
     const next = [...actions];
     next[index] = { ...next[index], [key]: value };
@@ -36,24 +27,6 @@ export default function ActionListBuilder({ actionJson, transactionTypes = [], p
       <h3>Action Builder</h3>
       {actions.map((action, idx) => (
         <div key={idx} className="action-box">
-          <div style={{ marginBottom: 8 }}>
-            <label>Template{' '}
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  const template = ACTION_TEMPLATES[e.target.value];
-                  if (!template) return;
-                  const next = [...actions];
-                  next[idx] = { ...template };
-                  onChange({ actions: next });
-                }}
-              >
-                <option value="">Select template</option>
-                {Object.keys(ACTION_TEMPLATES).map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-            </label>
-          </div>
-
           <select value={action.type || ''} onChange={(e) => patchAction(idx, 'type', e.target.value)}>
             <option value="">Select action</option>
             {ACTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -98,8 +71,8 @@ export default function ActionListBuilder({ actionJson, transactionTypes = [], p
                       patchAction(idx, 'mapping', rowsToMapping(nextRows));
                     }}
                   >
-                    <option value="">Select source field</option>
-                    {mappingSources.map((field) => <option key={field} value={field}>{field}</option>)}
+                    <option value="">Select payload field</option>
+                    {payloadFields.map((field) => <option key={field} value={field}>{field}</option>)}
                   </select>
                 </div>
               );

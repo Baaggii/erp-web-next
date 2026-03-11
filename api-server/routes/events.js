@@ -5,52 +5,6 @@ import { processPendingEvents } from '../services/eventProcessorService.js';
 
 const router = express.Router();
 
-function parsePayloadJson(payloadJson) {
-  if (!payloadJson) return null;
-  if (typeof payloadJson === 'object') return payloadJson;
-  try {
-    return JSON.parse(payloadJson);
-  } catch {
-    return null;
-  }
-}
-
-function isDateString(value) {
-  if (typeof value !== 'string') return false;
-  const time = Date.parse(value);
-  return !Number.isNaN(time) && /\d{4}-\d{2}-\d{2}/.test(value);
-}
-
-function detectValueType(value) {
-  if (Array.isArray(value)) return 'array';
-  if (typeof value === 'number') return 'number';
-  if (typeof value === 'boolean') return 'boolean';
-  if (isDateString(value)) return 'date';
-  return 'string';
-}
-
-function collectFieldPaths(value, pathPrefix, collector) {
-  if (Array.isArray(value)) {
-    collector.set(pathPrefix, detectValueType(value));
-    value.forEach((entry, index) => {
-      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-        collectFieldPaths(entry, `${pathPrefix}[${index}]`, collector);
-      }
-    });
-    return;
-  }
-
-  if (value && typeof value === 'object') {
-    Object.entries(value).forEach(([key, entry]) => {
-      const nextPath = pathPrefix ? `${pathPrefix}.${key}` : key;
-      collectFieldPaths(entry, nextPath, collector);
-    });
-    return;
-  }
-
-  collector.set(pathPrefix, detectValueType(value));
-}
-
 function requireSystemSettings(req, res) {
   if (!req.user?.permissions?.system_settings) {
     res.sendStatus(403);
@@ -83,56 +37,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       [req.user.companyId, limit],
     );
     res.json(rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get('/fields/:eventType', requireAuth, async (req, res, next) => {
-  try {
-    if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT payload_json
-       FROM core_events
-       WHERE event_type = ?
-         AND company_id = ?
-       ORDER BY occurred_at DESC
-       LIMIT 50`,
-      [req.params.eventType, req.user.companyId],
-    );
-
-    const fieldTypeMap = new Map();
-    rows.forEach((row) => {
-      const payload = parsePayloadJson(row?.payload_json);
-      if (!payload || typeof payload !== 'object') return;
-      collectFieldPaths(payload, 'payload', fieldTypeMap);
-    });
-
-    const fields = Array.from(fieldTypeMap.entries())
-      .map(([path, type]) => ({ path, type }))
-      .sort((a, b) => a.path.localeCompare(b.path));
-
-    res.json({ fields });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get('/sample/:eventType', requireAuth, async (req, res, next) => {
-  try {
-    if (!requireSystemSettings(req, res)) return;
-    const [rows] = await pool.query(
-      `SELECT payload_json
-       FROM core_events
-       WHERE event_type = ?
-         AND company_id = ?
-       ORDER BY occurred_at DESC
-       LIMIT 1`,
-      [req.params.eventType, req.user.companyId],
-    );
-    if (!rows.length) return res.json({ payload: {} });
-    const payload = parsePayloadJson(rows[0].payload_json);
-    res.json({ payload: payload && typeof payload === 'object' ? payload : {} });
   } catch (error) {
     next(error);
   }
