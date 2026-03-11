@@ -288,7 +288,7 @@ function getTemporaryTimestamp(entry) {
 
 export default function TransactionNotificationDropdown() {
   const [open, setOpen] = useState(false);
-  const { notifications, unreadCount, markRead, refresh: refreshNotifications } = useTransactionNotifications({ enabled: open });
+  const { notifications, unreadCount, markRead } = useTransactionNotifications({ enabled: open });
   const { user, session } = useAuth();
   const { workflows, markWorkflowSeen, temporary, notificationStatusTotals, anyHasNew } = usePendingRequests();
   const [formEntries, setFormEntries] = useState([]);
@@ -1261,7 +1261,6 @@ export default function TransactionNotificationDropdown() {
       .filter(Boolean);
     if (!ids.length) return;
     await markRead(Array.from(new Set(ids)));
-    await refreshNotifications();
     setFeedState((prev) => ({
       ...prev,
       items: prev.items.map((item) => {
@@ -1271,7 +1270,7 @@ export default function TransactionNotificationDropdown() {
         return { ...item, unread: false };
       }),
     }));
-  }, [feedState.items, markRead, refreshNotifications]);
+  }, [feedState.items, markRead]);
   const bellUnreadCount = Math.max(
     Number(unreadCount) || 0,
     dropdownUnreadCount,
