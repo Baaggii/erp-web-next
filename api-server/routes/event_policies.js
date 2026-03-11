@@ -2,10 +2,16 @@ import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { validateEventPolicySchema } from '../services/eventPolicyEvaluator.js';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
 
-router.get('/', requireAuth, async (req, res, next) => {
+const eventPoliciesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs for these routes
+});
+
+router.get('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT * FROM core_event_policies WHERE company_id = ? AND deleted_at IS NULL ORDER BY priority ASC, policy_id ASC`,
@@ -17,7 +23,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res, next) => {
+router.post('/', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
   try {
     const validation = validateEventPolicySchema(req.body || {});
     if (!validation.ok) return res.status(400).json(validation);
@@ -49,7 +55,7 @@ router.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireAuth, async (req, res, next) => {
+router.put('/:id', eventPoliciesLimiter, requireAuth, async (req, res, next) => {
   try {
     const validation = validateEventPolicySchema(req.body || {});
     if (!validation.ok) return res.status(400).json(validation);
