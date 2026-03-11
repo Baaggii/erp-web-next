@@ -34,7 +34,49 @@ self.addEventListener('push', (event) => {
   }
 
   function resolveNotificationBody(item) {
-    return String(item?.preview || item?.summaryText || item?.summary_text || '').trim();
+    const preview = String(item?.preview || '').trim();
+    if (preview) return preview;
+
+    const summary = String(item?.summaryText || item?.summary_text || '').trim();
+    if (summary) return summary;
+
+    const kind = String(item?.kind || '').trim().toLowerCase();
+    if (kind !== 'temporary' && !item?.temporarySubmission) return '';
+
+    const action = String(item?.action || item?.status || '').trim().toLowerCase();
+    const actionLabel =
+      action === 'pending'
+        ? 'Pending review'
+        : action === 'promoted' || action === 'approved'
+          ? 'Approved'
+          : action === 'rejected' || action === 'declined'
+            ? 'Rejected'
+            : action === 'forwarded'
+              ? 'Forwarded'
+              : action === 'created' || action === 'create'
+                ? 'Created'
+                : action
+                  ? action.charAt(0).toUpperCase() + action.slice(1)
+                  : 'Pending review';
+
+    const formName = String(item?.formName || item?.form_name || item?.configName || item?.config_name || '').trim();
+    const summaryFieldsRaw =
+      item?.summaryFields ||
+      item?.summary_fields ||
+      item?.summary_fields_list ||
+      item?.summary?.fields ||
+      [];
+    const summaryFields = Array.isArray(summaryFieldsRaw)
+      ? summaryFieldsRaw
+          .map((field) => String(field?.value ?? field?.val ?? '').trim())
+          .filter(Boolean)
+      : [];
+
+    const pieces = [actionLabel];
+    if (formName) pieces.push(formName);
+    if (summaryFields.length) pieces.push(summaryFields.join(' · '));
+
+    return pieces.join(' • ');
   }
 
   let payload = {};
@@ -55,9 +97,12 @@ self.addEventListener('push', (event) => {
   const resolvedTitle = resolveNotificationTitle(notificationItem);
   const resolvedBody = resolveNotificationBody(notificationItem);
 
+  const notificationKind = String(notificationItem?.kind || payload?.data?.kind || '').trim().toLowerCase();
+  const preferResolvedBody = notificationKind === 'temporary' || Boolean(notificationItem?.temporarySubmission);
+
   const title = payload.title || resolvedTitle || 'ERP notification';
   const options = {
-    body: payload.body || resolvedBody || 'You have a new notification',
+    body: (preferResolvedBody ? resolvedBody || payload.body : payload.body || resolvedBody) || 'You have a new notification',
     icon: payload.icon || '/icon-192.png',
     badge: payload.badge || '/icon-192.png',
     data: payload.data || { url: '/#/notifications' },
