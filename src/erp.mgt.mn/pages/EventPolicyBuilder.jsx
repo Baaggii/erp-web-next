@@ -1,4 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
+import { useToast } from '../context/ToastContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PolicyEventSelector from '../components/PolicyEventSelector.jsx';
 import PolicySelector from '../components/PolicySelector.jsx';
@@ -29,6 +31,20 @@ function slugifyPolicyKey(value = '') {
 
 export default function EventPolicyBuilder() {
   const { session } = useContext(AuthContext);
+  const { addToast } = useToast();
+  const generalConfig = useGeneralConfig();
+  const eventsPolicyCfg = generalConfig?.eventsPolicy || {};
+  const isSystemAdmin = Boolean(session?.permissions?.system_settings);
+
+  const maybeToastEvent = (message, type = 'info') => {
+    if (!isSystemAdmin || !eventsPolicyCfg.eventToastEnabled) return;
+    addToast(message, type);
+  };
+
+  const maybeToastPolicy = (message, type = 'info') => {
+    if (!isSystemAdmin || !eventsPolicyCfg.policyToastEnabled) return;
+    addToast(message, type);
+  };
   const canEdit = Boolean(session?.permissions?.system_settings);
   const [draft, setDraft] = useState(defaultDraft);
   const [eventTypes, setEventTypes] = useState([]);
@@ -60,22 +76,38 @@ export default function EventPolicyBuilder() {
         const types = Array.from(new Set(list.map((row) => row?.event_type).filter(Boolean))).sort();
         setEventTypes(types);
         if (types?.[0]) setDraft((prev) => ({ ...prev, event_type: prev.event_type || types[0] }));
+        maybeToastEvent(`Loaded ${types.length} event types`, 'success');
       })
       .catch(() => {
         setObservedEvents([]);
         setEventTypes([]);
+        maybeToastEvent('Failed to load events list', 'error');
       });
 
     fetch('/api/event-policies/list', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
-      .catch(() => setPolicies([]));
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setPolicies(list);
+        maybeToastPolicy(`Loaded ${list.length} policies`, 'success');
+      })
+      .catch(() => {
+        setPolicies([]);
+        maybeToastPolicy('Failed to load policies', 'error');
+      });
 
     fetch('/api/event-policies/scenarios', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => setScenarios(Array.isArray(rows) ? rows : []))
-      .catch(() => setScenarios([]));
-  }, [canEdit]);
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setScenarios(list);
+        maybeToastPolicy(`Loaded ${list.length} policy scenarios`, 'success');
+      })
+      .catch(() => {
+        setScenarios([]);
+        maybeToastPolicy('Failed to load policy scenarios', 'error');
+      });
+  }, [canEdit, eventsPolicyCfg.eventToastEnabled, eventsPolicyCfg.policyToastEnabled, isSystemAdmin]);
 
   useEffect(() => {
     const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
@@ -204,7 +236,10 @@ export default function EventPolicyBuilder() {
     setLoadingPolicy(true);
     try {
       const res = await fetch(`/api/event-policies/${selectedPolicyId}`, { credentials: 'include' });
-      if (!res.ok) return;
+      if (!res.ok) {
+        maybeToastPolicy('Failed to load selected policy', 'error');
+        return;
+      }
       const data = await res.json();
       setDraft({
         policy_name: data.policy_name || '',
@@ -218,6 +253,7 @@ export default function EventPolicyBuilder() {
       });
       setLoadedPolicy(data);
       setSelectedScenarioKey('');
+      maybeToastPolicy(`Loaded policy: ${data.policy_name || data.policy_key || selectedPolicyId}`, 'success');
     } finally {
       setLoadingPolicy(false);
     }
@@ -230,13 +266,23 @@ export default function EventPolicyBuilder() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(draft),
     });
+    if (!res.ok) {
+      maybeToastPolicy('Failed to save policy draft', 'error');
+      return;
+    }
     const data = await res.json();
     if (data?.policy_draft_id) {
+      maybeToastPolicy(`Policy draft saved: #${data.policy_draft_id}`, 'success');
       const deployRes = await fetch(`/api/event-policies/deploy/${data.policy_draft_id}`, {
         method: 'POST', credentials: 'include',
       });
+      if (!deployRes.ok) {
+        maybeToastPolicy('Policy deploy failed', 'error');
+        return;
+      }
       const deploy = await deployRes.json();
       if (deploy.policy_id) {
+        maybeToastPolicy(`Policy deployed: #${deploy.policy_id}`, 'success');
         const versionsRes = await fetch(`/api/event-policies/${deploy.policy_id}/versions`, { credentials: 'include' });
         setVersions(await versionsRes.json());
       }
@@ -252,7 +298,15 @@ export default function EventPolicyBuilder() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ eventType: simulationInput.eventType || draft.event_type, payload, companyId: simulationInput.companyId, branchId: simulationInput.branchId }),
     });
-    setSimulationResult(await res.json());
+    const body = await res.json();
+    setSimulationResult(body);
+    if (res.ok) {
+      maybeToastEvent('Event simulation completed', 'success');
+      maybeToastPolicy('Policy simulation completed', 'success');
+    } else {
+      maybeToastEvent('Event simulation failed', 'error');
+      maybeToastPolicy('Policy simulation failed', 'error');
+    }
   };
 
   return (
