@@ -50,6 +50,7 @@ import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 import PosApiAdminPage from './pages/PosApiAdmin.jsx';
 import CncProcessingPage from './pages/CncProcessingPage.jsx';
 import AccountingPeriodsPage from './pages/AccountingPeriods.jsx';
+import EventPolicyBuilderPage from './pages/EventPolicyBuilder.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -207,6 +208,7 @@ function AuthedApp() {
             />
           </Route>
           <Route path="accounting-periods" element={<AccountingPeriodsPage />} />
+          <Route path="settings/event-policy-builder" element={<EventPolicyBuilderPage />} />
           {roots.map(renderRoute)}
         </Route>
         <Route
