@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import { useSharedPoller } from '../context/PollingContext.jsx';
-
-const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const DISCONNECT_FALLBACK_MS = 30 * 1000;
 
 /**
  * Polls the pending request endpoint for a supervisor and returns the count.
@@ -26,11 +21,6 @@ export default function usePendingRequestCount(
     Number(localStorage.getItem(storageKey) || 0),
   );
   const [hasNew, setHasNew] = useState(false);
-  const cfg = useGeneralConfig();
-  const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
-  const intervalSeconds =
-    Number(cfg?.general?.requestPollingIntervalSeconds) ||
-    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const markSeen = () => {
     localStorage.setItem(storageKey, String(count));
@@ -48,13 +38,6 @@ export default function usePendingRequestCount(
     return seniorEmpId;
   }, [memoFilters, seniorEmpId, seniorPlanEmpId]);
 
-  const [enablePolling, setEnablePolling] = useState(false);
-  const disconnectTimeoutRef = useRef();
-  const filterKey = useMemo(() => JSON.stringify(memoFilters), [memoFilters]);
-  const pollKey = useMemo(
-    () => `pending-request:${effectiveSeniorEmpId ?? 'none'}:${filterKey}`,
-    [effectiveSeniorEmpId, filterKey],
-  );
 
   const applyCount = useCallback(
     (value) => {
@@ -97,36 +80,15 @@ export default function usePendingRequestCount(
     }
   }, [effectiveSeniorEmpId, memoFilters]);
 
-  const pollerOptions = useMemo(
-    () => ({
-      intervalMs: intervalSeconds * 1000,
-      enabled: pollingEnabled && enablePolling && Boolean(effectiveSeniorEmpId),
-      pauseWhenHidden: true,
-      pauseWhenSocketActive: true,
-    }),
-    [effectiveSeniorEmpId, enablePolling, intervalSeconds, pollingEnabled],
-  );
-
-  const { data: polledCount } = useSharedPoller(pollKey, fetchCount, pollerOptions);
-
-  useEffect(() => {
-    if (polledCount !== undefined && polledCount !== null) {
-      applyCount(polledCount);
-    }
-  }, [applyCount, polledCount]);
-
   useEffect(() => {
     if (!effectiveSeniorEmpId) {
       setCount(0);
       setHasNew(false);
-      setEnablePolling(false);
       return () => {};
     }
 
     let cancelled = false;
     let socket;
-
-    setEnablePolling(false);
 
     const applyFromFetch = async () => {
       const value = await fetchCount();
@@ -144,41 +106,14 @@ export default function usePendingRequestCount(
       applyFromFetch();
     };
 
-    const startFallback = () => {
-      if (!pollingEnabled) return;
-      if (!disconnectTimeoutRef.current) {
-        setEnablePolling(true);
-      }
-      if (disconnectTimeoutRef.current) return;
-      disconnectTimeoutRef.current = setTimeout(() => {
-        disconnectTimeoutRef.current = null;
-      }, DISCONNECT_FALLBACK_MS);
-    };
-
-    const stopFallback = () => {
-      if (disconnectTimeoutRef.current) {
-        clearTimeout(disconnectTimeoutRef.current);
-        disconnectTimeoutRef.current = null;
-      }
-      setEnablePolling(false);
-    };
-
     applyFromFetch();
 
     try {
       socket = connectSocket();
       socket.on('notification:new', handleNotification);
-      socket.on('connect', () => {
-        stopFallback();
-        applyFromFetch();
-      });
-      if (pollingEnabled) {
-        socket.on('disconnect', startFallback);
-        socket.on('connect_error', startFallback);
-      }
+      socket.on('connect', applyFromFetch);
     } catch (err) {
       console.warn('Failed to connect pending request socket', err);
-      if (pollingEnabled) setEnablePolling(true);
     }
 
     function handleSeen() {
@@ -197,17 +132,9 @@ export default function usePendingRequestCount(
 
     return () => {
       cancelled = true;
-      if (disconnectTimeoutRef.current) {
-        clearTimeout(disconnectTimeoutRef.current);
-        disconnectTimeoutRef.current = null;
-      }
       if (socket) {
         socket.off('notification:new', handleNotification);
-        socket.off('connect', stopFallback);
-        if (pollingEnabled) {
-          socket.off('disconnect', startFallback);
-          socket.off('connect_error', startFallback);
-        }
+        socket.off('connect', applyFromFetch);
         disconnectSocket();
       }
       window.removeEventListener('pending-request-refresh', applyFromFetch);
@@ -218,7 +145,6 @@ export default function usePendingRequestCount(
     applyCount,
     effectiveSeniorEmpId,
     fetchCount,
-    pollingEnabled,
     storageKey,
   ]);
 
