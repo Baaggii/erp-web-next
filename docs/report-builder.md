@@ -44,3 +44,6 @@ pulling the `totalRow` value back out of the normalized dataset, ensuring that
 the footer appears in downloaded artifacts as well as in the live table. Leaving
 those keys undefined simply omits the summary row, so the viewer falls back to
 the automatically computed totals described above.【F:src/erp.mgt.mn/utils/normalizeSnapshot.js†L1-L124】
+
+## Operational twin data source
+In addition to stored-procedure ledger reports, management reports can read tenant-scoped twin tables (`twin_plan_state`, `twin_budget_state`, `twin_risk_state`, `twin_task_load`, `twin_resource_state`).
