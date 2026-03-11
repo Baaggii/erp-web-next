@@ -19,6 +19,86 @@ const defaultDraft = {
   action_json: { actions: [] },
 };
 
+
+const fallbackScenarios = [
+  {
+    scenario_key: 'inventory_shortage',
+    scenario_name: 'Inventory shortage',
+    event_type: 'inventory.shortage.detected',
+    default_policy_name: 'Inventory shortage investigation',
+    default_policy_key: 'inventory_shortage_investigation',
+    default_condition_json: { logic: 'and', rules: [{ field: 'payload.shortageQty', operator: '>', value: 10 }] },
+    default_action_json: {
+      actions: [
+        { type: 'create_transaction', transactionType: 'investigation_plan', mapping: { source_record_id: 'source.recordId', created_at: 'system.now' } },
+        { type: 'notify', message: 'Inventory shortage investigation started', target: { mode: 'empids', values: ['WAREHOUSE_MANAGER'] } },
+        { type: 'update_twin', twin: 'risk_state', mapping: { severity: 'payload.severity', updated_at: 'system.now' } },
+      ],
+    },
+  },
+  {
+    scenario_key: 'budget_overrun',
+    scenario_name: 'Budget exceeded',
+    event_type: 'journal.posted',
+    default_policy_name: 'Budget limit exceeded',
+    default_policy_key: 'budget_limit_exceeded',
+    default_condition_json: { logic: 'and', rules: [{ field: 'payload.overrunAmount', operator: '>', value: 0 }] },
+    default_action_json: {
+      actions: [
+        { type: 'notify', message: 'Budget limit exceeded', target: { mode: 'empids', values: ['FINANCE_MANAGER'] } },
+        { type: 'update_twin', twin: 'budget_state', mapping: { variance: 'payload.overrunAmount', updated_at: 'system.now' } },
+      ],
+    },
+  },
+  {
+    scenario_key: 'task_overdue',
+    scenario_name: 'Task overdue',
+    event_type: 'task.overdue',
+    default_policy_name: 'Task escalation',
+    default_policy_key: 'task_escalation',
+    default_condition_json: { logic: 'and', rules: [{ field: 'payload.daysOverdue', operator: '>=', value: 1 }] },
+    default_action_json: {
+      actions: [
+        { type: 'notify', message: 'Task escalation is required', target: { mode: 'empids', values: ['TASK_OWNER', 'TEAM_LEAD'] } },
+      ],
+    },
+  },
+  {
+    scenario_key: 'asset_damage',
+    scenario_name: 'Asset damaged',
+    event_type: 'asset.damaged',
+    default_policy_name: 'Asset damage response',
+    default_policy_key: 'asset_damage_response',
+    default_condition_json: { logic: 'and', rules: [{ field: 'payload.damageSeverity', operator: '>=', value: 2 }] },
+    default_action_json: {
+      actions: [
+        { type: 'create_transaction', transactionType: 'asset_damage_report', mapping: { asset_id: 'payload.assetId', reported_at: 'system.now' } },
+      ],
+    },
+  },
+  {
+    scenario_key: 'customer_complaint',
+    scenario_name: 'Customer complaint',
+    event_type: 'customer.complaint',
+    default_policy_name: 'Customer complaint escalation',
+    default_policy_key: 'customer_complaint_escalation',
+    default_condition_json: { logic: 'and', rules: [{ field: 'payload.priority', operator: 'in', value: ['high', 'critical'] }] },
+    default_action_json: {
+      actions: [
+        { type: 'create_transaction', transactionType: 'customer_case', mapping: { customer_id: 'payload.customerId', created_at: 'system.now' } },
+      ],
+    },
+  },
+];
+
+function slugifyPolicyKey(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export default function EventPolicyBuilder() {
   const { session } = useContext(AuthContext);
   const canEdit = Boolean(session?.permissions?.system_settings);
@@ -26,6 +106,8 @@ export default function EventPolicyBuilder() {
   const [eventTypes, setEventTypes] = useState([]);
   const [observedEvents, setObservedEvents] = useState([]);
   const [policies, setPolicies] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
+  const [selectedScenarioKey, setSelectedScenarioKey] = useState('');
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [loadedPolicy, setLoadedPolicy] = useState(null);
@@ -57,11 +139,22 @@ export default function EventPolicyBuilder() {
       });
 
     fetch('/api/event-policies/list', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
+      .then(async (res) => {
+        if (res.ok) return res.json();
+        const fallbackRes = await fetch('/api/event-policies', { credentials: 'include' });
+        return fallbackRes.ok ? fallbackRes.json() : [];
+      })
       .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
       .catch(() => setPolicies([]));
-  }, [canEdit]);
 
+    fetch('/api/event-policies/scenarios', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setScenarios(list.length ? list : fallbackScenarios);
+      })
+      .catch(() => setScenarios(fallbackScenarios));
+  }, [canEdit]);
 
   useEffect(() => {
     const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
@@ -128,7 +221,6 @@ export default function EventPolicyBuilder() {
       .catch(() => setSamplePayload({}));
   }, [canEdit, draft.event_type]);
 
-
   const highlightedSampleValue = useMemo(() => {
     if (!selectedField) return undefined;
     const normalizedPath = selectedField.startsWith('payload.') ? selectedField.slice('payload.'.length) : selectedField;
@@ -171,6 +263,21 @@ export default function EventPolicyBuilder() {
 
   const updateDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  const applyScenario = (scenarioKey) => {
+    setSelectedScenarioKey(scenarioKey);
+    const selected = scenarios.find((entry) => entry.scenario_key === scenarioKey);
+    if (!selected) return;
+    setDraft((prev) => ({
+      ...prev,
+      event_type: selected.event_type || prev.event_type,
+      condition_json: selected.default_condition_json || { logic: 'and', rules: [] },
+      action_json: selected.default_action_json || { actions: [] },
+      policy_name: selected.default_policy_name || selected.scenario_name || prev.policy_name,
+      policy_key: selected.default_policy_key || slugifyPolicyKey(selected.scenario_key || selected.scenario_name || prev.policy_key),
+      is_active: true,
+    }));
+  };
+
   const loadSelectedPolicy = async () => {
     if (!selectedPolicyId) return;
     setLoadingPolicy(true);
@@ -189,6 +296,7 @@ export default function EventPolicyBuilder() {
         action_json: data.action_json || { actions: [] },
       });
       setLoadedPolicy(data);
+      setSelectedScenarioKey('');
     } finally {
       setLoadingPolicy(false);
     }
@@ -237,6 +345,22 @@ export default function EventPolicyBuilder() {
         loading={loadingPolicy}
         currentPolicy={loadedPolicy}
       />
+
+      <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#f8fafc' }}>
+        <h3 style={{ marginTop: 0 }}>Event Wizard</h3>
+        <div style={{ color: '#4b5563', marginBottom: 8 }}>Choose a scenario to auto-generate event type, conditions, and actions.</div>
+        <label>
+          Scenario
+          <select value={selectedScenarioKey} onChange={(e) => applyScenario(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 480 }}>
+            <option value="">-- Select Scenario --</option>
+            {scenarios.map((scenario) => (
+              <option key={scenario.scenario_key} value={scenario.scenario_key}>
+                {scenario.scenario_name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'start' }}>
         <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
