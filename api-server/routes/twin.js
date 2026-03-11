@@ -3,8 +3,14 @@ import { requireAuth } from '../middlewares/auth.js';
 import { listTwinState } from '../services/twinStateService.js';
 import rateLimit from 'express-rate-limit';
 import rateLimit from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 
-const router = express.Router();
+const twinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+
+router.get('/plan', requireAuth, twinLimiter, async (req, res, next) => {
 const twinRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs for these routes
@@ -12,7 +18,7 @@ const twinRateLimiter = rateLimit({
 
 router.get('/plan', twinRateLimiter, requireAuth, async (req, res, next) => {
 const twinLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+router.get('/budget', requireAuth, twinLimiter, async (req, res, next) => {
   max: 100, // limit each IP to 100 requests per windowMs for these routes
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -20,7 +26,7 @@ const twinLimiter = rateLimit({
 
 router.get('/budget', twinRateLimiter, requireAuth, async (req, res, next) => {
 
-router.get('/plan', requireAuth, async (req, res, next) => {
+router.get('/risk', requireAuth, twinLimiter, async (req, res, next) => {
   try {
     res.json(await listTwinState('plan_state', req.user.companyId, req.query));
   } catch (error) {
@@ -28,7 +34,7 @@ router.get('/plan', requireAuth, async (req, res, next) => {
   }
 router.get('/risk', twinRateLimiter, requireAuth, async (req, res, next) => {
 
-router.get('/budget', requireAuth, async (req, res, next) => {
+router.get('/task-load', requireAuth, twinLimiter, async (req, res, next) => {
   try {
     res.json(await listTwinState('budget_state', req.user.companyId, req.query));
   } catch (error) {
@@ -36,7 +42,7 @@ router.get('/budget', requireAuth, async (req, res, next) => {
   }
 router.get('/task-load', twinRateLimiter, requireAuth, async (req, res, next) => {
 
-router.get('/risk', requireAuth, async (req, res, next) => {
+router.get('/resource', requireAuth, twinLimiter, async (req, res, next) => {
   try {
     res.json(await listTwinState('risk_state', req.user.companyId, req.query));
   } catch (error) {
