@@ -45,7 +45,11 @@ function parseJsonSafely(value, fallback) {
 router.get('/event-types', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
-    const companyId = resolveCompanyId(req);
+    const companyId =
+      req.user?.companyId ??
+      req.user?.company_id ??
+      req.session?.companyId ??
+      null;
 
     const [rows] = companyId == null
       ? await pool.query(
