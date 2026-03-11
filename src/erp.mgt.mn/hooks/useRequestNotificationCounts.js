@@ -1,10 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
-import { useSharedPoller } from '../context/PollingContext.jsx';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
-
-const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-const DISCONNECT_FALLBACK_MS = 30 * 1000;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
 function normalizeStatuses(statuses) {
@@ -54,11 +49,6 @@ export default function useRequestNotificationCounts(
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
   const fetchCountsRef = useRef(() => Promise.resolve());
-  const cfg = useGeneralConfig();
-  const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
-  const intervalSeconds =
-    Number(cfg?.general?.requestPollingIntervalSeconds) ||
-    DEFAULT_POLL_INTERVAL_SECONDS;
 
   const filterKey = useMemo(() => stringifyFilters(filters), [filters]);
   const optionNamespace = options ? options.storageNamespace : undefined;
@@ -135,14 +125,6 @@ export default function useRequestNotificationCounts(
     if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
     return Array.from(new Set(ids.filter(Boolean)));
   }, [seniorEmpId, seniorPlanEmpId]);
-
-  const [enablePolling, setEnablePolling] = useState(false);
-  const disconnectTimeoutRef = useRef();
-
-  const pollKey = useMemo(
-    () => `request-counts:${supervisorIds.join(',')}:${filterKey}:${storageNamespace}`,
-    [filterKey, storageNamespace, supervisorIds],
-  );
 
   const applyCounts = useCallback((data) => {
     if (!data) return;
@@ -277,27 +259,9 @@ export default function useRequestNotificationCounts(
     return { incoming: newIncoming, outgoing: newOutgoing };
   }, [memoFilters, storageKey, supervisorIds]);
 
-  const pollerOptions = useMemo(
-    () => ({
-      intervalMs: intervalSeconds * 1000,
-      enabled: pollingEnabled && enablePolling && supervisorIds.length > 0,
-      pauseWhenHidden: true,
-      pauseWhenSocketActive: true,
-    }),
-    [enablePolling, intervalSeconds, pollingEnabled, supervisorIds.length],
-  );
-
-  const { data: polledCounts } = useSharedPoller(pollKey, fetchCounts, pollerOptions);
-
-  useEffect(() => {
-    if (polledCounts) applyCounts(polledCounts);
-  }, [applyCounts, polledCounts]);
-
   useEffect(() => {
     let cancelled = false;
     let socket;
-
-    setEnablePolling(false);
 
     const applyFromFetch = async () => {
       const data = await fetchCounts();
@@ -332,55 +296,24 @@ export default function useRequestNotificationCounts(
     fetchCountsRef.current = () => applyFromFetch();
     applyFromFetch();
 
-    const startFallback = () => {
-      if (!pollingEnabled) return;
-      if (!disconnectTimeoutRef.current) {
-        setEnablePolling(true);
-      }
-      if (disconnectTimeoutRef.current) return;
-      disconnectTimeoutRef.current = setTimeout(() => {
-        disconnectTimeoutRef.current = null;
-      }, DISCONNECT_FALLBACK_MS);
-    };
-
-    const stopFallback = () => {
-      if (disconnectTimeoutRef.current) {
-        clearTimeout(disconnectTimeoutRef.current);
-        disconnectTimeoutRef.current = null;
-      }
-      setEnablePolling(false);
-    };
-
     try {
       socket = connectSocket();
       socket.on('notification:new', handleNotification);
-      socket.on('connect', () => {
-        stopFallback();
-        applyFromFetch();
-      });
-      socket.on('disconnect', startFallback);
-      socket.on('connect_error', startFallback);
+      socket.on('connect', applyFromFetch);
     } catch (err) {
       console.warn('Failed to connect request notification socket', err);
-      if (pollingEnabled) setEnablePolling(true);
     }
 
     return () => {
       cancelled = true;
       fetchCountsRef.current = () => Promise.resolve();
-      if (disconnectTimeoutRef.current) {
-        clearTimeout(disconnectTimeoutRef.current);
-        disconnectTimeoutRef.current = null;
-      }
       if (socket) {
         socket.off('notification:new', handleNotification);
-        socket.off('connect', stopFallback);
-        socket.off('disconnect', startFallback);
-        socket.off('connect_error', startFallback);
+        socket.off('connect', applyFromFetch);
         disconnectSocket();
       }
     };
-  }, [applyCounts, fetchCounts, pollingEnabled]);
+  }, [applyCounts, fetchCounts]);
 
   const refresh = useCallback(() => {
     try {

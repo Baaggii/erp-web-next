@@ -1904,42 +1904,6 @@ export default function MessagingWidget() {
     return () => globalThis.clearInterval(intervalId);
   }, [companyId, selfEmpid, state.activeCompanyId]);
 
-
-  useEffect(() => {
-    const activeCompany = state.activeCompanyId || companyId;
-    const employeeIds = Array.from(new Set((employees || []).map((entry) => normalizeId(entry.empid)).filter(Boolean)));
-    if (!activeCompany || employeeIds.length === 0) return undefined;
-
-    let disposed = false;
-    const refreshPresence = async () => {
-      try {
-        const presenceParams = new URLSearchParams({
-          companyId: String(activeCompany),
-          userIds: employeeIds.join(','),
-        });
-        const presenceRes = await fetch(`${API_BASE}/messaging/presence?${presenceParams.toString()}`, { credentials: 'include' });
-        if (!presenceRes.ok || disposed) return;
-        const presenceData = await presenceRes.json();
-        if (disposed) return;
-        const onlineUsers = Array.isArray(presenceData?.users)
-          ? presenceData.users
-          : Array.isArray(presenceData?.items)
-            ? presenceData.items
-            : [];
-        setPresence(mergePresenceEntries(onlineUsers));
-      } catch {
-        // Polling is best effort only.
-      }
-    };
-
-    refreshPresence();
-    const intervalId = globalThis.setInterval(refreshPresence, 60_000);
-    return () => {
-      disposed = true;
-      globalThis.clearInterval(intervalId);
-    };
-  }, [companyId, employees, state.activeCompanyId]);
-
   useEffect(() => {
     // Keep realtime delivery active even while the panel is closed so new
     // messages appear immediately when users reopen the widget.
@@ -2208,29 +2172,6 @@ export default function MessagingWidget() {
       disconnectSocket();
     };
   }, [state.activeCompanyId, state.activeConversationId, state.isOpen, companyId, conversations, selfEmpid, refreshConversationList, playIncomingMessageSound]);
-
-  useEffect(() => {
-    const activeCompany = state.activeCompanyId || companyId;
-    if (!activeCompany || !selfEmpid) return undefined;
-
-    let disposed = false;
-    const refreshDeliveryFallback = async () => {
-      if (disposed) return;
-      await refreshConversationList(activeCompany);
-      if (disposed) return;
-      const selectedConversationId = normalizeConversationId(state.activeConversationId);
-      if (!state.isOpen || !selectedConversationId) return;
-      await fetchThreadMessages(selectedConversationId, activeCompany);
-    };
-
-    refreshDeliveryFallback();
-    const intervalId = globalThis.setInterval(refreshDeliveryFallback, 12_000);
-    return () => {
-      disposed = true;
-      globalThis.clearInterval(intervalId);
-    };
-  }, [companyId, selfEmpid, state.activeCompanyId, state.activeConversationId, state.isOpen, refreshConversationList]);
-
   useEffect(() => {
     const onStartMessage = (event) => {
       const detail = event?.detail || {};
