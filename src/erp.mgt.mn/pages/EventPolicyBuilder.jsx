@@ -19,14 +19,6 @@ const defaultDraft = {
   action_json: { actions: [] },
 };
 
-function slugifyPolicyKey(value = '') {
-  return String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 export default function EventPolicyBuilder() {
   const { session } = useContext(AuthContext);
   const canEdit = Boolean(session?.permissions?.system_settings);
@@ -34,8 +26,6 @@ export default function EventPolicyBuilder() {
   const [eventTypes, setEventTypes] = useState([]);
   const [observedEvents, setObservedEvents] = useState([]);
   const [policies, setPolicies] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [selectedScenarioKey, setSelectedScenarioKey] = useState('');
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [loadedPolicy, setLoadedPolicy] = useState(null);
@@ -70,12 +60,8 @@ export default function EventPolicyBuilder() {
       .then((res) => (res.ok ? res.json() : []))
       .then((rows) => setPolicies(Array.isArray(rows) ? rows : []))
       .catch(() => setPolicies([]));
-
-    fetch('/api/event-policies/scenarios', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((rows) => setScenarios(Array.isArray(rows) ? rows : []))
-      .catch(() => setScenarios([]));
   }, [canEdit]);
+
 
   useEffect(() => {
     const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
@@ -142,6 +128,7 @@ export default function EventPolicyBuilder() {
       .catch(() => setSamplePayload({}));
   }, [canEdit, draft.event_type]);
 
+
   const highlightedSampleValue = useMemo(() => {
     if (!selectedField) return undefined;
     const normalizedPath = selectedField.startsWith('payload.') ? selectedField.slice('payload.'.length) : selectedField;
@@ -184,21 +171,6 @@ export default function EventPolicyBuilder() {
 
   const updateDraftField = (key, value) => setDraft((prev) => ({ ...prev, [key]: value }));
 
-  const applyScenario = (scenarioKey) => {
-    setSelectedScenarioKey(scenarioKey);
-    const selected = scenarios.find((entry) => entry.scenario_key === scenarioKey);
-    if (!selected) return;
-    setDraft((prev) => ({
-      ...prev,
-      event_type: selected.event_type || prev.event_type,
-      condition_json: selected.default_condition_json || { logic: 'and', rules: [] },
-      action_json: selected.default_action_json || { actions: [] },
-      policy_name: selected.default_policy_name || selected.scenario_name || prev.policy_name,
-      policy_key: selected.default_policy_key || slugifyPolicyKey(selected.scenario_key || selected.scenario_name || prev.policy_key),
-      is_active: true,
-    }));
-  };
-
   const loadSelectedPolicy = async () => {
     if (!selectedPolicyId) return;
     setLoadingPolicy(true);
@@ -217,7 +189,6 @@ export default function EventPolicyBuilder() {
         action_json: data.action_json || { actions: [] },
       });
       setLoadedPolicy(data);
-      setSelectedScenarioKey('');
     } finally {
       setLoadingPolicy(false);
     }
@@ -266,22 +237,6 @@ export default function EventPolicyBuilder() {
         loading={loadingPolicy}
         currentPolicy={loadedPolicy}
       />
-
-      <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#f8fafc' }}>
-        <h3 style={{ marginTop: 0 }}>Event Wizard</h3>
-        <div style={{ color: '#4b5563', marginBottom: 8 }}>Choose a scenario to auto-generate event type, conditions, and actions.</div>
-        <label>
-          Scenario
-          <select value={selectedScenarioKey} onChange={(e) => applyScenario(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 480 }}>
-            <option value="">-- Select Scenario --</option>
-            {scenarios.map((scenario) => (
-              <option key={scenario.scenario_key} value={scenario.scenario_key}>
-                {scenario.scenario_name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'start' }}>
         <div style={{ marginBottom: 16, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
