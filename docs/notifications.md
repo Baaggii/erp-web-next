@@ -103,6 +103,3 @@ Use this checklist to confirm whether **notifications** and **messaging** both t
   2. Open the app in Safari and use **Share → Add to Home Screen**.
   3. Launch the installed Home Screen app and re-run **Allow browser notifications** in User Settings.
 - Outside an installed iOS/iPadOS PWA, notification APIs may appear unavailable even though the device/browser can support push once installed.
-
-## Event-policy integration
-Notification creation can now be executed by event policies (`create_notification` / `notify`) in addition to transaction notification queue triggers.
