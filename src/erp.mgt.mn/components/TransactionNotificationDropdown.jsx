@@ -1130,87 +1130,93 @@ export default function TransactionNotificationDropdown() {
   }, [formsLoaded, loadFormConfigs, open]);
 
   const combinedItems = useMemo(() => {
-    return feedState.items.map((item) => {
-      const normalizedSource = String(item?.source || 'notification').toLowerCase();
-      const isTransaction = normalizedSource === 'transaction';
-      const isTemporary = normalizedSource === 'temporary';
-      const notificationId =
-        toNotificationId(item?.action?.notificationId) ??
-        toNotificationId(String(item?.id || '').split('-').pop());
-      const badgeMeta = isTransaction
-        ? getActionMeta(item?.status)
-        : isTemporary
-          ? getTemporaryStatusMeta(item?.status)
-          : getStatusMeta(item?.status);
-      const timestamp = getTemporaryTimestamp({ created_at: item?.timestamp, updated_at: item?.timestamp });
-      return {
-        key: item?.id || `${normalizedSource}-${timestamp}`,
-        source: normalizedSource,
-        timestamp,
-        isUnread: item?.unread !== false,
-        title: resolveNotificationTitle(item),
-        badge: { label: badgeMeta.label, accent: badgeMeta.accent },
-        preview: item?.preview || '',
-        dateTime: formatDisplayTimestamp(item?.timestamp),
-        onClick: () => {
-          if ((isTransaction || isTemporary) && notificationId) {
-            markRead([notificationId]);
-            setFeedState((prev) => ({
-              ...prev,
-              items: prev.items.map((feedItem) =>
-                feedItem?.id === item?.id ? { ...feedItem, unread: false } : feedItem,
-              ),
-            }));
-          }
-          setOpen(false);
-
-          const actionPath = String(item?.action?.path || '').trim();
-          let targetPath = actionPath;
-
-          if (!targetPath && isTransaction) {
-            const groupKey =
-              item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
-            const itemId = String(item?.id || item?.action?.notificationId || '').trim();
-            const tab = resolveNotificationTab({
-              transactionName:
-                item?.action?.redirectMeta?.transactionName ||
-                item?.action?.redirectMeta?.formName ||
-                item?.title ||
-                '',
-              transactionTable:
-                item?.action?.redirectMeta?.tableName ||
-                item?.action?.redirectMeta?.transactionTable ||
-                '',
-            });
-            const params = new URLSearchParams({
-              tab,
-              notifyGroup: groupKey,
-              notifyKey: String(Date.now()),
-            });
-            if (itemId) params.set('notifyItem', itemId);
-            targetPath = `/?${params.toString()}`;
-          }
-
-          if (isTemporary) {
-            const redirectMeta = item?.action?.redirectMeta || {};
-            const scopeFromPath = targetPath
-              ? new URLSearchParams(String(targetPath).split('?')[1] || '').get('temporaryScope')
-              : '';
-            const scope = String(redirectMeta.scope || scopeFromPath || '').trim();
-            openTemporary(scope, resolveTemporaryFeedEntry(item));
-            return;
-          }
-
-          if (targetPath) {
-            if (typeof window !== 'undefined') {
-              const nextPath = String(targetPath).split('?')[0] || '/';
-              window.__activeTabKey = nextPath;
+    return feedState.items
+      .filter((item) => {
+        const source = String(item?.source || 'notification').toLowerCase();
+        if (source !== 'transaction' && source !== 'temporary') return true;
+        return item?.unread !== false;
+      })
+      .map((item) => {
+        const normalizedSource = String(item?.source || 'notification').toLowerCase();
+        const isTransaction = normalizedSource === 'transaction';
+        const isTemporary = normalizedSource === 'temporary';
+        const notificationId =
+          toNotificationId(item?.action?.notificationId) ??
+          toNotificationId(String(item?.id || '').split('-').pop());
+        const badgeMeta = isTransaction
+          ? getActionMeta(item?.status)
+          : isTemporary
+            ? getTemporaryStatusMeta(item?.status)
+            : getStatusMeta(item?.status);
+        const timestamp = getTemporaryTimestamp({ created_at: item?.timestamp, updated_at: item?.timestamp });
+        return {
+          key: item?.id || `${normalizedSource}-${timestamp}`,
+          source: normalizedSource,
+          timestamp,
+          isUnread: item?.unread !== false,
+          title: resolveNotificationTitle(item),
+          badge: { label: badgeMeta.label, accent: badgeMeta.accent },
+          preview: item?.preview || '',
+          dateTime: formatDisplayTimestamp(item?.timestamp),
+          onClick: () => {
+            if ((isTransaction || isTemporary) && notificationId) {
+              markRead([notificationId]);
+              setFeedState((prev) => ({
+                ...prev,
+                items: prev.items.map((feedItem) =>
+                  feedItem?.id === item?.id ? { ...feedItem, unread: false } : feedItem,
+                ),
+              }));
             }
-            navigate(targetPath);
-          }
-        },
-      };
-    });
+            setOpen(false);
+
+            const actionPath = String(item?.action?.path || '').trim();
+            let targetPath = actionPath;
+
+            if (!targetPath && isTransaction) {
+              const groupKey =
+                item?.action?.redirectMeta?.transactionName || item?.title || 'Transaction';
+              const itemId = String(item?.id || item?.action?.notificationId || '').trim();
+              const tab = resolveNotificationTab({
+                transactionName:
+                  item?.action?.redirectMeta?.transactionName ||
+                  item?.action?.redirectMeta?.formName ||
+                  item?.title ||
+                  '',
+                transactionTable:
+                  item?.action?.redirectMeta?.tableName ||
+                  item?.action?.redirectMeta?.transactionTable ||
+                  '',
+              });
+              const params = new URLSearchParams({
+                tab,
+                notifyGroup: groupKey,
+                notifyKey: String(Date.now()),
+              });
+              if (itemId) params.set('notifyItem', itemId);
+              targetPath = `/?${params.toString()}`;
+            }
+
+            if (isTemporary) {
+              const redirectMeta = item?.action?.redirectMeta || {};
+              const scopeFromPath = targetPath
+                ? new URLSearchParams(String(targetPath).split('?')[1] || '').get('temporaryScope')
+                : '';
+              const scope = String(redirectMeta.scope || scopeFromPath || '').trim();
+              openTemporary(scope, resolveTemporaryFeedEntry(item));
+              return;
+            }
+
+            if (targetPath) {
+              if (typeof window !== 'undefined') {
+                const nextPath = String(targetPath).split('?')[0] || '/';
+                window.__activeTabKey = nextPath;
+              }
+              navigate(targetPath);
+            }
+          },
+        };
+      });
   }, [
     feedState.items,
     markRead,
