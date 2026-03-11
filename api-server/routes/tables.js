@@ -15,7 +15,7 @@ import {
   getRowReferences,
   getTableRow,
 } from '../controllers/tableController.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { attachAuthIfPresent, requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 
@@ -32,8 +32,8 @@ router.delete(
   requireAuth,
   deleteCustomTableRelation,
 );
-router.get('/:table/relations', requireAuth, getTableRelations);
-router.post('/:table/relations/resolve', requireAuth, resolveTableRelationRows);
+router.get('/:table/relations', attachAuthIfPresent, getTableRelations);
+router.post('/:table/relations/resolve', attachAuthIfPresent, resolveTableRelationRows);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
 router.put('/:table/labels', requireAuth, saveColumnLabels);
 router.get('/:table/:id/references', requireAuth, getRowReferences);

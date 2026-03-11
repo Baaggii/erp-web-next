@@ -81,3 +81,14 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
+
+export function attachAuthIfPresent(req, _res, next) {
+  const token = req.cookies?.[getCookieName()];
+  if (!token) return next();
+  try {
+    req.user = jwtService.verify(token);
+  } catch {
+    // Ignore invalid optional auth context and continue as anonymous.
+  }
+  return next();
+}
