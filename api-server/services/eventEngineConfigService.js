@@ -12,8 +12,12 @@ function parseBool(value) {
 export async function isEventEngineEnabled(conn = pool) {
   try {
     const { config } = await getGeneralConfig();
-    if (parseBool(config?.eventsPolicy?.operationsEnabled) === true) {
+    const operationsEnabled = parseBool(config?.eventsPolicy?.operationsEnabled);
+    if (operationsEnabled === true) {
       return true;
+    }
+    if (operationsEnabled === false) {
+      return false;
     }
   } catch {
     // ignore config read errors and keep evaluating other enablement sources
@@ -30,4 +34,3 @@ export async function isEventEngineEnabled(conn = pool) {
     return false;
   }
 }
-

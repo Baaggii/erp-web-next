@@ -2,8 +2,22 @@ import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import { pool } from '../../db/index.js';
 import { processPendingEvents } from '../services/eventProcessorService.js';
+import { isEventEngineEnabled } from '../services/eventEngineConfigService.js';
 
 const router = express.Router();
+
+
+router.use(requireAuth);
+router.use(async (_req, res, next) => {
+  try {
+    if (!(await isEventEngineEnabled())) {
+      return res.status(503).json({ message: 'Event & policy operations are disabled' });
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 
 function parsePayloadJson(payloadJson) {
   if (!payloadJson) return null;
@@ -59,7 +73,7 @@ function requireSystemSettings(req, res) {
   return true;
 }
 
-router.get('/list', requireAuth, async (req, res, next) => {
+router.get('/list', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
     const [rows] = await pool.query(
@@ -75,7 +89,7 @@ router.get('/list', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit || 100), 500);
     const [rows] = await pool.query(
@@ -88,7 +102,7 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/fields/:eventType', requireAuth, async (req, res, next) => {
+router.get('/fields/:eventType', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
     const [rows] = await pool.query(
@@ -118,7 +132,7 @@ router.get('/fields/:eventType', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/sample/:eventType', requireAuth, async (req, res, next) => {
+router.get('/sample/:eventType', async (req, res, next) => {
   try {
     if (!requireSystemSettings(req, res)) return;
     const [rows] = await pool.query(
@@ -138,7 +152,7 @@ router.get('/sample/:eventType', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/:id', requireAuth, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT * FROM core_events WHERE event_id = ? AND company_id = ? AND deleted_at IS NULL LIMIT 1`,
@@ -151,7 +165,7 @@ router.get('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/process', requireAuth, async (req, res, next) => {
+router.post('/process', async (req, res, next) => {
   try {
     const result = await processPendingEvents({ companyId: req.user.companyId, limit: Number(req.body?.limit || 50) });
     res.json(result);
@@ -160,7 +174,7 @@ router.post('/process', requireAuth, async (req, res, next) => {
   }
 });
 
-router.post('/replay/:id', requireAuth, async (req, res, next) => {
+router.post('/replay/:id', async (req, res, next) => {
   try {
     const isAdmin = req.user?.position_id === 1 || req.user?.isAdmin;
     if (!isAdmin) return res.sendStatus(403);
