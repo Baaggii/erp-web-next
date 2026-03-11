@@ -42,6 +42,9 @@ import dashboardSectionRoutes from "./routes/dashboard_sections.js";
 import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
 import webPushRoutes from "./routes/web_push.js";
+import eventsRoutes from "./routes/events.js";
+import eventPoliciesRoutes from "./routes/event_policies.js";
+import twinRoutes from "./routes/twin.js";
 import { setWebPushStore } from "./services/webPushService.js";
 
 // Polyfill for __dirname in ES modules
@@ -136,6 +139,9 @@ app.use("/api/dashboard_sections", dashboardSectionRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/period-control", periodControlRoutes);
 app.use("/api/web_push", webPushRoutes);
+app.use("/api/events", eventsRoutes);
+app.use("/api/event-policies", eventPoliciesRoutes);
+app.use("/api/twin", twinRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.
