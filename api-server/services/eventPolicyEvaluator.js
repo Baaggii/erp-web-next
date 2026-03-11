@@ -42,13 +42,23 @@ export function evaluateConditionTree(condition, event = {}) {
 export function validateEventPolicySchema(policy = {}) {
   const condition = policy.condition_json ?? policy.conditionJson;
   const action = policy.action_json ?? policy.actionJson;
+  const graph = policy.graph_json ?? policy.graphJson;
   const errors = [];
 
-  if (!condition || typeof condition !== 'object') errors.push('condition_json must be an object');
-  if (!action || typeof action !== 'object') errors.push('action_json must be an object');
+  if (graph && typeof graph === 'object') {
+    const nodes = asArray(graph.nodes);
+    if (!nodes.length) errors.push('graph_json.nodes must contain at least one node');
+    const hasTrigger = nodes.some((node) => node?.type === 'trigger');
+    const hasAction = nodes.some((node) => node?.type === 'action');
+    if (!hasTrigger) errors.push('graph_json must include a trigger node');
+    if (!hasAction) errors.push('graph_json must include at least one action node');
+  } else {
+    if (!condition || typeof condition !== 'object') errors.push('condition_json must be an object');
+    if (!action || typeof action !== 'object') errors.push('action_json must be an object');
 
-  const actions = asArray(action?.actions);
-  if (!actions.length) errors.push('action_json.actions must contain at least one action');
+    const actions = asArray(action?.actions);
+    if (!actions.length) errors.push('action_json.actions must contain at least one action');
+  }
 
   return { ok: errors.length === 0, errors };
 }

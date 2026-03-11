@@ -1,0 +1,16 @@
+ALTER TABLE core_event_policies
+  ADD COLUMN IF NOT EXISTS graph_json JSON NULL AFTER action_json;
+
+ALTER TABLE policy_drafts
+  ADD COLUMN IF NOT EXISTS graph_json JSON NULL AFTER action_json;
+
+ALTER TABLE policy_versions
+  ADD COLUMN IF NOT EXISTS graph_json JSON NULL AFTER action_json;
+
+ALTER TABLE core_event_policy_runs
+  ADD COLUMN IF NOT EXISTS id BIGINT PRIMARY KEY AUTO_INCREMENT FIRST,
+  ADD COLUMN IF NOT EXISTS run_id VARCHAR(255) NOT NULL,
+  ADD COLUMN IF NOT EXISTS status VARCHAR(40) NOT NULL DEFAULT 'completed',
+  ADD COLUMN IF NOT EXISTS graph_json_snapshot JSON NULL,
+  ADD COLUMN IF NOT EXISTS executed_at DATETIME NULL,
+  ADD UNIQUE KEY IF NOT EXISTS uq_policy_run_id (run_id);
