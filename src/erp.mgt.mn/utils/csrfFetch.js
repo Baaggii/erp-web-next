@@ -3,6 +3,25 @@ import { currentLoaderKey, dispatchEnd, dispatchStart } from './loadingEvents.js
 
 let tokenPromise;
 const controllers = new Set();
+let abortRejectionGuardInstalled = false;
+
+function isAbortWithoutReasonError(reason) {
+  if (!reason) return false;
+  if (reason.name === 'AbortError' && reason.message === 'signal is aborted without reason') {
+    return true;
+  }
+  return false;
+}
+
+function installAbortRejectionGuard() {
+  if (abortRejectionGuardInstalled) return;
+  window.addEventListener('unhandledrejection', event => {
+    if (isAbortWithoutReasonError(event.reason)) {
+      event.preventDefault();
+    }
+  });
+  abortRejectionGuardInstalled = true;
+}
 
 function abortAll() {
   controllers.forEach(controller => controller.abort());
@@ -18,6 +37,7 @@ window.addEventListener('beforeunload', event => {
 
 window.addEventListener('unload', abortAll);
 window.addEventListener('pagehide', abortAll);
+installAbortRejectionGuard();
 
 
 async function getToken() {
@@ -71,8 +91,11 @@ window.fetch = async (url, options = {}, _retry) => {
 
     if (opts.signal) {
       const userSignal = opts.signal;
-      if (userSignal.aborted) controller.abort();
-      else userSignal.addEventListener('abort', () => controller.abort(), { once: true });
+      const abortWithReason = () => {
+        controller.abort(userSignal.reason || new DOMException('Request aborted', 'AbortError'));
+      };
+      if (userSignal.aborted) abortWithReason();
+      else userSignal.addEventListener('abort', abortWithReason, { once: true });
     }
     opts.signal = controller.signal;
 
