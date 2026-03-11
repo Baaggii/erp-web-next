@@ -9,6 +9,7 @@ import ActionListBuilder from '../components/ActionListBuilder.jsx';
 import PolicySimulationPanel from '../components/PolicySimulationPanel.jsx';
 import PolicyVersionHistory from '../components/PolicyVersionHistory.jsx';
 import PayloadExplorer from '../components/PayloadExplorer.jsx';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 
 const defaultDraft = {
   policy_name: '',
@@ -35,14 +36,16 @@ export default function EventPolicyBuilder() {
   const generalConfig = useGeneralConfig();
   const eventsPolicyCfg = generalConfig?.eventsPolicy || {};
   const isSystemAdmin = Boolean(session?.permissions?.system_settings);
+  const eventToastEnabled = normalizeBoolean(eventsPolicyCfg.eventToastEnabled, false);
+  const policyToastEnabled = normalizeBoolean(eventsPolicyCfg.policyToastEnabled, false);
 
   const maybeToastEvent = (message, type = 'info') => {
-    if (!isSystemAdmin || !eventsPolicyCfg.eventToastEnabled) return;
+    if (!isSystemAdmin || !eventToastEnabled) return;
     addToast(message, type);
   };
 
   const maybeToastPolicy = (message, type = 'info') => {
-    if (!isSystemAdmin || !eventsPolicyCfg.policyToastEnabled) return;
+    if (!isSystemAdmin || !policyToastEnabled) return;
     addToast(message, type);
   };
   const canEdit = Boolean(session?.permissions?.system_settings);
@@ -107,7 +110,7 @@ export default function EventPolicyBuilder() {
         setScenarios([]);
         maybeToastPolicy('Failed to load policy scenarios', 'error');
       });
-  }, [canEdit, eventsPolicyCfg.eventToastEnabled, eventsPolicyCfg.policyToastEnabled, isSystemAdmin]);
+  }, [canEdit, eventToastEnabled, policyToastEnabled, isSystemAdmin]);
 
   useEffect(() => {
     const fallbackCompanyId = session?.company_id ?? session?.companyId ?? session?.company ?? '';
