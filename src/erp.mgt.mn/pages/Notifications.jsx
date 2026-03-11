@@ -15,6 +15,8 @@ const STATUS_COLORS = {
   accepted: '#34d399',
   declined: '#ef4444',
 };
+const OVERVIEW_DEBOUNCE_MS = 250;
+const OVERVIEW_CACHE_TTL_MS = 15000;
 
 function dedupeTemporaryEntries(list) {
   const map = new Map();
@@ -96,6 +98,15 @@ export default function NotificationsPage({
   });
   const [reportApprovalsDashboardTab, setReportApprovalsDashboardTab] = useState('audition');
   const [expandedLists, setExpandedLists] = useState({});
+  const overviewCacheRef = React.useRef({ key: '', loadedAt: 0, payload: null });
+
+  const applyOverviewPayload = useCallback((payload) => {
+    if (!payload) return;
+    setReportApprovalsDashboardTab(payload.reportApprovalsDashboardTab || 'audition');
+    setReportState(payload.reportState);
+    setChangeState(payload.changeState);
+    setTemporaryState(payload.temporaryState);
+  }, []);
 
   if (user === undefined) {
     return null;
@@ -105,6 +116,30 @@ export default function NotificationsPage({
     Number(temporary?.counts?.review?.pendingCount ?? temporary?.counts?.review?.count) || 0;
   const temporaryCreatedPending =
     Number(temporary?.counts?.created?.pendingCount ?? temporary?.counts?.created?.count) || 0;
+
+  const normalizedActiveDashboardTab = String(activeDashboardTab || '').trim().toLowerCase();
+  const normalizedSectionTabs = useMemo(() => {
+    if (!sectionTabs || typeof sectionTabs !== 'object') return null;
+    return {
+      report: String(sectionTabs.report || 'audition').trim().toLowerCase(),
+      change: String(sectionTabs.change || 'audition').trim().toLowerCase(),
+      temporary: String(sectionTabs.temporary || 'audition').trim().toLowerCase(),
+    };
+  }, [sectionTabs]);
+
+  const showReportSection =
+    !normalizedSectionTabs || !normalizedActiveDashboardTab
+      ? true
+      : normalizedSectionTabs.report === normalizedActiveDashboardTab;
+  const showChangeSection =
+    !normalizedSectionTabs || !normalizedActiveDashboardTab
+      ? true
+      : normalizedSectionTabs.change === normalizedActiveDashboardTab;
+  const showTemporarySection =
+    !normalizedSectionTabs || !normalizedActiveDashboardTab
+      ? true
+      : normalizedSectionTabs.temporary === normalizedActiveDashboardTab;
+  const hasVisibleSections = showReportSection || showChangeSection || showTemporarySection;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -122,57 +157,60 @@ export default function NotificationsPage({
       });
       if (!res.ok) throw new Error('Failed to load dashboard sections');
       const data = await res.json().catch(() => ({}));
-      if (isCancelled?.()) return;
+      if (isCancelled?.()) return null;
 
       const reportApprovals = data?.sections?.reportApprovals || {};
       const changeRequests = data?.sections?.changeRequests || {};
       const temporaryTransactions = data?.sections?.temporaryTransactions || {};
 
-      setReportApprovalsDashboardTab(data?.reportApprovalsDashboardTab || 'audition');
-      setReportState({
-        incoming: Array.isArray(reportApprovals?.incoming) ? reportApprovals.incoming : [],
-        outgoing: Array.isArray(reportApprovals?.outgoing) ? reportApprovals.outgoing : [],
-        responses: {
-          accepted: Array.isArray(reportApprovals?.responses?.accepted)
-            ? reportApprovals.responses.accepted
-            : [],
-          declined: Array.isArray(reportApprovals?.responses?.declined)
-            ? reportApprovals.responses.declined
-            : [],
-        },
-        loading: false,
-        error: '',
-      });
-
-      setChangeState({
-        incoming: Array.isArray(changeRequests?.incoming) ? changeRequests.incoming : [],
-        outgoing: Array.isArray(changeRequests?.outgoing) ? changeRequests.outgoing : [],
-        responses: {
-          accepted: Array.isArray(changeRequests?.responses?.accepted)
-            ? changeRequests.responses.accepted
-            : [],
-          declined: Array.isArray(changeRequests?.responses?.declined)
-            ? changeRequests.responses.declined
-            : [],
-        },
-        loading: false,
-        error: '',
-      });
-
-      setTemporaryState({
-        loading: false,
-        error: '',
-        review: {
-          ...(temporaryTransactions?.review || createEmptyTemporaryScope()),
+      const payload = {
+        reportApprovalsDashboardTab: data?.reportApprovalsDashboardTab || 'audition',
+        reportState: {
+          incoming: Array.isArray(reportApprovals?.incoming) ? reportApprovals.incoming : [],
+          outgoing: Array.isArray(reportApprovals?.outgoing) ? reportApprovals.outgoing : [],
+          responses: {
+            accepted: Array.isArray(reportApprovals?.responses?.accepted)
+              ? reportApprovals.responses.accepted
+              : [],
+            declined: Array.isArray(reportApprovals?.responses?.declined)
+              ? reportApprovals.responses.declined
+              : [],
+          },
           loading: false,
+          error: '',
         },
-        created: {
-          ...(temporaryTransactions?.created || createEmptyTemporaryScope()),
+        changeState: {
+          incoming: Array.isArray(changeRequests?.incoming) ? changeRequests.incoming : [],
+          outgoing: Array.isArray(changeRequests?.outgoing) ? changeRequests.outgoing : [],
+          responses: {
+            accepted: Array.isArray(changeRequests?.responses?.accepted)
+              ? changeRequests.responses.accepted
+              : [],
+            declined: Array.isArray(changeRequests?.responses?.declined)
+              ? changeRequests.responses.declined
+              : [],
+          },
           loading: false,
+          error: '',
         },
-      });
+        temporaryState: {
+          loading: false,
+          error: '',
+          review: {
+            ...(temporaryTransactions?.review || createEmptyTemporaryScope()),
+            loading: false,
+          },
+          created: {
+            ...(temporaryTransactions?.created || createEmptyTemporaryScope()),
+            loading: false,
+          },
+        },
+      };
+
+      applyOverviewPayload(payload);
+      return payload;
     } catch {
-      if (isCancelled?.()) return;
+      if (isCancelled?.()) return null;
       setReportApprovalsDashboardTab('audition');
       setReportState((prev) => ({
         ...prev,
@@ -189,28 +227,83 @@ export default function NotificationsPage({
         loading: false,
         error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
       }));
+      return null;
     }
-  }, [t]);
+  }, [applyOverviewPayload, t]);
 
   useEffect(() => {
+    if (!hasVisibleSections || typeof window === 'undefined') return undefined;
+
     let cancelled = false;
+    const countersKey = JSON.stringify({
+      report: showReportSection
+        ? {
+            incoming: workflows?.reportApproval?.incoming?.pending?.count || 0,
+            outgoing: workflows?.reportApproval?.outgoing?.pending?.count || 0,
+            accepted: workflows?.reportApproval?.outgoing?.accepted?.count || 0,
+            declined: workflows?.reportApproval?.outgoing?.declined?.count || 0,
+          }
+        : null,
+      change: showChangeSection
+        ? {
+            incoming: workflows?.changeRequests?.incoming?.pending?.count || 0,
+            outgoing: workflows?.changeRequests?.outgoing?.pending?.count || 0,
+            accepted: workflows?.changeRequests?.outgoing?.accepted?.count || 0,
+            declined: workflows?.changeRequests?.outgoing?.declined?.count || 0,
+          }
+        : null,
+      temporary: showTemporarySection
+        ? {
+            created: temporaryCreatedPending,
+            review: temporaryReviewPending,
+          }
+        : null,
+    });
+
+    const shouldUseCache =
+      overviewCacheRef.current.payload &&
+      overviewCacheRef.current.key === countersKey &&
+      Date.now() - overviewCacheRef.current.loadedAt <= OVERVIEW_CACHE_TTL_MS;
+
     setReportState((prev) => ({ ...prev, loading: true, error: '' }));
     setChangeState((prev) => ({ ...prev, loading: true, error: '' }));
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    loadDashboardOverview(() => cancelled);
+
+    const timeoutId = window.setTimeout(() => {
+      if (shouldUseCache) {
+        applyOverviewPayload(overviewCacheRef.current.payload);
+        return;
+      }
+
+      loadDashboardOverview(() => cancelled).then((payload) => {
+        if (cancelled || !payload) return;
+        overviewCacheRef.current = {
+          key: countersKey,
+          loadedAt: Date.now(),
+          payload,
+        };
+      });
+    }, OVERVIEW_DEBOUNCE_MS);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
   }, [
+    hasVisibleSections,
+    applyOverviewPayload,
     loadDashboardOverview,
-    workflows?.reportApproval?.incoming?.pending?.count,
-    workflows?.reportApproval?.outgoing?.pending?.count,
-    workflows?.reportApproval?.outgoing?.accepted?.count,
-    workflows?.reportApproval?.outgoing?.declined?.count,
+    showChangeSection,
+    showReportSection,
+    showTemporarySection,
     workflows?.changeRequests?.incoming?.pending?.count,
-    workflows?.changeRequests?.outgoing?.pending?.count,
     workflows?.changeRequests?.outgoing?.accepted?.count,
     workflows?.changeRequests?.outgoing?.declined?.count,
+    workflows?.changeRequests?.outgoing?.pending?.count,
+    workflows?.reportApproval?.incoming?.pending?.count,
+    workflows?.reportApproval?.outgoing?.accepted?.count,
+    workflows?.reportApproval?.outgoing?.declined?.count,
+    workflows?.reportApproval?.outgoing?.pending?.count,
     temporaryCreatedPending,
     temporaryReviewPending,
   ]);
@@ -977,20 +1070,6 @@ export default function NotificationsPage({
       </button>
     </li>
   );
-
-  const isSectionVisible = useCallback(
-    (sectionKey) => {
-      if (!activeDashboardTab || !sectionTabs || typeof sectionTabs !== 'object') return true;
-      const configuredTab = String(sectionTabs?.[sectionKey] || 'audition').trim().toLowerCase();
-      return configuredTab === String(activeDashboardTab || '').trim().toLowerCase();
-    },
-    [activeDashboardTab, sectionTabs],
-  );
-
-  const showReportSection = isSectionVisible('report');
-  const showChangeSection = isSectionVisible('change');
-  const showTemporarySection = isSectionVisible('temporary');
-  const hasVisibleSections = showReportSection || showChangeSection || showTemporarySection;
 
   const renderExpandableList = useCallback(
     (key, entries, renderRow) => {
