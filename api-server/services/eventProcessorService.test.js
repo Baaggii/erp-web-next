@@ -49,9 +49,6 @@ class MockConn {
       this.policyRuns.push(params);
       return [{ insertId: this.policyRuns.length }, undefined];
     }
-    if (text.startsWith('SELECT run_id FROM core_event_policy_runs')) {
-      return [[], undefined];
-    }
     if (text.startsWith('UPDATE core_events SET status =')) {
       this.eventUpdates.push({ stage: 'final', params });
       return [{ affectedRows: 1 }, undefined];
