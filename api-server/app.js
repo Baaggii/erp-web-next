@@ -43,6 +43,7 @@ import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
 import webPushRoutes from "./routes/web_push.js";
 import eventsRoutes from "./routes/events.js";
+import eventSimulationRoutes from "./routes/eventSimulation.js";
 import eventPoliciesRoutes from "./routes/event_policies.js";
 import twinRoutes from "./routes/twin.js";
 import { setWebPushStore } from "./services/webPushService.js";
@@ -140,6 +141,7 @@ app.use("/api/journal", journalRoutes);
 app.use("/api/period-control", periodControlRoutes);
 app.use("/api/web_push", webPushRoutes);
 app.use("/api/events", eventsRoutes);
+app.use("/api/events", eventSimulationRoutes);
 app.use("/api/event-policies", eventPoliciesRoutes);
 app.use("/api/twin", twinRoutes);
 
