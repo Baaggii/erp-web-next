@@ -22,7 +22,7 @@ function operatorOptionsForType(type) {
   return OPERATORS_BY_TYPE[type] || OPERATORS_BY_TYPE.default;
 }
 
-export default function ConditionGroupBuilder({ condition, fields = [], fieldTypes = {}, onChange, highlightedField, onFieldHighlight }) {
+export default function ConditionGroupBuilder({ condition, fields = [], fieldTypes = {}, onChange }) {
   const rules = Array.isArray(condition.rules) ? condition.rules : [];
   const fieldOptions = fields.map((entry) => entry.path);
 
@@ -46,14 +46,7 @@ export default function ConditionGroupBuilder({ condition, fields = [], fieldTyp
         const operatorOptions = operatorOptionsForType(type);
         return (
           <div key={idx} className="row">
-            <select
-              value={rule.field || ''}
-              onChange={(e) => {
-                patchRule(idx, 'field', e.target.value);
-                onFieldHighlight?.(e.target.value);
-              }}
-              onFocus={() => onFieldHighlight?.(rule.field || '')}
-            >
+            <select value={rule.field || ''} onChange={(e) => patchRule(idx, 'field', e.target.value)}>
               <option value="">Select field</option>
               {fieldOptions.map((field) => <option key={field} value={field}>{field}</option>)}
             </select>
@@ -69,11 +62,10 @@ export default function ConditionGroupBuilder({ condition, fields = [], fieldTyp
                 patchRule(idx, 'value', parseValueByType(raw, type, rule.operator));
               }} />
             <button type="button" onClick={() => onChange({ ...condition, rules: rules.filter((_, ruleIndex) => ruleIndex !== idx) })}>Remove</button>
-            {rule.field ? <small style={{ color: rule.field === highlightedField ? '#1d4ed8' : '#6b7280' }}>type: {type}</small> : null}
           </div>
         );
       })}
-      <button type="button" onClick={() => onChange({ ...condition, rules: [...rules, { field: highlightedField || '', operator: '=', value: '' }] })}>Add Condition</button>
+      <button type="button" onClick={() => onChange({ ...condition, rules: [...rules, { field: '', operator: '=', value: '' }] })}>Add Condition</button>
     </div>
   );
 }
