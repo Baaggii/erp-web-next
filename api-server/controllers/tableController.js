@@ -41,6 +41,7 @@ import { getDisplayFields } from '../services/displayFieldConfig.js';
 import { emitCanonicalEvent } from '../services/eventEmitterService.js';
 import { processPendingEvents } from '../services/eventProcessorService.js';
 import { isEventEngineEnabled } from '../services/eventEngineConfigService.js';
+import { hasMatchingPolicies } from '../services/eventPolicyMatchFastCheck.js';
 
 
 async function emitTransactionCrudEvent({ action, tableName, recordId, companyId, actorEmpid, before = null, after = null }) {
@@ -48,12 +49,31 @@ async function emitTransactionCrudEvent({ action, tableName, recordId, companyId
   try {
     if (!(await isEventEngineEnabled())) return;
 
+    const eventType = action === 'create' ? 'transaction.created' : action === 'delete' ? 'transaction.deleted' : 'transaction.updated';
+    const sourceTransactionType = String(tableName || '').replace(/^transactions_/i, '');
+    const transactionCode = getRowValueCaseInsensitive(after, 'transaction_type')
+      ?? getRowValueCaseInsensitive(after, 'trtype')
+      ?? getRowValueCaseInsensitive(after, 'UITransType')
+      ?? getRowValueCaseInsensitive(before, 'transaction_type')
+      ?? getRowValueCaseInsensitive(before, 'trtype')
+      ?? getRowValueCaseInsensitive(before, 'UITransType')
+      ?? null;
+
+    const hasPolicies = await hasMatchingPolicies({
+      companyId,
+      eventType,
+      sourceTable: tableName,
+      sourceTransactionType,
+      sourceTransactionCode: transactionCode,
+    });
+    if (!hasPolicies) return;
+
     const emitted = await emitCanonicalEvent({
-      eventType: action === 'create' ? 'transaction.created' : action === 'delete' ? 'transaction.deleted' : 'transaction.updated',
+      eventType,
       companyId,
       actorEmpid,
       source: {
-        transactionType: String(tableName || '').replace(/^transactions_/i, ''),
+        transactionType: sourceTransactionType,
         table: tableName,
         recordId,
         action,
@@ -62,10 +82,14 @@ async function emitTransactionCrudEvent({ action, tableName, recordId, companyId
         tableName,
         recordId,
         action,
+        transactionCode,
+        transaction_type_code: transactionCode,
         before,
         after,
       },
     });
+
+    if (!emitted?.eventId) return;
 
     try {
       await processPendingEvents({
