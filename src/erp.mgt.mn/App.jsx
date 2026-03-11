@@ -168,10 +168,11 @@ function AuthedApp() {
   const renderRoute = useCallback(
     function renderRoute(mod) {
       const slug = mod.module_key.replace(/_/g, '-');
-      const children = mod.children.map((child) => renderRoute(child));
+      const childModules = Array.isArray(mod.children) ? mod.children : [];
+      const children = childModules.map((child) => renderRoute(child));
       let element = componentMap[mod.module_key];
       if (!element) {
-        element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
+        element = childModules.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
       }
 
       if (!mod.parent_key && mod.module_key === 'dashboard') {
