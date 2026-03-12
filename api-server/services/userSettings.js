@@ -37,12 +37,18 @@ export async function getUserSettings(empid, companyId = 0) {
     if (!Object.prototype.hasOwnProperty.call(settings, 'webPushEnabled')) {
       settings.webPushEnabled = false;
     }
+    if (!Object.prototype.hasOwnProperty.call(settings, 'performanceStatsEnabled')) {
+      settings.performanceStatsEnabled = false;
+    } else {
+      settings.performanceStatsEnabled = Boolean(settings.performanceStatsEnabled);
+    }
     return settings;
   } catch {
     return {
       showTourButtons: true,
       settings_enable_tour_builder: true,
       webPushEnabled: false,
+      performanceStatsEnabled: false,
     };
   }
 }
@@ -79,6 +85,11 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
   if (Object.prototype.hasOwnProperty.call(normalizedSettings, 'webPushEnabled')) {
     normalizedSettings.webPushEnabled = Boolean(normalizedSettings.webPushEnabled);
   }
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, 'performanceStatsEnabled')) {
+    normalizedSettings.performanceStatsEnabled = Boolean(
+      normalizedSettings.performanceStatsEnabled,
+    );
+  }
 
   const legacyKeys = Object.keys(data).filter(
     (key) => key !== normalizedEmpid && normalizeEmpid(key) === normalizedEmpid,
@@ -102,6 +113,11 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
   }
   if (!Object.prototype.hasOwnProperty.call(data[normalizedEmpid], 'webPushEnabled')) {
     data[normalizedEmpid].webPushEnabled = false;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(data[normalizedEmpid], 'performanceStatsEnabled')
+  ) {
+    data[normalizedEmpid].performanceStatsEnabled = false;
   }
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
