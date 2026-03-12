@@ -61,6 +61,8 @@ export default function AuthContextProvider({ children }) {
     }
   });
   const previousEmpidRef = useRef(null);
+  const userSettingsSaveControllerRef = useRef(null);
+  const userSettingsSaveTimerRef = useRef(null);
 
   const applyUnauthenticated = useCallback((options = {}) => {
     const { preserveLang = false } = options;
@@ -297,6 +299,14 @@ export default function AuthContextProvider({ children }) {
     try {
       localStorage.setItem('erp_user_settings', JSON.stringify(next));
     } catch {}
+
+    if (userSettingsSaveControllerRef.current) {
+      userSettingsSaveControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    userSettingsSaveControllerRef.current = controller;
+
     try {
       await fetch(`${API_BASE}/user/settings`, {
         method: 'PUT',
@@ -304,19 +314,39 @@ export default function AuthContextProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
         skipErrorToast: true,
+        signal: controller.signal,
       });
     } catch (err) {
+      if (err?.name === 'AbortError') return;
       console.warn('Failed to save user settings', err);
+    } finally {
+      if (userSettingsSaveControllerRef.current === controller) {
+        userSettingsSaveControllerRef.current = null;
+      }
     }
   };
 
   const updateUserSettings = (updates) => {
     setUserSettings((prev) => {
       const next = { ...(prev || {}), ...updates };
-      saveUserSettings(next);
+      if (userSettingsSaveTimerRef.current) {
+        window.clearTimeout(userSettingsSaveTimerRef.current);
+      }
+      userSettingsSaveTimerRef.current = window.setTimeout(() => {
+        saveUserSettings(next);
+      }, 250);
       return next;
     });
   };
+
+  useEffect(() => () => {
+    if (userSettingsSaveTimerRef.current) {
+      window.clearTimeout(userSettingsSaveTimerRef.current);
+    }
+    if (userSettingsSaveControllerRef.current) {
+      userSettingsSaveControllerRef.current.abort();
+    }
+  }, []);
 
   const value = useMemo(
     () => ({
