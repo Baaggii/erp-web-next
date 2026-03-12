@@ -17,6 +17,7 @@ import {
 } from './messagingWidgetModel.js';
 import { adaptConversationListResponse, adaptThreadResponse } from './messagingApiAdapters.js';
 import { getRowValueCaseInsensitive, resolveRelationRowsFromSource } from '../utils/autoRelationResolver.js';
+import { getEmploymentRows } from '../utils/referenceDataCache.js';
 
 
 const ATTACHMENTS_MARKER = '\n[attachments-json]';
@@ -1740,11 +1741,7 @@ export default function MessagingWidget() {
 
     const loadEmployees = async () => {
       try {
-        const employmentParams = new URLSearchParams({ perPage: '1000', company_id: String(activeCompany) });
-        const employmentRes = await fetch(`${API_BASE}/tables/tbl_employment?${employmentParams.toString()}`, { credentials: 'include' });
-        if (!employmentRes.ok) return;
-        const employmentData = await employmentRes.json();
-        const employmentRows = Array.isArray(employmentData?.rows) ? employmentData.rows : Array.isArray(employmentData) ? employmentData : [];
+        const employmentRows = await getEmploymentRows(activeCompany);
 
         const resolvedEmployeeRelation = await resolveRelationRowsFromSource({
           sourceTable: 'tbl_employment',

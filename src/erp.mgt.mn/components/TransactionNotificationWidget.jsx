@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { getCodeTransactionRows } from '../utils/referenceDataCache.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -574,15 +575,10 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
 
   useEffect(() => {
     let canceled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => {
+    getCodeTransactionRows()
+      .then((rows) => {
         if (canceled) return;
-        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
+        setCodeTransactions(Array.isArray(rows) ? rows : []);
       })
       .catch(() => {
         if (!canceled) setCodeTransactions([]);

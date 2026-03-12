@@ -11,6 +11,7 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { getCodeTransactionRows } from '../utils/referenceDataCache.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -203,15 +204,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => {
+    getCodeTransactionRows()
+      .then((rows) => {
         if (cancelled) return;
-        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
+        setCodeTransactions(Array.isArray(rows) ? rows : []);
       })
       .catch(() => {
         if (!cancelled) setCodeTransactions([]);

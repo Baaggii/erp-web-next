@@ -212,11 +212,20 @@ export default function useRequestNotificationCounts(
               params.append(k, v);
             }
           });
-          const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
+          let res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
             credentials: 'include',
             skipLoader: true,
             skipErrorToast: true,
           });
+          if (!res.ok && res.status >= 500) {
+            const retryParams = new URLSearchParams(params);
+            retryParams.delete('count_only');
+            res = await fetch(`/api/pending_request/outgoing?${retryParams.toString()}`, {
+              credentials: 'include',
+              skipLoader: true,
+              skipErrorToast: true,
+            });
+          }
           if (!res.ok && res.status >= 500) {
             outgoingUnavailable = true;
             newOutgoing[status] = { count: 0, hasNew: false, newCount: 0 };

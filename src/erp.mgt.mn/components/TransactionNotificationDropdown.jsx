@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { getCodeTransactionRows } from '../utils/referenceDataCache.js';
 import { useTransactionNotifications } from '../context/TransactionNotificationContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
@@ -352,15 +353,10 @@ export default function TransactionNotificationDropdown() {
 
   useEffect(() => {
     let canceled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => {
+    getCodeTransactionRows()
+      .then((rows) => {
         if (canceled) return;
-        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
+        setCodeTransactions(Array.isArray(rows) ? rows : []);
       })
       .catch(() => {
         if (!canceled) setCodeTransactions([]);
