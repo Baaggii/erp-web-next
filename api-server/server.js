@@ -124,13 +124,6 @@ app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
 app.use(activityLogger);
 
-const periodControlRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // CSRF token endpoint
 app.get("/api/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
