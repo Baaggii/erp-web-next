@@ -330,18 +330,10 @@ app.use("/api/transaction_ebarimt", transactionEbarimtRoutes);
 app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
-// Rate limiter for period-control endpoints to mitigate brute-force and DoS attacks
-const periodControlRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 60,             // limit each IP to 60 requests per `windowMs`
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
-});
-
 app.use("/api/report_procedures", reportProcedureRoutes);
 app.use("/api/report", reportRoutes);
 app.use("/api/journal", requireAuth, journalRoutes);
-app.use("/api/period-control", requireAuth, periodControlRateLimiter, periodControlRoutes);
+app.use("/api/period-control", requireAuth, periodControlRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);
