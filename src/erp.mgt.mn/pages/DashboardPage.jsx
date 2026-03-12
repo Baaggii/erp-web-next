@@ -11,7 +11,6 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import usePageBundle from '../hooks/usePageBundle.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -95,7 +94,6 @@ export default function DashboardPage() {
   const { hasNew, markSeen, outgoing } = usePendingRequests();
   const { notifications } = useTransactionNotifications();
   const generalConfig = useGeneralConfig();
-  const { data: dashboardBundle } = usePageBundle({ page: 'dashboard' });
   const [codeTransactions, setCodeTransactions] = useState([]);
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
@@ -134,30 +132,94 @@ export default function DashboardPage() {
   }, [markSeen]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const normalizeTab = (tabValue) => {
       const value = String(tabValue || '').trim().toLowerCase();
       return allowedTabs.current.has(value) ? value : 'audition';
     };
 
-    const forms = dashboardBundle?.dashboard?.transactionForms || {};
-    const reportProcedures = dashboardBundle?.dashboard?.reportProcedures || [];
+    const pickTabFromForms = (forms, predicate) => {
+      const entries = Object.entries(forms || {}).filter(
+        ([name, info]) => name !== 'isDefault' && info && typeof info === 'object',
+      );
+      const matching = entries.filter(([, info]) => {
+        if (typeof predicate !== 'function') return true;
+        return predicate(info);
+      });
+      const source = matching.length > 0 ? matching : entries;
+      for (const [, info] of source) {
+        const tab = normalizeTab(info?.notificationRedirectTab ?? info?.notification_redirect_tab);
+        if (tab) return tab;
+      }
+      return 'audition';
+    };
 
-    const changeTab = normalizeTab(
-      forms?.changeRequestsDashboardTab || forms?.change_requests_dashboard_tab || 'audition',
-    );
-    const temporaryTab = normalizeTab(
-      forms?.temporaryTransactionsDashboardTab || forms?.temporary_transactions_dashboard_tab || 'audition',
-    );
-    const reportTab = normalizeTab(reportProcedures.length > 0 ? 'audition' : 'general');
+    Promise.allSettled([
+      fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
+        res.ok ? res.json() : {},
+      ),
+      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
+        res.ok ? res.json() : {},
+      ),
+    ]).then(([reportResult, transactionResult]) => {
+      if (cancelled) return;
+      const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
+      const transactionData =
+        transactionResult.status === 'fulfilled' ? transactionResult.value || {} : {};
 
-    setWorkflowSectionTabs({ report: reportTab, change: changeTab, temporary: temporaryTab });
-  }, [dashboardBundle]);
+      const reportTab = normalizeTab(reportData?.reportApprovalsDashboardTab);
+      const changeTab = normalizeTab(
+        transactionData?.changeRequestsDashboardTab ||
+          transactionData?.change_requests_dashboard_tab ||
+          pickTabFromForms(transactionData, (info) =>
+            Array.isArray(info?.notifyFields)
+              ? info.notifyFields.length > 0
+              : Array.isArray(info?.notify_fields) && info.notify_fields.length > 0,
+          ),
+      );
+      const temporaryTab = normalizeTab(
+        transactionData?.temporaryTransactionsDashboardTab ||
+          transactionData?.temporary_transactions_dashboard_tab ||
+          pickTabFromForms(
+            transactionData,
+            (info) =>
+              Boolean(info?.allowTemporarySubmission) || Boolean(info?.supportsTemporarySubmission),
+          ),
+      );
+
+      setWorkflowSectionTabs({
+        report: reportTab,
+        change: changeTab,
+        temporary: temporaryTab,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
 
   useEffect(() => {
-    const rows = dashboardBundle?.dashboard?.codeTransactions;
-    setCodeTransactions(Array.isArray(rows) ? rows : []);
-  }, [dashboardBundle]);
+    let cancelled = false;
+    fetch('/api/tables/code_transaction?perPage=500', {
+      credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCodeTransactions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const dotBadgeStyle = {
     background: 'red',
