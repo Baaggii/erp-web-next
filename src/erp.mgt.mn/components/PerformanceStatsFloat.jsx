@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
-const SAMPLE_INTERVAL_MS = 5000;
+const DEFAULT_SAMPLE_INTERVAL_MS = 15000;
+const MIN_SAMPLE_INTERVAL_MS = 3000;
+const MAX_SAMPLE_INTERVAL_MS = 120000;
 const FRAME_SAMPLE_MS = 1000;
 
 function toNumber(value, fallback = null) {
@@ -82,11 +84,17 @@ export default function PerformanceStatsFloat() {
     () => userSettings?.performanceProbeUrl || `${API_BASE}/auth/me`,
     [userSettings?.performanceProbeUrl],
   );
+  const sampleIntervalMs = useMemo(() => {
+    const raw = Number(userSettings?.performanceProbeIntervalMs);
+    if (!Number.isFinite(raw)) return DEFAULT_SAMPLE_INTERVAL_MS;
+    return Math.min(MAX_SAMPLE_INTERVAL_MS, Math.max(MIN_SAMPLE_INTERVAL_MS, Math.round(raw)));
+  }, [userSettings?.performanceProbeIntervalMs]);
 
   useEffect(() => {
     if (!isEnabled) return undefined;
 
     let cancelled = false;
+    let activeSampleController = null;
 
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     const updateConnectionStats = () => {
@@ -160,13 +168,18 @@ export default function PerformanceStatsFloat() {
     };
 
     const runSample = async () => {
+      if (cancelled) return;
+
       const controller = new AbortController();
+      activeSampleController = controller;
       const timeout = window.setTimeout(() => controller.abort(), 6000);
       try {
         const [internet, server] = await Promise.allSettled([
           sampleLatency('/favicon.ico', { method: 'GET', credentials: 'same-origin', signal: controller.signal }),
           sampleLatency(testUrl, { method: 'GET', credentials: 'include', signal: controller.signal }),
         ]);
+
+        if (cancelled || controller.signal.aborted) return;
 
         setNetworkStats((prev) => ({
           ...prev,
@@ -184,7 +197,12 @@ export default function PerformanceStatsFloat() {
         }));
       } finally {
         window.clearTimeout(timeout);
+        if (activeSampleController === controller) {
+          activeSampleController = null;
+        }
       }
+
+      if (cancelled) return;
 
       const memory = performance.memory;
       setLocalStats((prev) => ({
@@ -197,7 +215,7 @@ export default function PerformanceStatsFloat() {
       }));
     };
 
-    const sampleInterval = window.setInterval(runSample, SAMPLE_INTERVAL_MS);
+    const sampleInterval = window.setInterval(runSample, sampleIntervalMs);
 
     updateConnectionStats();
     window.addEventListener('online', updateConnectionStats);
@@ -210,6 +228,7 @@ export default function PerformanceStatsFloat() {
 
     return () => {
       cancelled = true;
+      activeSampleController?.abort();
       window.clearInterval(sampleInterval);
       window.clearTimeout(loopTimer);
       window.cancelAnimationFrame(rafId);
@@ -218,7 +237,7 @@ export default function PerformanceStatsFloat() {
       connection?.removeEventListener?.('change', updateConnectionStats);
       longTaskObserver?.disconnect();
     };
-  }, [isEnabled, testUrl]);
+  }, [isEnabled, testUrl, sampleIntervalMs]);
 
   if (!isEnabled) return null;
 

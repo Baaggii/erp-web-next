@@ -56,6 +56,10 @@ function PerformanceSettingsTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const performanceStatsEnabled = userSettings.performanceStatsEnabled ?? false;
   const performanceProbeUrl = userSettings.performanceProbeUrl || `${API_BASE}/auth/me`;
+  const rawProbeIntervalMs = Number(userSettings.performanceProbeIntervalMs);
+  const performanceProbeIntervalMs = Number.isFinite(rawProbeIntervalMs)
+    ? Math.min(Math.max(Math.round(rawProbeIntervalMs), 3000), 120000)
+    : 15000;
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem', maxWidth: 760 }}>
@@ -89,6 +93,18 @@ function PerformanceSettingsTab() {
           value={performanceProbeUrl}
           onChange={(e) => updateUserSettings({ performanceProbeUrl: e.target.value })}
           placeholder={`${API_BASE}/auth/me`}
+        />
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <span>{t('performance_probe_interval_ms', 'Probe frequency (milliseconds)')}</span>
+        <input
+          type="number"
+          min={3000}
+          max={120000}
+          step={1000}
+          value={performanceProbeIntervalMs}
+          onChange={(e) => updateUserSettings({ performanceProbeIntervalMs: Number(e.target.value) || 15000 })}
         />
       </label>
 
