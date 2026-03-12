@@ -43,6 +43,8 @@ import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
 import webPushRoutes from "./routes/web_push.js";
 import { setWebPushStore } from "./services/webPushService.js";
+import bundleRoutes from './routes/bundles.js';
+import { invalidateByMutationPath } from './services/bundleCache.js';
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -71,6 +73,17 @@ app.use((req, res, next) => {
 });
 
 app.use(logger);
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+    if (isMutation && res.statusCode < 400) {
+      invalidateByMutationPath(req.originalUrl || req.path);
+    }
+  });
+  next();
+});
+
+
 setWebPushStore(pool);
 
 // Serve uploaded images statically before CSRF so image requests don't require tokens
@@ -136,6 +149,7 @@ app.use("/api/dashboard_sections", dashboardSectionRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/period-control", periodControlRoutes);
 app.use("/api/web_push", webPushRoutes);
+app.use("/api", bundleRoutes);
 
 // Serve static React build and fallback to index.html
 // NOTE: adjust this path to where your SPA build actually lives.

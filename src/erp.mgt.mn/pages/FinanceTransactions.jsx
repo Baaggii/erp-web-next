@@ -25,6 +25,7 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
+import useFormBundle from '../hooks/useFormBundle.js';
 
 if (typeof window !== 'undefined') {
   window.showTemporaryRequesterUI =
@@ -182,6 +183,10 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   }, [searchParams]);
 
   const reportProcPrefix = generalConfig?.general?.reportProcPrefix || '';
+  const { data: formBundleData } = useFormBundle(
+    { table, name },
+    { enabled: Boolean(table && name) },
+  );
   const planDefaultValues = useMemo(() => {
     if (!planCompletionParams?.fieldName) return null;
     if (
@@ -621,59 +626,34 @@ useEffect(() => {
   }, [configs]);
 
   useEffect(() => {
-    console.log('FinanceTransactions fetch config effect');
     if (!table || !name) {
       if (config !== null) setConfig(null);
       return;
     }
-    let canceled = false;
-    fetch(
-      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
-      { credentials: 'include', skipLoader: true },
-    )
-      .then((res) => {
-        if (canceled) return null;
-        if (!res.ok) {
-          addToast('Failed to load transaction configuration', 'error');
-          return null;
-        }
-        return res.json().catch(() => null);
-      })
-      .then((cfg) => {
-        if (canceled) return;
-        if (cfg && cfg.moduleKey) {
-          const prefix = reportProcPrefix;
-          let nextCfg = cfg;
-          if (prefix && Array.isArray(cfg.procedures)) {
-            nextCfg = {
-              ...cfg,
-              procedures: cfg.procedures.filter((p) =>
-                p.toLowerCase().includes(prefix.toLowerCase()),
-              ),
-            };
-          }
-          if (!isEqual(nextCfg, prevConfigRef.current)) {
-            setConfig(nextCfg);
-            prevConfigRef.current = nextCfg;
-          }
-          setShowTable(true);
-        } else {
-          if (config !== null) setConfig(null);
-          setShowTable(false);
-          addToast('Transaction configuration not found', 'error');
-        }
-      })
-      .catch(() => {
-        if (!canceled) {
-          if (config !== null) setConfig(null);
-          setShowTable(false);
-          addToast('Failed to load transaction configuration', 'error');
-        }
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [table, name, addToast, reportProcPrefix]);
+
+    const cfg = formBundleData?.formConfig;
+    if (!cfg || typeof cfg !== 'object') return;
+
+    if (cfg && cfg.moduleKey) {
+      const prefix = reportProcPrefix;
+      let nextCfg = cfg;
+      if (prefix && Array.isArray(cfg.procedures)) {
+        nextCfg = {
+          ...cfg,
+          procedures: cfg.procedures.filter((p) => p.toLowerCase().includes(prefix.toLowerCase())),
+        };
+      }
+      if (!isEqual(nextCfg, prevConfigRef.current)) {
+        setConfig(nextCfg);
+        prevConfigRef.current = nextCfg;
+      }
+      setShowTable(true);
+    } else {
+      if (config !== null) setConfig(null);
+      setShowTable(false);
+      addToast('Transaction configuration not found', 'error');
+    }
+  }, [table, name, addToast, reportProcPrefix, formBundleData]);
 
   useEffect(() => {
     if (!pendingTemporary?.open) return;
