@@ -72,6 +72,8 @@ import reportRoutes from "./routes/report.js";
 import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
 import webPushRoutes from "./routes/web_push.js";
+import bundleRoutes from "./routes/bundles.js";
+import { invalidateByMutationPath } from './services/bundleCache.js';
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
@@ -122,6 +124,17 @@ app.use((req, res, next) => {
 });
 app.use(csrf({ cookie: true }));          // <— csurf middleware
 app.use(logger);
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+    if (isMutation && res.statusCode < 400) {
+      invalidateByMutationPath(req.originalUrl || req.path);
+    }
+  });
+  next();
+});
+
+
 app.use(activityLogger);
 
 const periodControlRateLimiter = rateLimit({
@@ -368,6 +381,7 @@ app.use("/api/cnc_processing", cncProcessingRoutes);
 app.use("/api", messagingRoutes);
 app.use("/api/messaging", messagingRoutes);
 app.use("/api/web_push", webPushRoutes);
+app.use("/api", bundleRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");

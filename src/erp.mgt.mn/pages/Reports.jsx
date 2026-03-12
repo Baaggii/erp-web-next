@@ -24,6 +24,7 @@ import {
   normalizeSnapshotRecord,
   resolveSnapshotSource,
 } from '../utils/normalizeSnapshot.js';
+import useBundleResource from '../hooks/useBundleResource.js';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -277,6 +278,11 @@ export default function Reports() {
   const [procedures, setProcedures] = useState([]);
   const [selectedProc, setSelectedProc] = useState('');
   const [procParams, setProcParams] = useState([]);
+  const { data: reportBundleData } = useBundleResource(
+    `/api/report_bundle/${encodeURIComponent(selectedProc || '_')}`,
+    { branchId: branch, departmentId: department },
+    { enabled: Boolean(selectedProc) },
+  );
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
@@ -1319,21 +1325,10 @@ export default function Reports() {
       setManualParams({});
       return;
     }
-    const params = new URLSearchParams();
-    if (branch) params.set('branchId', branch);
-    if (department) params.set('departmentId', department);
-    fetch(
-      `/api/procedures/${encodeURIComponent(selectedProc)}/params${
-        params.toString() ? `?${params.toString()}` : ''
-      }`,
-      {
-        credentials: 'include',
-      },
-    )
-      .then((res) => (res.ok ? res.json() : { parameters: [] }))
-      .then((data) => setProcParams(data.parameters || []))
-      .catch(() => setProcParams([]));
-  }, [selectedProc, branch, department]);
+
+    const params = reportBundleData?.parameters;
+    setProcParams(Array.isArray(params) ? params : []);
+  }, [selectedProc, reportBundleData]);
 
   useEffect(() => {
     setResult(null);
