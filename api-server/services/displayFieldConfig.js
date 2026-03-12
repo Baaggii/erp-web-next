@@ -254,10 +254,7 @@ export async function getDisplayFields(
   const filteredById = normalizedIdField
     ? entries.filter((entry) => entry.idField === normalizedIdField)
     : entries;
-  // Fallback to table-level defaults when the requested idField has no exact config.
-  // This avoids dropping into schema-derived guesses for common cases such as
-  // relation column aliases (e.g. company_id) pointing to tables configured with idField=id.
-  const matches = filteredById.length > 0 ? filteredById : entries;
+  const matches = filteredById.length > 0 ? filteredById : normalizedIdField ? [] : entries;
   const matched = selectConfigForFilter(matches, normalizedColumn, normalizedValue, normalizedIdField);
   const responseEntries = includeMatchesOnly ? matches : entries;
 
