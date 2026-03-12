@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   getTables,
   getTableRows,
@@ -18,6 +19,13 @@ import {
 import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
+
+const tablesRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per window for table routes
+});
+
+router.use(tablesRateLimiter);
 
 router.get('/', requireAuth, getTables);
 // More specific routes must be defined before the generic ':table' pattern
