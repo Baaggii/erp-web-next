@@ -1,6 +1,5 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
 import { API_BASE } from '../utils/apiBase.js';
-import { initSession } from '../core/initSession.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
 // src/erp.mgt.mn/hooks/useAuth.jsx
@@ -118,9 +117,9 @@ export async function logout(empid) {
  * @returns {Promise<{id: number, empid: string, position: string}>}
 */
 export async function fetchProfile(t = (key, fallback) => fallback || key) {
-  const sessionData = await initSession();
-  const data = sessionData?.user;
-  if (!data) throw new Error(t('notAuthenticated', 'Not authenticated'));
+  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+  if (!res.ok) throw new Error(t('notAuthenticated', 'Not authenticated'));
+  const data = await res.json();
   const normalizedSession = normalizeEmploymentSession(data?.session);
   const nextData = normalizedSession ? { ...data, session: normalizedSession } : data;
   if (nextData?.session) {

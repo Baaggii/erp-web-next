@@ -9,7 +9,6 @@ import React, {
   useRef,
 } from 'react';
 import { debugLog, trackSetState } from '../utils/debug.js';
-import { useSessionData } from './SessionDataContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 import {
@@ -62,7 +61,6 @@ export default function AuthContextProvider({ children }) {
     }
   });
   const previousEmpidRef = useRef(null);
-  const { sessionData, initializeSession, clearSessionData } = useSessionData();
 
   const applyUnauthenticated = useCallback((options = {}) => {
     const { preserveLang = false } = options;
@@ -93,7 +91,6 @@ export default function AuthContextProvider({ children }) {
     setWorkplacePositionMap({});
     trackSetState('AuthContext.setUserSettings');
     setUserSettings(lang ? { lang } : {});
-    clearSessionData();
     try {
       if (lang) {
         localStorage.setItem('erp_user_settings', JSON.stringify({ lang }));
@@ -101,7 +98,7 @@ export default function AuthContextProvider({ children }) {
         localStorage.removeItem('erp_user_settings');
       }
     } catch {}
-  }, [clearSessionData]);
+  }, []);
 
   const applyProfile = useCallback((data) => {
     const normalizedSession = normalizeEmploymentSession(data.session);
@@ -132,14 +129,37 @@ export default function AuthContextProvider({ children }) {
     setWorkplacePositionMap(derivedWorkplaceMap);
   }, []);
 
-  const loadProfile = useCallback(async (options = {}) => {
-    const { force = false } = options;
+  const loadProfile = useCallback(async () => {
     try {
-      const data = await initializeSession({ force });
-      if (data?.user) {
-        applyProfile(data.user);
-        trackSetState('AuthContext.setUserSettings');
-        setUserSettings(data.userSettings || {});
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        applyProfile(data);
+        try {
+          const resSettings = await fetch(`${API_BASE}/user/settings`, {
+            credentials: 'include',
+            skipErrorToast: true,
+          });
+          if (resSettings.ok) {
+            const s = await resSettings.json();
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(s);
+            try {
+              localStorage.setItem('erp_user_settings', JSON.stringify(s));
+            } catch {}
+          } else {
+            const stored = localStorage.getItem('erp_user_settings');
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(stored ? JSON.parse(stored) : {});
+          }
+        } catch {
+          const stored = localStorage.getItem('erp_user_settings');
+          trackSetState('AuthContext.setUserSettings');
+          setUserSettings(stored ? JSON.parse(stored) : {});
+        }
       } else {
         applyUnauthenticated();
       }
@@ -147,7 +167,7 @@ export default function AuthContextProvider({ children }) {
       console.error('Unable to fetch profile:', err);
       applyUnauthenticated();
     }
-  }, [applyProfile, applyUnauthenticated, initializeSession]);
+  }, [applyProfile, applyUnauthenticated]);
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -251,7 +271,7 @@ export default function AuthContextProvider({ children }) {
           : { type: 'auth:logout' };
         window.dispatchEvent(evt);
       } else if (payload?.type === 'login') {
-        loadProfile({ force: true });
+        loadProfile();
       }
     }
 
@@ -381,14 +401,6 @@ export default function AuthContextProvider({ children }) {
     session?.workplace_id,
     session?.workplaceId,
   ]);
-
-
-  useEffect(() => {
-    if (!sessionData?.loaded || !sessionData?.user) return;
-    applyProfile(sessionData.user);
-    trackSetState('AuthContext.setUserSettings');
-    setUserSettings(sessionData.userSettings || {});
-  }, [sessionData, applyProfile]);
 
   return (
     <AuthContext.Provider value={value}>

@@ -5,7 +5,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
-import { useSessionData } from '../context/SessionDataContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
@@ -62,7 +61,6 @@ export default function LoginForm() {
     setPermissions,
   } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
-  const { initializeSession } = useSessionData();
   const navigate = useNavigate();
 
   async function buildCompanyOptions(sessionOptions = []) {
@@ -150,41 +148,39 @@ export default function LoginForm() {
         return;
       }
 
-      const sessionResult = await initializeSession({ force: true });
-      const sourceUser = sessionResult?.user || loggedIn;
-
-      const normalizedSession = normalizeEmploymentSession(sourceUser.session);
+      // The login response already returns the user profile
+      const normalizedSession = normalizeEmploymentSession(loggedIn.session);
       let enrichedSession = normalizedSession;
       if (normalizedSession) {
         try {
           enrichedSession = await resolveSessionDisplayMetadata(
             normalizedSession,
-            sourceUser?.empid,
+            loggedIn?.empid,
           );
         } catch (err) {
           console.warn('Failed to resolve session relation metadata after login', err);
         }
       }
       const nextUser = enrichedSession
-        ? { ...sourceUser, session: enrichedSession }
-        : sourceUser;
+        ? { ...loggedIn, session: enrichedSession }
+        : loggedIn;
 
       setUser(nextUser);
       setSession(enrichedSession);
       setCompany(
-        nextUser.company ?? enrichedSession?.company_id ?? null,
+        loggedIn.company ?? enrichedSession?.company_id ?? null,
       );
-      setBranch(nextUser.branch ?? enrichedSession?.branch_id ?? null);
+      setBranch(loggedIn.branch ?? enrichedSession?.branch_id ?? null);
       setDepartment(
-        nextUser.department ?? enrichedSession?.department_id ?? null,
+        loggedIn.department ?? enrichedSession?.department_id ?? null,
       );
       setPosition(
-        nextUser.position ?? enrichedSession?.position_id ?? null,
+        loggedIn.position ?? enrichedSession?.position_id ?? null,
       );
       setWorkplace(
-        nextUser.workplace ?? enrichedSession?.workplace_id ?? null,
+        loggedIn.workplace ?? enrichedSession?.workplace_id ?? null,
       );
-      setPermissions(nextUser.permissions || null);
+      setPermissions(loggedIn.permissions || null);
       const derivedWorkplaceMap =
         deriveWorkplacePositionsFromAssignments(enrichedSession);
       setWorkplacePositionMap(derivedWorkplaceMap);
@@ -196,7 +192,7 @@ export default function LoginForm() {
       } catch (err) {
         console.warn('Failed to resolve workplace positions after login', err);
       }
-      refreshCompanyModules(nextUser.company);
+      refreshCompanyModules(loggedIn.company);
       refreshModules();
       refreshTxnModules();
       setStoredCreds({ empid: '', password: '' });
