@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { HashRouter, Routes, Route, Outlet } from 'react-router-dom';
 import AuthContextProvider from './context/AuthContext.jsx';
+import { SessionDataProvider } from './context/SessionDataContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
