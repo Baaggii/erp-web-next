@@ -11,6 +11,7 @@ import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";
 import AskAIFloat from "./AskAIFloat.jsx";
 import useGeneralConfig from "../hooks/useGeneralConfig.js";
+import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
@@ -929,7 +930,6 @@ export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
-  const headerMap = {};
   const { t } = useContext(LangContext);
   const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
@@ -4173,6 +4173,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const modules = useModules();
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
+  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   useWebPushNotifications({ user, userSettings, generalConfig });
   const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
   const hasTemporaryNew = Boolean(temporary?.hasNew);
