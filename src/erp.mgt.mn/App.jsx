@@ -17,7 +17,9 @@ import RequireAuth from './components/RequireAuth.jsx';
 import RequireAdmin from './components/RequireAdmin.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import AppLayout from './components/AppLayout.jsx';
+import useHeaderMappings from './hooks/useHeaderMappings.js';
 import { useModules } from './hooks/useModules.js';
+import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 
@@ -103,13 +105,18 @@ export default function App() {
 
 function AuthedApp() {
   const modules = useModules();
+  const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
+
+  const moduleKeys = useMemo(() => modules.map((m) => m.module_key), [modules]);
+  const headerMap = useHeaderMappings(moduleKeys);
 
   const moduleMap = useMemo(() => {
     const map = {};
     modules.forEach((m) => {
       const label =
         generalConfig.general?.procLabels?.[m.module_key] ||
+        headerMap[m.module_key] ||
         m.label;
       map[m.module_key] = { ...m, label, children: [] };
     });
@@ -119,7 +126,7 @@ function AuthedApp() {
       }
     });
     return map;
-  }, [modules, generalConfig]);
+  }, [modules, generalConfig, headerMap]);
 
   // Use factories instead of eager JSX to avoid initializing route components too early.
   const componentMap = useMemo(() => {
@@ -154,8 +161,15 @@ function AuthedApp() {
       cnc_processing: () => <CncProcessingPage />,
       accounting_periods: () => <AccountingPeriodsPage />,
     };
+
+    modules.forEach((m) => {
+      if (m.module_key === 'pos_transactions') return;
+      if (txnModules.keys.has(m.module_key)) {
+        map[m.module_key] = () => <FinanceTransactionsPage moduleKey={m.module_key} />;
+      }
+    });
     return map;
-  }, []);
+  }, [modules, txnModules]);
 
   const indexComponents = useMemo(
     () => ({
@@ -171,9 +185,6 @@ function AuthedApp() {
       const children = mod.children.map((child) => renderRoute(child));
       const elementFactory = componentMap[mod.module_key];
       let element = elementFactory ? elementFactory() : null;
-      if (!element && mod.parent_key === 'forms' && mod.module_key !== 'pos_transactions') {
-        element = <FinanceTransactionsPage moduleKey={mod.module_key} moduleLabel={mod.label} />;
-      }
       if (!element) {
         element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
       }

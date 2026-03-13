@@ -25,7 +25,10 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
-import { getTransactionForms } from '../core/transactionFormsStore.js';
+import { apiGetJsonCached } from '../utils/apiClient.js';
+import {
+  resolveModuleKey
+} from '../core/notificationCore.js';
 import {
   normalizeParamName,
   isLikelyDateField,
@@ -414,6 +417,10 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     let canceled = false;
     setConfigsLoaded(false);
+    const params = new URLSearchParams();
+    if (moduleKey) params.set('moduleKey', moduleKey);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     const userRightId =
       user?.userLevel ??
       user?.userlevel_id ??
@@ -429,37 +436,51 @@ useEffect(() => {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-    const workplaceId =
-      workplace ??
-      session?.workplace_id ??
-      session?.workplaceId ??
-      null;
-    const workplacePositionId =
-      resolveWorkplacePositionForContext({
-        workplaceId,
-        session,
-        workplacePositionMap,
-      })?.positionId ??
-      session?.workplace_position_id ??
-      session?.workplacePositionId ??
-      null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    null;
+  const workplacePositionId =
+    resolveWorkplacePositionForContext({
+      workplaceId,
+      session,
+      workplacePositionMap,
+    })?.positionId ??
+    session?.workplace_position_id ??
+    session?.workplacePositionId ??
+    null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
       session?.position ??
       user?.position ??
       null;
-
-    getTransactionForms()
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const query = params.toString();
+    const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
+    apiGetJsonCached(url, { skipLoader: true }, { ttlMs: 20_000 })
       .then((data) => {
         if (canceled) return;
         const filtered = {};
         const branchId = branch != null ? String(branch) : null;
         const departmentId = department != null ? String(department) : null;
-        Object.entries(data || {}).forEach(([n, info]) => {
+        Object.entries(data).forEach(([n, info]) => {
           if (n === 'isDefault') return;
           if (!info || typeof info !== 'object') return;
-          if (info.moduleKey !== moduleKey) return;
+          const mKey = resolveModuleKey(info);
+          if (mKey !== moduleKey) return;
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
@@ -473,12 +494,13 @@ useEffect(() => {
             })
           )
             return;
-          if (!isModuleLicensed(licensed, info.moduleKey)) return;
+          if (!isModuleLicensed(licensed, mKey))
+            return;
           filtered[n] = info;
         });
         setConfigs(filtered);
         if (name && filtered[name]) {
-          const tbl = filtered[name].table;
+          const tbl = filtered[name].table ?? filtered[name];
           if (tbl !== table) setTable(tbl);
         }
       })
@@ -542,11 +564,14 @@ useEffect(() => {
       return;
     }
     let canceled = false;
-    getTransactionForms()
-      .then((allForms) => {
+    apiGetJsonCached(
+      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+      { skipLoader: true },
+      { ttlMs: 20_000 },
+    )
+      .then((cfg) => {
         if (canceled) return;
-        const cfg = allForms?.[name] || null;
-        if (cfg && cfg.moduleKey && cfg.table === table) {
+        if (cfg && cfg.moduleKey) {
           const prefix = reportProcPrefix;
           let nextCfg = cfg;
           if (prefix && Array.isArray(cfg.procedures)) {
