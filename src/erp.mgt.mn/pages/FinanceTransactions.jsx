@@ -27,6 +27,9 @@ import {
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import { apiGetJsonCached } from '../utils/apiClient.js';
 import {
+  resolveModuleKey
+} from '../core/notificationCore.js';
+import {
   normalizeParamName,
   isLikelyDateField,
   isStartDateParam,
@@ -48,10 +51,6 @@ function isEqual(a, b) {
   } catch {
     return false;
   }
-}
-
-function resolveModuleKey(info) {
-  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
 }
 
 export default function FinanceTransactions({ moduleKey = 'finance_transactions', moduleLabel = '' }) {

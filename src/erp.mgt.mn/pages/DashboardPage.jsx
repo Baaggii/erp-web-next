@@ -12,6 +12,14 @@ import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { cachedFetch } from '../core/apiCache.js';
+import {
+  normalizeText,
+  normalizeMatch,
+  parseListValue,
+  getRowValue,
+  normalizeFlagValue,
+  getRowFieldValue
+} from '../core/notificationCore.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -29,66 +37,6 @@ const DEFAULT_PLAN_NOTIFICATION_FIELDS = ['is_plan', 'is_plan_completion'];
 const DEFAULT_PLAN_NOTIFICATION_VALUES = ['1'];
 const DEFAULT_DUTY_NOTIFICATION_FIELDS = [];
 const DEFAULT_DUTY_NOTIFICATION_VALUES = ['1'];
-
-function normalizeText(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim().toLowerCase();
-}
-
-function normalizeFieldName(value) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function normalizeMatch(value) {
-  if (value === undefined || value === null) return '';
-  return String(value).trim().toLowerCase();
-}
-
-function parseListValue(value) {
-  if (Array.isArray(value)) {
-    return value.map((entry) => String(entry).trim()).filter(Boolean);
-  }
-  if (value === undefined || value === null) return [];
-  if (typeof value === 'number' || typeof value === 'boolean') return [String(value)];
-  if (typeof value === 'string') {
-    return value.split(',').map((entry) => entry.trim()).filter(Boolean);
-  }
-  return [];
-}
-
-function normalizeFlagValue(value) {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === '') return false;
-    if (['1', 'true', 'yes', 'y', 'on', 'enabled'].includes(normalized)) return true;
-    if (['0', 'false', 'no', 'n', 'off', 'disabled'].includes(normalized)) return false;
-    const num = Number(normalized);
-    if (!Number.isNaN(num)) return num !== 0;
-    return true;
-  }
-  return Boolean(value);
-}
-
-function getRowValue(row, keys) {
-  if (!row || typeof row !== 'object') return null;
-  for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
-      return row[key];
-    }
-  }
-  return null;
-}
-
-function getRowFieldValue(row, fieldName) {
-  if (!row || !fieldName) return undefined;
-  if (Object.prototype.hasOwnProperty.call(row, fieldName)) return row[fieldName];
-  const normalizedTarget = normalizeFieldName(fieldName);
-  if (!normalizedTarget) return undefined;
-  const matchKey = Object.keys(row).find((key) => normalizeFieldName(key) === normalizedTarget);
-  return matchKey ? row[matchKey] : undefined;
-}
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
