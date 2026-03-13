@@ -25,11 +25,13 @@ import {
   resolveSnapshotSource,
 } from '../utils/normalizeSnapshot.js';
 import {
+  getParamName,
   normalizeParamName,
   isLikelyDateField,
   isStartDateParam,
   isEndDateParam,
 } from '../core/paramUtils.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 function normalizeNumericId(value) {
   if (value == null) return null;
@@ -491,7 +493,7 @@ export default function Reports() {
   const normalizedProcParams = useMemo(() => {
     return procParams.map((param) => ({
       original: param,
-      normalized: typeof param === 'string' ? normalizeParamName(param) : '',
+      normalized: normalizeParamName(getParamName(param)),
     }));
   }, [procParams]);
 
@@ -1220,13 +1222,7 @@ export default function Reports() {
     if (branch) params.set('branchId', branch);
     if (department) params.set('departmentId', department);
     if (prefix) params.set('prefix', prefix);
-    fetch(
-      `/api/report_procedures${
-        params.toString() ? `?${params.toString()}` : ''
-      }`,
-      { credentials: 'include' },
-    )
-      .then((res) => (res.ok ? res.json() : { procedures: [] }))
+    cachedFetch(`/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`)
       .then((data) => {
         const list = Array.isArray(data.procedures)
           ? data.procedures.map((p) =>
@@ -1247,16 +1243,15 @@ export default function Reports() {
     const params = new URLSearchParams();
     if (branch) params.set('branchId', branch);
     if (department) params.set('departmentId', department);
-    fetch(
-      `/api/procedures/${encodeURIComponent(selectedProc)}/params${
-        params.toString() ? `?${params.toString()}` : ''
-      }`,
-      {
-        credentials: 'include',
-      },
-    )
-      .then((res) => (res.ok ? res.json() : { parameters: [] }))
-      .then((data) => setProcParams(data.parameters || []))
+    cachedFetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params${params.toString() ? `?${params.toString()}` : ''}`)
+      .then((data) => {
+        const list = Array.isArray(data?.parameters) ? data.parameters : [];
+        setProcParams(
+          list
+            .filter((param) => param && typeof param === 'object' && typeof param.name === 'string')
+            .map((param) => ({ name: param.name, dataType: param.dataType })),
+        );
+      })
       .catch(() => setProcParams([]));
   }, [selectedProc, branch, department]);
 
@@ -1470,7 +1465,7 @@ export default function Reports() {
       if (startIndices.has(index)) return startDate || null;
       if (endIndices.has(index)) return endDate || null;
       const name =
-        typeof p === 'string' ? normalizeParamName(p) : '';
+        normalizeParamName(getParamName(p));
       if (!name) return null;
       if (
         name.includes('sessionworkplace') ||
@@ -1560,14 +1555,11 @@ export default function Reports() {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      const rawValue = auto ?? manualParams[p] ?? null;
+      const rawValue = auto ?? manualParams[getParamName(p)] ?? null;
       if (rawValue === null || rawValue === undefined) {
         return rawValue;
       }
-      if (typeof p !== 'string') {
-        return rawValue;
-      }
-      const normalizedName = normalizeParamName(p);
+      const normalizedName = normalizeParamName(getParamName(p));
       if (!normalizedName) {
         return rawValue;
       }
@@ -1701,7 +1693,8 @@ export default function Reports() {
       return;
     }
     const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = finalParams[i];
+      const paramName = getParamName(p);
+      acc[paramName] = finalParams[i];
       return acc;
     }, {});
     const label = getLabel(selectedProc);
@@ -4179,21 +4172,22 @@ export default function Reports() {
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
               if (autoParams[i] !== null) return null;
-              const val = manualParams[p] || '';
-              const inputRef = manualInputRefs.current[p];
+              const paramName = getParamName(p);
+              const val = manualParams[paramName] || '';
+              const inputRef = manualInputRefs.current[paramName];
               return (
                 <AutoSizingTextInput
-                  key={p}
+                  key={paramName}
                   type="text"
-                  placeholder={p}
+                  placeholder={paramName}
                   value={val}
                   onChange={(e) =>
-                    handleManualParamChange(p, e.target.value)
+                    handleManualParamChange(paramName, e.target.value)
                   }
                   style={{ marginLeft: '0.5rem' }}
                   ref={inputRef}
                   onKeyDown={(event) =>
-                    handleParameterKeyDown(event, inputRef, p)
+                    handleParameterKeyDown(event, inputRef, paramName)
                   }
                 />
               );
