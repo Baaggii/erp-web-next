@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
-import FinanceTransactionsPage from './FinanceTransactions.jsx';
+import { Link } from 'react-router-dom';
 import { useModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useCompanyModules } from '../hooks/useCompanyModules.js';
@@ -15,6 +15,10 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
+import { apiGetJsonCached } from '../utils/apiClient.js';
+import modulePath from '../utils/modulePath.js';
+
+const preloadFinanceTransactions = () => import('./FinanceTransactions.jsx');
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -28,8 +32,7 @@ export default function FormsIndex() {
     user,
     workplace,
     workplacePositionMap,
-  } =
-    useContext(AuthContext);
+  } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
@@ -78,20 +81,20 @@ export default function FormsIndex() {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-  const workplaceId =
-    workplace ??
-    session?.workplace_id ??
-    session?.workplaceId ??
-    null;
-  const workplacePositionId =
-    resolveWorkplacePositionForContext({
-      workplaceId,
-      session,
-      workplacePositionMap,
-    })?.positionId ??
-    session?.workplace_position_id ??
-    session?.workplacePositionId ??
-    null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    const workplacePositionId =
+      resolveWorkplacePositionForContext({
+        workplaceId,
+        session,
+        workplacePositionMap,
+      })?.positionId ??
+      session?.workplace_position_id ??
+      session?.workplacePositionId ??
+      null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
@@ -111,13 +114,13 @@ export default function FormsIndex() {
       params.set('workplacePositionId', workplacePositionId);
     }
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
-    fetch(url, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+
+    apiGetJsonCached(url, { skipLoader: true }, { ttlMs: 20_000 })
       .then((data) => {
         const grouped = {};
         const branchId = branch != null ? String(branch) : null;
         const departmentId = department != null ? String(department) : null;
-        Object.entries(data).forEach(([name, info]) => {
+        Object.entries(data || {}).forEach(([name, info]) => {
           if (name === 'isDefault') return;
           if (!info || typeof info !== 'object') return;
           const key = info.moduleKey || 'forms';
@@ -135,10 +138,8 @@ export default function FormsIndex() {
             })
           )
             return;
-          if (!isModulePermissionGranted(perms, key))
-            return;
-          if (!isModuleLicensed(licensed, key))
-            return;
+          if (!isModulePermissionGranted(perms, key)) return;
+          if (!isModuleLicensed(licensed, key)) return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);
         });
@@ -159,19 +160,39 @@ export default function FormsIndex() {
           <p>{t('formsNone', 'No forms found.')}</p>
         </TooltipWrapper>
       ) : (
-        groups.map(([key]) => {
-          const mod = modules.find((m) => m.module_key === key);
-          const label = mod
-            ? generalConfig.general?.procLabels?.[mod.module_key] ||
-              headerMap[mod.module_key] ||
-              mod.label
-            : key;
-          return (
-            <div key={key} style={{ marginBottom: '1rem' }}>
-              <FinanceTransactionsPage moduleKey={key} moduleLabel={label} />
-            </div>
-          );
-        })
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          {groups.map(([key]) => {
+            const mod = modules.find((m) => m.module_key === key);
+            const label = mod
+              ? generalConfig.general?.procLabels?.[mod.module_key] ||
+                headerMap[mod.module_key] ||
+                mod.label
+              : key;
+            const to = mod ? modulePath(mod, moduleMap) : `/${key.replace(/_/g, '-')}`;
+            return (
+              <Link
+                key={key}
+                to={to}
+                onMouseEnter={preloadFinanceTransactions}
+                onFocus={preloadFinanceTransactions}
+                style={{
+                  display: 'block',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  background: '#fff',
+                }}
+              >
+                <strong>{label}</strong>
+                <div style={{ opacity: 0.65, marginTop: '0.2rem' }}>
+                  {t('formsOpenModule', 'Open module')}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       )}
     </div>
   );
