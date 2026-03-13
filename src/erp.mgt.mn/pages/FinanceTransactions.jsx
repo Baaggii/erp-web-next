@@ -25,7 +25,7 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
-import { getTransactionForms } from '../core/transactionFormsCache.js';
+import { apiGetJsonCached } from '../utils/apiClient.js';
 
 if (typeof window !== 'undefined') {
   window.showTemporaryRequesterUI =
@@ -466,16 +466,14 @@ useEffect(() => {
     };
   }, [searchParams]);
 
-
-  useEffect(() => {
-    setConfigsLoaded(false);
-  }, [moduleKey, branch, department]);
-
   useEffect(() => {
     console.log('FinanceTransactions load forms effect');
-    if (configsLoaded) return;
     let canceled = false;
     setConfigsLoaded(false);
+    const params = new URLSearchParams();
+    if (moduleKey) params.set('moduleKey', moduleKey);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     const userRightId =
       user?.userLevel ??
       user?.userlevel_id ??
@@ -491,24 +489,41 @@ useEffect(() => {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-    const workplaceId = workplace ?? session?.workplace_id ?? session?.workplaceId ?? null;
-    const workplacePositionId =
-      resolveWorkplacePositionForContext({
-        workplaceId,
-        session,
-        workplacePositionMap,
-      })?.positionId ??
-      session?.workplace_position_id ??
-      session?.workplacePositionId ??
-      null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    null;
+  const workplacePositionId =
+    resolveWorkplacePositionForContext({
+      workplaceId,
+      session,
+      workplacePositionMap,
+    })?.positionId ??
+    session?.workplace_position_id ??
+    session?.workplacePositionId ??
+    null;
     const positionId =
       session?.employment_position_id ??
       session?.position_id ??
       session?.position ??
       user?.position ??
       null;
-
-    getTransactionForms()
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+    const query = params.toString();
+    const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
+    apiGetJsonCached(url, { skipLoader: true }, { ttlMs: 20_000 })
       .then((data) => {
         if (canceled) return;
         const filtered = {};
@@ -532,7 +547,8 @@ useEffect(() => {
             })
           )
             return;
-          if (!isModuleLicensed(licensed, mKey)) return;
+          if (!isModuleLicensed(licensed, mKey))
+            return;
           filtered[n] = info;
         });
         setConfigs(filtered);
@@ -554,7 +570,6 @@ useEffect(() => {
       canceled = true;
     };
   }, [
-    configsLoaded,
     moduleKey,
     company,
     branch,
@@ -566,6 +581,7 @@ useEffect(() => {
     workplace,
     workplacePositionMap,
   ]);
+
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
     if (!name) {
@@ -601,10 +617,13 @@ useEffect(() => {
       return;
     }
     let canceled = false;
-    getTransactionForms()
-      .then((forms) => {
+    apiGetJsonCached(
+      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+      { skipLoader: true },
+      { ttlMs: 20_000 },
+    )
+      .then((cfg) => {
         if (canceled) return;
-        const cfg = forms?.[name] || null;
         if (cfg && cfg.moduleKey) {
           const prefix = reportProcPrefix;
           let nextCfg = cfg;

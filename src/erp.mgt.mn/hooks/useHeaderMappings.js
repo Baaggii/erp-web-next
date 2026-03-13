@@ -43,6 +43,9 @@ export default function useHeaderMappings(headers = [], locale, options = {}) {
         const keyFor = (h) => `${lng}|${h}`;
         const missing = unique.filter((h) => cache[keyFor(h)] === undefined);
         if (missing.length > 0) {
+          const params = new URLSearchParams();
+          params.set('headers', missing.join(','));
+          if (lng) params.set('lang', lng);
           try {
             const data = await cachedFetch(
               `/api/header_mappings?${params.toString()}`,
