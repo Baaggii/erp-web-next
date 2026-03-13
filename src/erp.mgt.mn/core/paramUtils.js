@@ -1,4 +1,5 @@
 export function getParamName(param) {
+  if (typeof param === 'string') return param;
   if (!param || typeof param !== 'object') return '';
   return typeof param.name === 'string' ? param.name : '';
 }
