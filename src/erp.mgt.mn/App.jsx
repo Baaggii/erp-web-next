@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { HashRouter, Routes, Route, Outlet } from 'react-router-dom';
 import AuthContextProvider from './context/AuthContext.jsx';
+import { SessionDataProvider } from './context/SessionDataContext.jsx';
 import { TabProvider } from './context/TabContext.jsx';
 import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
@@ -78,26 +79,28 @@ export default function App() {
   return (
     <I18nProvider>
       <ToastProvider>
-        <AuthContextProvider>
-          <TxnSessionProvider>
-            <LoadingProvider>
-              <TabProvider>
-                <HashRouter>
-                  <ErrorBoundary>
-                    <Suspense fallback={<PageSkeleton />}>
-                      <Routes>
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route element={<RequireAuth />}>
-                          <Route path="/*" element={<AuthedApp />} />
-                        </Route>
-                      </Routes>
-                    </Suspense>
-                  </ErrorBoundary>
-                </HashRouter>
-              </TabProvider>
-            </LoadingProvider>
-          </TxnSessionProvider>
-        </AuthContextProvider>
+        <SessionDataProvider>
+          <AuthContextProvider>
+            <TxnSessionProvider>
+              <LoadingProvider>
+                <TabProvider>
+                  <HashRouter>
+                    <ErrorBoundary>
+                      <Suspense fallback={<PageSkeleton />}>
+                        <Routes>
+                          <Route path="/login" element={<LoginPage />} />
+                          <Route element={<RequireAuth />}>
+                            <Route path="/*" element={<AuthedApp />} />
+                          </Route>
+                        </Routes>
+                      </Suspense>
+                    </ErrorBoundary>
+                  </HashRouter>
+                </TabProvider>
+              </LoadingProvider>
+            </TxnSessionProvider>
+          </AuthContextProvider>
+        </SessionDataProvider>
       </ToastProvider>
     </I18nProvider>
   );

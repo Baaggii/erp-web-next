@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { useSessionData } from '../context/SessionDataContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTxnModules } from './useTxnModules.js';
@@ -33,15 +34,22 @@ export function refreshModules() {
 export function useModules() {
   const { branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
+  const { sessionData } = useSessionData();
   const txnModules = useTxnModules();
   const txnSignature = useMemo(() => computeTxnSignature(txnModules), [txnModules]);
   const [modules, setModules] = useState(cache.data || []);
 
   async function fetchModules(signature = txnSignature) {
     try {
-      // Server returns modules already filtered by license and permission.
-      const res = await fetch('/api/modules', { credentials: 'include' });
-      let rows = res.ok ? await res.json() : [];
+      // Reuse initialized session cache when available.
+      let rows = sessionData?.loaded && Array.isArray(sessionData.modules)
+        ? sessionData.modules
+        : null;
+      if (!rows) {
+        // Server returns modules already filtered by license and permission.
+        const res = await fetch('/api/modules', { credentials: 'include' });
+        rows = res.ok ? await res.json() : [];
+      }
       if (!Array.isArray(rows)) rows = [];
       rows = rows
         .filter((m) => m && typeof m === 'object')
@@ -159,14 +167,14 @@ export function useModules() {
     } else {
       setModules(cache.data);
     }
-  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature, sessionData?.loaded, sessionData?.modules]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules(txnSignature);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature, sessionData?.loaded, sessionData?.modules]);
 
   return modules;
 }
