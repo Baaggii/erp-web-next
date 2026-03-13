@@ -7,6 +7,11 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { resolveFeatureToggle, withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
+import { getDisplayFieldsConfig } from '../core/displayFieldsStore.js';
+import {
+  getTransactionForms,
+  buildTransactionFormIndex,
+} from '../core/transactionFormsStore.js';
 import {
   buildEndpointRequestMappingDefaults,
   mergePosApiMappingDefaults,
@@ -732,21 +737,9 @@ export default function PosTxnConfig() {
       })
       .catch(() => setPosApiEndpoints([]));
 
-    fetch('/api/transaction_forms', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
+    getTransactionForms()
       .then((data) => {
-        const byTable = {};
-        const names = [];
-        const mapping = {};
-        const fields = {};
-        for (const [name, info] of Object.entries(data)) {
-          const tbl = info.table;
-          mapping[name] = tbl;
-          names.push(name);
-          fields[name] = Array.isArray(info.visibleFields) ? info.visibleFields : [];
-          if (!byTable[tbl]) byTable[tbl] = [];
-          byTable[tbl].push(name);
-        }
+        const { byTable, names, mapping, fields } = buildTransactionFormIndex(data);
         setFormOptions(byTable);
         setFormNames(names);
         setFormToTable(mapping);
@@ -784,45 +777,25 @@ export default function PosTxnConfig() {
       .then((data) => setWorkplaces(data.rows || []))
       .catch(() => setWorkplaces([]));
 
-    fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setBranchCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+    getDisplayFieldsConfig('code_branches')
+      .then(setBranchCfg);
 
-    fetch('/api/display_fields?table=user_levels', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setUserRightCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
+    getDisplayFieldsConfig('user_levels')
+      .then(setUserRightCfg);
 
-    fetch('/api/display_fields?table=code_position', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setPositionCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
+    getDisplayFieldsConfig('code_position')
+      .then(setPositionCfg);
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => setDepartments(data.rows || []))
       .catch(() => setDepartments([]));
 
-    fetch('/api/display_fields?table=code_department', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setDeptCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
+    getDisplayFieldsConfig('code_department')
+      .then(setDeptCfg);
 
-    fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setWorkplaceCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
+    getDisplayFieldsConfig('code_workplace')
+      .then(setWorkplaceCfg);
 
   }, []);
 

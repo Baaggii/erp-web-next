@@ -14,6 +14,11 @@ import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
 import { isModulePermissionGranted } from '../utils/moduleAccess.js';
+import { getDisplayFieldsConfig } from '../core/displayFieldsStore.js';
+import {
+  getTransactionForms,
+  filterTransactionFormsByModule,
+} from '../core/transactionFormsStore.js';
 
 
 function normalizeFormConfig(info = {}) {
@@ -373,8 +378,7 @@ export default function FormsManagement() {
   }, [table, tableColumns, tables]);
 
   useEffect(() => {
-    fetch('/api/transaction_forms', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { isDefault: true }))
+    getTransactionForms()
       .then((data) => {
         const arr = [];
         Object.entries(data || {}).forEach(([n, info]) => {
@@ -619,30 +623,20 @@ export default function FormsManagement() {
         .then((data) => setTxnTypes(data.rows || []))
         .catch(() => setTxnTypes([]));
 
-      fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
-        .then(setBranchCfg)
-        .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+      getDisplayFieldsConfig('code_branches')
+        .then(setBranchCfg);
 
-      fetch('/api/display_fields?table=code_department', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
-        .then(setDeptCfg)
-        .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
+      getDisplayFieldsConfig('code_department')
+        .then(setDeptCfg);
 
-      fetch('/api/display_fields?table=user_levels', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
-        .then(setUserRightCfg)
-        .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
+      getDisplayFieldsConfig('user_levels')
+        .then(setUserRightCfg);
 
-      fetch('/api/display_fields?table=code_position', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
-        .then(setPositionCfg)
-        .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
+      getDisplayFieldsConfig('code_position')
+        .then(setPositionCfg);
 
-      fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
-        .then(setWorkplaceCfg)
-        .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
+      getDisplayFieldsConfig('code_workplace')
+        .then(setWorkplaceCfg);
 
       fetch(
         `/api/procedures${
@@ -673,11 +667,7 @@ export default function FormsManagement() {
       .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
         setIsDefault(!!data.isDefault);
-        const filtered = {};
-        Object.entries(data).forEach(([n, info]) => {
-          if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
-          filtered[n] = info;
-        });
+        const filtered = filterTransactionFormsByModule(data, moduleKey);
         setNames(Object.keys(filtered));
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
@@ -1083,9 +1073,8 @@ export default function FormsManagement() {
       if (!res.ok) throw new Error('failed');
       refreshTxnModules();
       refreshModules();
-      const allRes = await fetch('/api/transaction_forms', { credentials: 'include' });
-      if (allRes.ok) {
-        const allData = await allRes.json();
+      const allData = await getTransactionForms();
+      if (allData) {
         if (Object.prototype.hasOwnProperty.call(allData, 'isDefault')) {
           setIsDefault(!!allData.isDefault);
         }
@@ -1109,11 +1098,7 @@ export default function FormsManagement() {
         });
         const data = resCfg.ok ? await resCfg.json() : { isDefault: true };
         setIsDefault(!!data.isDefault);
-        const filtered = {};
-        Object.entries(data).forEach(([n, info]) => {
-          if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
-          filtered[n] = info;
-        });
+        const filtered = filterTransactionFormsByModule(data, moduleKey);
         const formNames = Object.keys(filtered);
         setNames(formNames);
         if (filtered[name]) {
