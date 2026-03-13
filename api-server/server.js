@@ -72,6 +72,7 @@ import reportRoutes from "./routes/report.js";
 import journalRoutes from "./routes/journal.js";
 import periodControlRoutes from "./routes/period_control.js";
 import webPushRoutes from "./routes/web_push.js";
+import systemRoutes from "./routes/system.routes.js";
 import { setNotificationEmitter } from "./services/transactionNotificationQueue.js";
 import {
   setNotificationEmitter as setUnifiedNotificationEmitter,
@@ -95,6 +96,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set("trust proxy", 1); // behind a single reverse proxy
+
+// Public system endpoints are mounted first so they bypass auth, CSRF and API rate limiting.
+app.use("/api", systemRoutes);
 
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
