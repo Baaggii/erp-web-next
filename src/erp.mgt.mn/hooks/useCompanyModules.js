@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { cachedFetch } from '../core/apiCache.js';
 
 const cache = {};
 const emitter = new EventTarget();
@@ -13,10 +14,7 @@ export function useCompanyModules(companyId) {
 
   async function fetchModules(id) {
     try {
-      const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`, {
-        credentials: 'include',
-      });
-      const rows = res.ok ? await res.json() : [];
+      const rows = await cachedFetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`);
       const map = {};
       rows.forEach((r) => {
         if (Number(r.company_id) === Number(id) && r.licensed) {
@@ -31,7 +29,14 @@ export function useCompanyModules(companyId) {
     }
   }
 
+  const loaded = useRef(false);
+
   useEffect(() => {
+    if (loaded.current && companyId != null && cache[companyId]) {
+      setModules(cache[companyId]);
+      return;
+    }
+    loaded.current = true;
     if (companyId == null) {
       setModules(null);
       return;
