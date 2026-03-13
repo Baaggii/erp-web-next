@@ -11,6 +11,7 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -139,86 +140,35 @@ export default function DashboardPage() {
       return allowedTabs.current.has(value) ? value : 'audition';
     };
 
-    const pickTabFromForms = (forms, predicate) => {
-      const entries = Object.entries(forms || {}).filter(
-        ([name, info]) => name !== 'isDefault' && info && typeof info === 'object',
-      );
-      const matching = entries.filter(([, info]) => {
-        if (typeof predicate !== 'function') return true;
-        return predicate(info);
+    cachedFetch('/api/dashboard_sections/overview')
+      .then((overviewData) => {
+        if (cancelled) return;
+        const reportTab = normalizeTab(overviewData?.reportApprovalsDashboardTab);
+        const changeTab = normalizeTab(overviewData?.changeRequestsDashboardTab);
+        const temporaryTab = normalizeTab(overviewData?.temporaryTransactionsDashboardTab);
+
+        setWorkflowSectionTabs({
+          report: reportTab,
+          change: changeTab,
+          temporary: temporaryTab,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWorkflowSectionTabs({
+          report: 'audition',
+          change: 'audition',
+          temporary: 'audition',
+        });
       });
-      const source = matching.length > 0 ? matching : entries;
-      for (const [, info] of source) {
-        const tab = normalizeTab(info?.notificationRedirectTab ?? info?.notification_redirect_tab);
-        if (tab) return tab;
-      }
-      return 'audition';
-    };
-
-    Promise.allSettled([
-      fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
-      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
-    ]).then(([reportResult, transactionResult]) => {
-      if (cancelled) return;
-      const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
-      const transactionData =
-        transactionResult.status === 'fulfilled' ? transactionResult.value || {} : {};
-
-      const reportTab = normalizeTab(reportData?.reportApprovalsDashboardTab);
-      const changeTab = normalizeTab(
-        transactionData?.changeRequestsDashboardTab ||
-          transactionData?.change_requests_dashboard_tab ||
-          pickTabFromForms(transactionData, (info) =>
-            Array.isArray(info?.notifyFields)
-              ? info.notifyFields.length > 0
-              : Array.isArray(info?.notify_fields) && info.notify_fields.length > 0,
-          ),
-      );
-      const temporaryTab = normalizeTab(
-        transactionData?.temporaryTransactionsDashboardTab ||
-          transactionData?.temporary_transactions_dashboard_tab ||
-          pickTabFromForms(
-            transactionData,
-            (info) =>
-              Boolean(info?.allowTemporarySubmission) || Boolean(info?.supportsTemporarySubmission),
-          ),
-      );
-
-      setWorkflowSectionTabs({
-        report: reportTab,
-        change: changeTab,
-        temporary: temporaryTab,
-      });
-    });
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => {
-        if (cancelled) return;
-        setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
-      })
-      .catch(() => {
-        if (!cancelled) setCodeTransactions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setCodeTransactions([]);
   }, []);
 
   const dotBadgeStyle = {
