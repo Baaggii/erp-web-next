@@ -17,6 +17,7 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { getColumnDataType } from '../core/columnTypeUtils.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import {
   assignArrayMetadata,
@@ -848,11 +849,7 @@ function InlineTransactionTable(
       const name = typeof c === 'string' ? c : c.name;
       if (!name) return;
       const key = columnCaseMap[name.toLowerCase()] || name;
-      const typ =
-        (typeof c === 'string'
-          ? ''
-          : c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
-          .toLowerCase();
+      const typ = typeof c === 'string' ? '' : getColumnDataType(c);
       if (typ) map[key] = typ;
     });
     return map;
