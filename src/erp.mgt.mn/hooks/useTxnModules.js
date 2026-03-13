@@ -1,11 +1,10 @@
-import { useEffect, useState, useContext, useRef } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import { isModuleLicensed } from '../utils/moduleAccess.js';
-import { cachedFetch } from '../core/apiCache.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -109,7 +108,7 @@ export function refreshTxnModules() {
   emitter.dispatchEvent(new Event('refresh'));
 }
 
-export function useTxnModules(options = {}) {
+export function useTxnModules() {
   const {
     branch,
     department,
@@ -123,8 +122,6 @@ export function useTxnModules(options = {}) {
   } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
-  const { enabled = true } = options;
-  const initialized = useRef({ ready: false, key: null });
 
   function applyDerivedState(data) {
     const userRightId =
@@ -245,8 +242,11 @@ export function useTxnModules(options = {}) {
       ) {
         params.set('workplacePositionId', currentWorkplacePosition);
       }
-      const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
-      const data = await cachedFetch(url, { credentials: 'include' }, 5 * 60 * 1000);
+      const res = await fetch(
+        `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
+        { credentials: 'include' },
+      );
+      const data = res.ok ? await res.json() : {};
       if (
         branch !== currentBranch ||
         department !== currentDepartment ||
@@ -282,11 +282,6 @@ export function useTxnModules(options = {}) {
 
   useEffect(() => {
     debugLog('useTxnModules effect: initial fetch');
-    if (!enabled) {
-      setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
-      return;
-    }
-
     const expectedWorkplacePositionId =
       resolveWorkplacePositionForContext({
         workplaceId: workplace ?? session?.workplace_id ?? session?.workplaceId ?? null,
@@ -296,19 +291,6 @@ export function useTxnModules(options = {}) {
       session?.workplace_position_id ??
       session?.workplacePositionId ??
       null;
-    const effectKey = [
-      branch ?? '',
-      department ?? '',
-      company ?? '',
-      user?.userLevel ?? user?.userlevel_id ?? user?.userlevelId ?? session?.user_level ?? session?.userlevel_id ?? session?.userlevelId ?? '',
-      session?.user_level_name ?? session?.userLevelName ?? user?.userLevelName ?? user?.userlevel_name ?? user?.userlevelName ?? '',
-      workplace ?? session?.workplace_id ?? session?.workplaceId ?? '',
-      position ?? session?.employment_position_id ?? session?.position_id ?? session?.position ?? '',
-      expectedWorkplacePositionId ?? '',
-    ].join('|');
-    if (initialized.current.ready && initialized.current.key === effectKey) return;
-    initialized.current = { ready: true, key: effectKey };
-
     if (
       !cache.forms ||
       cache.branchId !== branch ||
@@ -354,17 +336,14 @@ export function useTxnModules(options = {}) {
     workplace,
     position,
     workplacePositionMap,
-    enabled,
   ]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
-    const handler = () => {
-      if (enabled) fetchForms();
-    };
+    const handler = () => fetchForms();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [branch, department, company, perms, licensed, session, user, workplace, workplacePositionMap, enabled]);
+  }, [branch, department, company, perms, licensed, session, user, workplace, workplacePositionMap]);
 
   return state;
 }
