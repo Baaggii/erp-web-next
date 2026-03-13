@@ -39,6 +39,7 @@ import {
   createGeneratedColumnPipeline,
   recalcTotals as recalcPosTotals,
 } from '../utils/transactionValues.js';
+import { resolveFieldKind } from '../core/columnTypeUtils.js';
 
 export { syncCalcFields };
 export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
@@ -2390,24 +2391,7 @@ export default function PosTransactionsPage() {
       if (!visibleTables.has(tbl)) return;
       const inner = {};
       cols.forEach((c) => {
-        const typ = (
-          c.type ||
-          c.columnType ||
-          c.dataType ||
-          c.DATA_TYPE ||
-          ''
-        ).toLowerCase();
-        if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
-          inner[c.name] = 'number';
-        } else if (typ.includes('timestamp') || typ.includes('datetime')) {
-          inner[c.name] = 'datetime';
-        } else if (typ.includes('date')) {
-          inner[c.name] = 'date';
-        } else if (typ.includes('time')) {
-          inner[c.name] = 'time';
-        } else {
-          inner[c.name] = 'string';
-        }
+        inner[c.name] = resolveFieldKind(c);
       });
       map[tbl] = inner;
     });
