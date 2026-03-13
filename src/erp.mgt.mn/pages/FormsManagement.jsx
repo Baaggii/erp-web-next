@@ -3,8 +3,6 @@ import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import { fetchDisplayFieldsCached } from '../hooks/useDisplayFields.js';
-import { fetchTransactionFormsCached } from '../hooks/useTransactionForms.js';
 import useHeaderMappings, {
   clearHeaderMappingsCache,
 } from '../hooks/useHeaderMappings.js';
@@ -621,23 +619,28 @@ export default function FormsManagement() {
         .then((data) => setTxnTypes(data.rows || []))
         .catch(() => setTxnTypes([]));
 
-      fetchDisplayFieldsCached('code_branches')
+      fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setBranchCfg)
         .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
 
-      fetchDisplayFieldsCached('code_department')
+      fetch('/api/display_fields?table=code_department', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setDeptCfg)
         .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
 
-      fetchDisplayFieldsCached('user_levels')
+      fetch('/api/display_fields?table=user_levels', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setUserRightCfg)
         .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
 
-      fetchDisplayFieldsCached('code_position')
+      fetch('/api/display_fields?table=code_position', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setPositionCfg)
         .catch(() => setPositionCfg({ idField: null, displayFields: [] }));
 
-      fetchDisplayFieldsCached('code_workplace')
+      fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : { idField: null, displayFields: [] }))
         .then(setWorkplaceCfg)
         .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
 
@@ -666,7 +669,8 @@ export default function FormsManagement() {
     }
     ensureColumnsLoaded(table, { updatePrimary: true });
     const params = new URLSearchParams({ table, moduleKey });
-    fetchTransactionFormsCached(params.toString())
+    fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((data) => {
         setIsDefault(!!data.isDefault);
         const filtered = {};
@@ -694,7 +698,8 @@ export default function FormsManagement() {
 
   useEffect(() => {
     if (!table || !name || !names.includes(name)) return;
-    fetchTransactionFormsCached(`table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`)
+    fetch(`/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { isDefault: true }))
       .then((cfg) => {
         setIsDefault(!!cfg.isDefault);
         setModuleKey(cfg.moduleKey || '');
