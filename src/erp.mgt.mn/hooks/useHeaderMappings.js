@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import { cachedFetch } from '../core/apiCache.js';
 
 // Cache translations by "locale|header" so different locales don't collide.
 const cache = {};
@@ -17,11 +18,12 @@ export function clearHeaderMappingsCache(headers) {
   listeners.forEach((fn) => fn());
 }
 
-export default function useHeaderMappings(headers = [], locale) {
+export default function useHeaderMappings(headers = [], locale, options = {}) {
   const { lang, fallbackLangs } = useContext(I18nContext);
   const currentLang = locale || lang;
   const [map, setMap] = useState({});
   const [tick, setTick] = useState(0);
+  const { enabled = true } = options;
 
   // Re-fetch when the cache is cleared elsewhere.
   useEffect(() => {
@@ -31,6 +33,11 @@ export default function useHeaderMappings(headers = [], locale) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setMap({});
+      return;
+    }
+
     const unique = Array.from(new Set(headers.filter(Boolean)));
     if (unique.length === 0) {
       setMap({});
@@ -50,10 +57,11 @@ export default function useHeaderMappings(headers = [], locale) {
           params.set('headers', missing.join(','));
           if (lng) params.set('lang', lng);
           try {
-            const res = await fetch(`/api/header_mappings?${params.toString()}`, {
-              credentials: 'include',
-            });
-            const data = res.ok ? await res.json() : {};
+            const data = await cachedFetch(
+              `/api/header_mappings?${params.toString()}`,
+              { credentials: 'include' },
+              30 * 60 * 1000,
+            );
             Object.entries(data).forEach(([k, v]) => {
               cache[keyFor(k)] = v;
             });
@@ -77,6 +85,7 @@ export default function useHeaderMappings(headers = [], locale) {
     currentLang,
     (fallbackLangs || []).join(','),
     tick,
+    enabled,
   ]);
 
   return map;

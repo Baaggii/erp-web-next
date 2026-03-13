@@ -105,11 +105,11 @@ export default function App() {
 
 function AuthedApp() {
   const modules = useModules();
-  const txnModules = useTxnModules();
+  const txnModules = useTxnModules({ enabled: false });
   const generalConfig = useGeneralConfig();
 
   const moduleKeys = useMemo(() => modules.map((m) => m.module_key), [modules]);
-  const headerMap = useHeaderMappings(moduleKeys);
+  const headerMap = useHeaderMappings(moduleKeys, undefined, { enabled: false });
 
   const moduleMap = useMemo(() => {
     const map = {};
