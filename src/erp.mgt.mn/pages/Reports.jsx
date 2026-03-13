@@ -2255,7 +2255,11 @@ export default function Reports() {
           { credentials: 'include' },
         );
         const data = res.ok ? await res.json().catch(() => ({})) : {};
-        const list = Array.isArray(data.parameters) ? data.parameters : [];
+        const list = Array.isArray(data.parameters)
+          ? data.parameters
+              .map((param) => getParamName(param))
+              .filter((name) => typeof name === 'string' && name.trim().length > 0)
+          : [];
         drilldownParamCacheRef.current.set(reportName, list);
         return list;
       } catch {
@@ -2272,7 +2276,7 @@ export default function Reports() {
       const paramNames = await fetchDrilldownParams(reportName);
       if (!paramNames.length) return [rowIdsValue];
       return paramNames.map((param) => {
-        const normalized = normalizeParamName(param);
+        const normalized = normalizeParamName(getParamName(param));
         if (!normalized) return null;
         if (normalized.includes('rowid')) return rowIdsValue;
         if (normalized.includes('company')) return sessionDefaults.companyId;
