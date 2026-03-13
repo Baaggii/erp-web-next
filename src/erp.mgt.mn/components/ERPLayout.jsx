@@ -14,7 +14,6 @@ import useGeneralConfig from "../hooks/useGeneralConfig.js";
 import { useTabs } from "../context/TabContext.jsx";
 import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
-import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
@@ -930,6 +929,7 @@ export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
+  const headerMap = {};
   const { t } = useContext(LangContext);
   const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
@@ -1716,21 +1716,19 @@ export default function ERPLayout() {
     });
     return map;
   }, [modules]);
-  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const titleMap = useMemo(() => {
     const map = { "/": t("dashboard", "Dashboard") };
     const getModuleLabel = (mod) =>
       t(
         mod.module_key,
         generalConfig.general?.procLabels?.[mod.module_key] ||
-          headerMap[mod.module_key] ||
           mod.label,
       );
     modules.forEach((mod) => {
       map[modulePath(mod, moduleMap)] = getModuleLabel(mod);
     });
     return map;
-  }, [generalConfig, headerMap, moduleMap, modules, t]);
+  }, [generalConfig, moduleMap, modules, t]);
   const validPaths = useMemo(() => {
     const paths = new Set(["/"]);
     modules.forEach((m) => {
@@ -4176,7 +4174,6 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
-  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
   const hasTemporaryNew = Boolean(temporary?.hasNew);
 
@@ -4192,7 +4189,6 @@ function Sidebar({ onOpen, open, isMobile }) {
   modules.forEach((m) => {
     const label =
       generalConfig.general?.procLabels?.[m.module_key] ||
-      headerMap[m.module_key] ||
       m.label;
     allMap[m.module_key] = { ...m, label };
   });
@@ -4215,7 +4211,6 @@ function Sidebar({ onOpen, open, isMobile }) {
     if (!isTxn && !perms[m.module_key]) return;
     const label =
       generalConfig.general?.procLabels?.[m.module_key] ||
-      headerMap[m.module_key] ||
       m.label;
     map[m.module_key] = { ...m, label, children: [] };
   });

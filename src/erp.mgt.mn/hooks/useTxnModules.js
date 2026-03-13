@@ -5,6 +5,7 @@ import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import { isModuleLicensed } from '../utils/moduleAccess.js';
+import { getOrFetchQuery, invalidateQueryCache } from '../utils/queryCache.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -105,6 +106,7 @@ export function refreshTxnModules() {
   cache.userRightName = undefined;
   cache.workplaceId = undefined;
   cache.positionId = undefined;
+  invalidateQueryCache('transaction_forms');
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -242,11 +244,14 @@ export function useTxnModules() {
       ) {
         params.set('workplacePositionId', currentWorkplacePosition);
       }
-      const res = await fetch(
-        `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
-        { credentials: 'include' },
-      );
-      const data = res.ok ? await res.json() : {};
+      const query = params.toString();
+      const data = await getOrFetchQuery(`transaction_forms:${query}`, async () => {
+        const res = await fetch(
+          `/api/transaction_forms${query ? `?${query}` : ''}`,
+          { credentials: 'include' },
+        );
+        return res.ok ? res.json() : {};
+      });
       if (
         branch !== currentBranch ||
         department !== currentDepartment ||

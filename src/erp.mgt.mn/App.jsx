@@ -17,7 +17,6 @@ import RequireAuth from './components/RequireAuth.jsx';
 import RequireAdmin from './components/RequireAdmin.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import AppLayout from './components/AppLayout.jsx';
-import useHeaderMappings from './hooks/useHeaderMappings.js';
 import { useModules } from './hooks/useModules.js';
 import { useTxnModules } from './hooks/useTxnModules.js';
 import useGeneralConfig from './hooks/useGeneralConfig.js';
@@ -108,15 +107,11 @@ function AuthedApp() {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
 
-  const moduleKeys = useMemo(() => modules.map((m) => m.module_key), [modules]);
-  const headerMap = useHeaderMappings(moduleKeys);
-
   const moduleMap = useMemo(() => {
     const map = {};
     modules.forEach((m) => {
       const label =
         generalConfig.general?.procLabels?.[m.module_key] ||
-        headerMap[m.module_key] ||
         m.label;
       map[m.module_key] = { ...m, label, children: [] };
     });
@@ -126,7 +121,7 @@ function AuthedApp() {
       }
     });
     return map;
-  }, [modules, generalConfig, headerMap]);
+  }, [modules, generalConfig]);
 
   // Use factories instead of eager JSX to avoid initializing route components too early.
   const componentMap = useMemo(() => {
