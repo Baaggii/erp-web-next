@@ -11,6 +11,7 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -155,45 +156,39 @@ export default function DashboardPage() {
       return 'audition';
     };
 
-    Promise.allSettled([
-      fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
-      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
-    ]).then(([reportResult, transactionResult]) => {
-      if (cancelled) return;
-      const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
-      const transactionData =
-        transactionResult.status === 'fulfilled' ? transactionResult.value || {} : {};
+    cachedFetch('/api/dashboard/init')
+      .then((payload) => {
+        if (cancelled) return;
+        const reportData = payload?.reportAccess || {};
+        const transactionData = payload?.transactionForms || {};
 
-      const reportTab = normalizeTab(reportData?.reportApprovalsDashboardTab);
-      const changeTab = normalizeTab(
-        transactionData?.changeRequestsDashboardTab ||
-          transactionData?.change_requests_dashboard_tab ||
-          pickTabFromForms(transactionData, (info) =>
-            Array.isArray(info?.notifyFields)
-              ? info.notifyFields.length > 0
-              : Array.isArray(info?.notify_fields) && info.notify_fields.length > 0,
-          ),
-      );
-      const temporaryTab = normalizeTab(
-        transactionData?.temporaryTransactionsDashboardTab ||
-          transactionData?.temporary_transactions_dashboard_tab ||
-          pickTabFromForms(
-            transactionData,
-            (info) =>
-              Boolean(info?.allowTemporarySubmission) || Boolean(info?.supportsTemporarySubmission),
-          ),
-      );
+        const reportTab = normalizeTab(reportData?.reportApprovalsDashboardTab);
+        const changeTab = normalizeTab(
+          transactionData?.changeRequestsDashboardTab ||
+            transactionData?.change_requests_dashboard_tab ||
+            pickTabFromForms(transactionData, (info) =>
+              Array.isArray(info?.notifyFields)
+                ? info.notifyFields.length > 0
+                : Array.isArray(info?.notify_fields) && info.notify_fields.length > 0,
+            ),
+        );
+        const temporaryTab = normalizeTab(
+          transactionData?.temporaryTransactionsDashboardTab ||
+            transactionData?.temporary_transactions_dashboard_tab ||
+            pickTabFromForms(
+              transactionData,
+              (info) =>
+                Boolean(info?.allowTemporarySubmission) || Boolean(info?.supportsTemporarySubmission),
+            ),
+        );
 
-      setWorkflowSectionTabs({
-        report: reportTab,
-        change: changeTab,
-        temporary: temporaryTab,
-      });
-    });
+        setWorkflowSectionTabs({
+          report: reportTab,
+          change: changeTab,
+          temporary: temporaryTab,
+        });
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;
@@ -203,13 +198,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => {
+    cachedFetch('/api/tables/code_transaction?perPage=500')
+      .then((data = { rows: [] }) => {
         if (cancelled) return;
         setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
       })

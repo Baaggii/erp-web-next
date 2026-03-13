@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTxnModules } from './useTxnModules.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 const cache = {
   data: null,
@@ -40,8 +41,7 @@ export function useModules() {
   async function fetchModules(signature = txnSignature) {
     try {
       // Server returns modules already filtered by license and permission.
-      const res = await fetch('/api/modules', { credentials: 'include' });
-      let rows = res.ok ? await res.json() : [];
+      let rows = await cachedFetch('/api/modules');
       if (!Array.isArray(rows)) rows = [];
       rows = rows
         .filter((m) => m && typeof m === 'object')
@@ -93,40 +93,6 @@ export function useModules() {
           show_in_sidebar: true,
           show_in_header: false,
         });
-      }
-      try {
-        const params = new URLSearchParams();
-        if (branch) params.set('branchId', branch);
-        if (department) params.set('departmentId', department);
-        const prefix = generalConfig?.general?.reportProcPrefix || '';
-        if (prefix) params.set('prefix', prefix);
-        const pres = await fetch(
-          `/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`,
-          { credentials: 'include' },
-        );
-        if (pres.ok) {
-          const data = await pres.json();
-          const list = Array.isArray(data.procedures)
-            ? data.procedures.map((p) => (typeof p === 'string' ? p : p.name))
-            : [];
-          const filtered = prefix
-            ? list.filter((p) =>
-                p.toLowerCase().includes(prefix.toLowerCase()),
-              )
-            : list;
-          filtered.forEach((p) => {
-            const key = `proc_${p.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
-            rows.push({
-              module_key: key,
-              label: p,
-              parent_key: 'reports',
-              show_in_sidebar: true,
-              show_in_header: false,
-            });
-          });
-        }
-      } catch (e) {
-        console.error('Failed to load procedures', e);
       }
       cache.data = rows;
       cache.branchId = branch;
