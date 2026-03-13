@@ -11,7 +11,8 @@
     "test": "node --test",
     "generate:translations": "node scripts/generateTranslations.cli.js",
     "generate:manuals": "node scripts/extractTourOrder.js && node scripts/generateManuals.js",
-    "generate:tours": "node scripts/extractTourOrder.js"
+    "generate:tours": "node scripts/extractTourOrder.js",
+    "lint:no-duplicate-functions": "node scripts/no-duplicate-functions.cjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -5,6 +5,7 @@ import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import { isModuleLicensed } from '../utils/moduleAccess.js';
+import { fetchTransactionForms } from '../core/transactionFormsStore.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -215,38 +216,14 @@ export function useTxnModules() {
       null;
 
     try {
-      const params = new URLSearchParams();
-      if (currentBranch !== undefined && currentBranch !== null && `${currentBranch}`.trim() !== '') {
-        params.set('branchId', currentBranch);
-      }
-      if (
-        currentDepartment !== undefined &&
-        currentDepartment !== null &&
-        `${currentDepartment}`.trim() !== ''
-      ) {
-        params.set('departmentId', currentDepartment);
-      }
-      if (currentUserRight !== undefined && currentUserRight !== null && `${currentUserRight}`.trim() !== '') {
-        params.set('userRightId', currentUserRight);
-      }
-      if (currentWorkplace !== undefined && currentWorkplace !== null && `${currentWorkplace}`.trim() !== '') {
-        params.set('workplaceId', currentWorkplace);
-      }
-      if (currentPosition !== undefined && currentPosition !== null && `${currentPosition}`.trim() !== '') {
-        params.set('positionId', currentPosition);
-      }
-      if (
-        currentWorkplacePosition !== undefined &&
-        currentWorkplacePosition !== null &&
-        `${currentWorkplacePosition}`.trim() !== ''
-      ) {
-        params.set('workplacePositionId', currentWorkplacePosition);
-      }
-      const res = await fetch(
-        `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
-        { credentials: 'include' },
-      );
-      const data = res.ok ? await res.json() : {};
+      const data = await fetchTransactionForms({
+        branchId: currentBranch,
+        departmentId: currentDepartment,
+        userRightId: currentUserRight,
+        workplaceId: currentWorkplace,
+        positionId: currentPosition,
+        workplacePositionId: currentWorkplacePosition,
+      });
       if (
         branch !== currentBranch ||
         department !== currentDepartment ||

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import { fetchHeaderMappings } from '../core/headerMappingStore.js';
 
 // Cache translations by "locale|header" so different locales don't collide.
 const cache = {};
@@ -50,10 +51,7 @@ export default function useHeaderMappings(headers = [], locale) {
           params.set('headers', missing.join(','));
           if (lng) params.set('lang', lng);
           try {
-            const res = await fetch(`/api/header_mappings?${params.toString()}`, {
-              credentials: 'include',
-            });
-            const data = res.ok ? await res.json() : {};
+            const data = await fetchHeaderMappings(missing, lng);
             Object.entries(data).forEach(([k, v]) => {
               cache[keyFor(k)] = v;
             });
