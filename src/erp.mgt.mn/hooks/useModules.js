@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { useSessionData } from '../context/SessionDataContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTxnModules } from './useTxnModules.js';
@@ -132,7 +131,7 @@ export function useModules() {
     } else {
       setModules(cache.data);
     }
-  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature, sessionData?.loaded, sessionData?.modules]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
