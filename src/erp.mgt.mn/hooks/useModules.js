@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTxnModules } from './useTxnModules.js';
-import { getOrFetchQuery, invalidateQueryCache } from '../utils/queryCache.js';
 
 const cache = {
   data: null,
+  branchId: undefined,
+  departmentId: undefined,
+  prefix: undefined,
   txnSignature: undefined,
 };
 const emitter = new EventTarget();
@@ -20,13 +23,16 @@ function computeTxnSignature(txnModules) {
 
 export function refreshModules() {
   delete cache.data;
+  cache.branchId = undefined;
+  cache.departmentId = undefined;
+  cache.prefix = undefined;
   cache.txnSignature = undefined;
-  invalidateQueryCache('modules');
   emitter.dispatchEvent(new Event('refresh'));
 }
 
 export function useModules() {
   const { branch, department } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const txnModules = useTxnModules();
   const txnSignature = useMemo(() => computeTxnSignature(txnModules), [txnModules]);
   const [modules, setModules] = useState(cache.data || []);
@@ -34,11 +40,9 @@ export function useModules() {
   async function fetchModules(signature = txnSignature) {
     try {
       // Server returns modules already filtered by license and permission.
-      const rowsRaw = await getOrFetchQuery('modules', async () => {
-        const res = await fetch('/api/modules', { credentials: 'include' });
-        return res.ok ? res.json() : [];
-      });
-      let rows = Array.isArray(rowsRaw) ? rowsRaw : [];
+      const res = await fetch('/api/modules', { credentials: 'include' });
+      let rows = res.ok ? await res.json() : [];
+      if (!Array.isArray(rows)) rows = [];
       rows = rows
         .filter((m) => m && typeof m === 'object')
         .map((m) => {
@@ -59,6 +63,8 @@ export function useModules() {
         rows = rows.filter((m) => m.module_key !== 'pos_transactions');
       }
 
+      // Ensure dynamic transaction modules exist in the module list so users
+      // without explicit module permissions still see their allowed forms.
       txnKeys.forEach((key) => {
         if (!rows.some((m) => m.module_key === key)) {
           rows.push({
@@ -88,13 +94,52 @@ export function useModules() {
           show_in_header: false,
         });
       }
-
+      try {
+        const params = new URLSearchParams();
+        if (branch) params.set('branchId', branch);
+        if (department) params.set('departmentId', department);
+        const prefix = generalConfig?.general?.reportProcPrefix || '';
+        if (prefix) params.set('prefix', prefix);
+        const pres = await fetch(
+          `/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`,
+          { credentials: 'include' },
+        );
+        if (pres.ok) {
+          const data = await pres.json();
+          const list = Array.isArray(data.procedures)
+            ? data.procedures.map((p) => (typeof p === 'string' ? p : p.name))
+            : [];
+          const filtered = prefix
+            ? list.filter((p) =>
+                p.toLowerCase().includes(prefix.toLowerCase()),
+              )
+            : list;
+          filtered.forEach((p) => {
+            const key = `proc_${p.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+            rows.push({
+              module_key: key,
+              label: p,
+              parent_key: 'reports',
+              show_in_sidebar: true,
+              show_in_header: false,
+            });
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load procedures', e);
+      }
       cache.data = rows;
+      cache.branchId = branch;
+      cache.departmentId = department;
+      cache.prefix = generalConfig?.general?.reportProcPrefix;
       cache.txnSignature = signature;
       setModules(rows);
     } catch (err) {
       console.error('Failed to load modules', err);
       cache.data = [];
+      cache.branchId = branch;
+      cache.departmentId = department;
+      cache.prefix = generalConfig?.general?.reportProcPrefix;
       cache.txnSignature = signature;
       setModules([]);
     }
@@ -102,19 +147,26 @@ export function useModules() {
 
   useEffect(() => {
     debugLog('useModules effect: initial fetch');
-    if (!cache.data || cache.txnSignature !== txnSignature) {
+    const prefix = generalConfig?.general?.reportProcPrefix;
+    if (
+      !cache.data ||
+      cache.branchId !== branch ||
+      cache.departmentId !== department ||
+      cache.prefix !== prefix ||
+      cache.txnSignature !== txnSignature
+    ) {
       fetchModules(txnSignature);
     } else {
       setModules(cache.data);
     }
-  }, [branch, department, txnSignature]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature]);
 
   useEffect(() => {
     debugLog('useModules effect: refresh listener');
     const handler = () => fetchModules(txnSignature);
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [branch, department, txnSignature]);
+  }, [branch, department, generalConfig?.general?.reportProcPrefix, txnSignature]);
 
   return modules;
 }
