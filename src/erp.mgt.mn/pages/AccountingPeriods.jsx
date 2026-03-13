@@ -1,12 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReportTable from '../components/ReportTable.jsx';
-import {
-  normalizeParamName,
-  isLikelyDateField,
-  isStartDateParam,
-  isEndDateParam,
-} from '../core/paramUtils.js';
+import { normalizeParamName } from '../core/paramUtils.js';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
@@ -235,14 +230,19 @@ export default function AccountingPeriodsPage() {
     const normalized = normalizeParamName(paramName);
     if (!normalized) return null;
 
-    const isDateLike = isLikelyDateField(normalized) || normalized.endsWith('dt');
-    if (isDateLike && isStartDateParam(normalized)) {
+    if (normalized.includes('start') && (normalized.includes('date') || normalized.includes('dt'))) {
       return reportParamContext.startDate;
     }
-    if (isDateLike && isEndDateParam(normalized)) {
+    if (normalized.includes('from') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.startDate;
+    }
+    if (normalized.includes('end') && (normalized.includes('date') || normalized.includes('dt'))) {
       return reportParamContext.endDate;
     }
-    if (isDateLike) {
+    if (normalized.includes('to') && (normalized.includes('date') || normalized.includes('dt'))) {
+      return reportParamContext.endDate;
+    }
+    if (normalized.includes('date') || normalized.endsWith('dt')) {
       return reportParamContext.endDate;
     }
 
