@@ -319,9 +319,10 @@ export default function Reports() {
     }
     return reportMeta;
   }, [reportMeta]);
-  const rowGranularity = effectiveReportMeta?.rowGranularity ?? 'transaction';
   const drilldownCapabilities = effectiveReportMeta?.drilldown ?? null;
   const drilldownEnabled = Boolean(drilldownCapabilities);
+  const rowGranularity =
+    effectiveReportMeta?.rowGranularity ?? (drilldownEnabled ? 'aggregated' : 'transaction');
   const isAggregated = rowGranularity === 'aggregated';
   const getDetailRowKey = useCallback(
     (parentRowId, index) => `${String(parentRowId)}::${String(index)}`,
