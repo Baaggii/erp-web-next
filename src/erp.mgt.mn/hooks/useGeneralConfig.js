@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { setQueryData, useApiQuery } from './apiQueryCache.js';
 
-const cache = { data: null };
+const QUERY_KEY = ['general_config'];
 
 export function updateCache(data) {
-  cache.data = data;
+  setQueryData(QUERY_KEY, data);
   if (data?.general) {
     window.erpDebug = !!data.general.debugLoggingEnabled;
   }
@@ -11,25 +12,22 @@ export function updateCache(data) {
 }
 
 export default function useGeneralConfig() {
-  const [cfg, setCfg] = useState(cache.data);
+  const { data } = useApiQuery({
+    queryKey: QUERY_KEY,
+    staleTime: 10 * 60_000,
+    cacheTime: 30 * 60_000,
+    queryFn: async () => {
+      const res = await fetch('/api/general_config', { credentials: 'include' });
+      const next = res.ok ? await res.json() : {};
+      if (next?.general) {
+        window.erpDebug = !!next.general.debugLoggingEnabled;
+      }
+      return next;
+    },
+  });
 
   useEffect(() => {
-    if (cache.data !== null) {
-      setCfg(cache.data);
-      if (cache.data.general) {
-        window.erpDebug = !!cache.data.general.debugLoggingEnabled;
-      }
-    } else {
-      fetch('/api/general_config', { credentials: 'include' })
-        .then(res => (res.ok ? res.json() : {}))
-        .then(data => {
-          updateCache(data);
-          setCfg(data);
-        })
-        .catch(() => setCfg({}));
-    }
-    const handler = e => {
-      setCfg(e.detail);
+    const handler = (e) => {
       if (e.detail?.general) {
         window.erpDebug = !!e.detail.general.debugLoggingEnabled;
       }
@@ -38,5 +36,5 @@ export default function useGeneralConfig() {
     return () => window.removeEventListener('generalConfigUpdated', handler);
   }, []);
 
-  return cfg || {};
+  return data || {};
 }

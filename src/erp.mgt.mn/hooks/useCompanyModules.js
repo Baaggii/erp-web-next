@@ -1,54 +1,31 @@
-import { useEffect, useState } from 'react';
-
-const cache = {};
-const emitter = new EventTarget();
+import { invalidateQuery, useApiQuery } from './apiQueryCache.js';
 
 export function refreshCompanyModules(companyId) {
-  if (companyId != null) delete cache[companyId];
-  emitter.dispatchEvent(new Event('refresh'));
+  if (companyId != null) {
+    invalidateQuery(['company_modules', Number(companyId)]);
+  }
 }
 
 export function useCompanyModules(companyId) {
-  const [modules, setModules] = useState(null);
-
-  async function fetchModules(id) {
-    try {
-      const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`, {
+  const { data } = useApiQuery({
+    queryKey: ['company_modules', Number(companyId)],
+    enabled: companyId != null,
+    staleTime: 10 * 60_000,
+    cacheTime: 30 * 60_000,
+    queryFn: async () => {
+      const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(companyId)}`, {
         credentials: 'include',
       });
       const rows = res.ok ? await res.json() : [];
       const map = {};
       rows.forEach((r) => {
-        if (Number(r.company_id) === Number(id) && r.licensed) {
+        if (Number(r.company_id) === Number(companyId) && r.licensed) {
           map[r.module_key] = true;
         }
       });
-      cache[id] = map;
-      setModules(map);
-    } catch (err) {
-      console.error('Failed to load company modules', err);
-      setModules({});
-    }
-  }
+      return map;
+    },
+  });
 
-  useEffect(() => {
-    if (companyId == null) {
-      setModules(null);
-      return;
-    }
-    if (cache[companyId]) {
-      setModules(cache[companyId]);
-    } else {
-      fetchModules(companyId);
-    }
-  }, [companyId]);
-
-  useEffect(() => {
-    if (companyId == null) return;
-    const handler = () => fetchModules(companyId);
-    emitter.addEventListener('refresh', handler);
-    return () => emitter.removeEventListener('refresh', handler);
-  }, [companyId]);
-
-  return modules;
+  return companyId == null ? null : (data || {});
 }

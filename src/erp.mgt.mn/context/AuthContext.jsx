@@ -11,6 +11,8 @@ import React, {
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
+import { fetchAuthMeCached } from '../hooks/useAuthMe.js';
+import { fetchQuery, invalidateQuery } from '../hooks/apiQueryCache.js';
 import {
   deriveWorkplacePositionsFromAssignments,
   resolveWorkplacePositionMap,
@@ -131,37 +133,30 @@ export default function AuthContextProvider({ children }) {
 
   const loadProfile = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        applyProfile(data);
+      const data = await fetchAuthMeCached();
+      applyProfile(data);
+      try {
+        const s = await fetchQuery({
+          queryKey: ['user_settings'],
+          staleTime: 5 * 60_000,
+          cacheTime: 20 * 60_000,
+          queryFn: async () => {
+            const resSettings = await fetch(`${API_BASE}/user/settings`, {
+              credentials: 'include',
+              skipErrorToast: true,
+            });
+            return resSettings.ok ? resSettings.json() : {};
+          },
+        });
+        trackSetState('AuthContext.setUserSettings');
+        setUserSettings(s || {});
         try {
-          const resSettings = await fetch(`${API_BASE}/user/settings`, {
-            credentials: 'include',
-            skipErrorToast: true,
-          });
-          if (resSettings.ok) {
-            const s = await resSettings.json();
-            trackSetState('AuthContext.setUserSettings');
-            setUserSettings(s);
-            try {
-              localStorage.setItem('erp_user_settings', JSON.stringify(s));
-            } catch {}
-          } else {
-            const stored = localStorage.getItem('erp_user_settings');
-            trackSetState('AuthContext.setUserSettings');
-            setUserSettings(stored ? JSON.parse(stored) : {});
-          }
-        } catch {
-          const stored = localStorage.getItem('erp_user_settings');
-          trackSetState('AuthContext.setUserSettings');
-          setUserSettings(stored ? JSON.parse(stored) : {});
-        }
-      } else {
-        applyUnauthenticated();
+          localStorage.setItem('erp_user_settings', JSON.stringify(s || {}));
+        } catch {}
+      } catch {
+        const stored = localStorage.getItem('erp_user_settings');
+        trackSetState('AuthContext.setUserSettings');
+        setUserSettings(stored ? JSON.parse(stored) : {});
       }
     } catch (err) {
       console.error('Unable to fetch profile:', err);
@@ -250,6 +245,8 @@ export default function AuthContextProvider({ children }) {
 
   useEffect(() => {
     function handleLogout() {
+      invalidateQuery(['auth', 'me']);
+      invalidateQuery(['user_settings']);
       applyUnauthenticated({ preserveLang: true });
     }
     window.addEventListener('auth:logout', handleLogout);
