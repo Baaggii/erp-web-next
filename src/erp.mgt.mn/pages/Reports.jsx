@@ -1255,8 +1255,14 @@ export default function Reports() {
         const list = Array.isArray(data?.parameters) ? data.parameters : [];
         setProcParams(
           list
-            .filter((param) => param && typeof param === 'object' && typeof param.name === 'string')
-            .map((param) => ({ name: param.name, dataType: param.dataType })),
+            .map((param) => {
+              if (typeof param === 'string') return param;
+              if (param && typeof param === 'object' && typeof param.name === 'string') {
+                return { name: param.name, dataType: param.dataType };
+              }
+              return null;
+            })
+            .filter(Boolean),
         );
       })
       .catch(() => setProcParams([]));
