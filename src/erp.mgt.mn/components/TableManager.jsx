@@ -51,6 +51,8 @@ import normalizeRelationKey from '../utils/normalizeRelationKey.js';
 import getRelationRowFromMap from '../utils/getRelationRowFromMap.js';
 import { isNonFinancialRow, isPostedStatus, isPostingSourceTable } from '../utils/postingControls.js';
 import normalizeBoolean from '../utils/normalizeBoolean.js';
+import { getDisplayFields } from '../core/displayFieldsStore.js';
+import { getRelations } from '../core/relationStore.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1390,14 +1392,7 @@ const TableManager = forwardRef(function TableManager({
       if (displayFieldConfigCache.current.has(cacheKey)) {
         return displayFieldConfigCache.current.get(cacheKey);
       }
-      const promise = fetch(
-        `/api/display_fields?table=${encodeURIComponent(tableName)}${
-          idField ? `&idField=${encodeURIComponent(idField)}` : ''
-        }`,
-        { credentials: 'include' },
-      )
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null);
+      const promise = getDisplayFields(tableName).catch(() => null);
       displayFieldConfigCache.current.set(cacheKey, promise);
       return promise;
     },
@@ -2083,27 +2078,7 @@ const TableManager = forwardRef(function TableManager({
           if (filterColumn && hasFilterValue) {
             params.set('filterValue', String(filterValue).trim());
           }
-          const res = await fetch(`/api/display_fields?${params.toString()}`, {
-            credentials: 'include',
-          });
-          if (!res.ok) {
-            if (!canceled) {
-              addToast(
-                t('failed_load_display_fields', 'Failed to load display fields'),
-                'error',
-              );
-            }
-            return null;
-          }
-          const json = await res.json().catch(() => {
-            if (!canceled) {
-              addToast(
-                t('failed_parse_display_fields', 'Failed to parse display fields'),
-                'error',
-              );
-            }
-            return null;
-          });
+          const json = await getDisplayFields(tableName).catch(() => null);
           if (!json) return null;
           return {
             idField: typeof json.idField === 'string' ? json.idField : undefined,
@@ -2152,15 +2127,7 @@ const TableManager = forwardRef(function TableManager({
       const cacheKey = tableName.toLowerCase();
       if (relationCache[cacheKey]) return relationCache[cacheKey];
       try {
-        const relRes = await fetch(
-          `/api/tables/${encodeURIComponent(tableName)}/relations`,
-          { credentials: 'include', skipErrorToast: true, skipLoader: true },
-        );
-        if (!relRes.ok) {
-          relationCache[cacheKey] = {};
-          return relationCache[cacheKey];
-        }
-        const relList = await relRes.json().catch(() => []);
+        const relList = await getRelations(tableName).catch(() => []);
         if (canceled) return {};
         const relMap = {};
         relList.forEach((entry) => {
@@ -2472,24 +2439,13 @@ const TableManager = forwardRef(function TableManager({
         let relRes;
         let unauthorized = false;
         try {
-          relRes = await fetch(
-            `/api/tables/${encodeURIComponent(table)}/relations`,
-            { credentials: 'include', skipErrorToast: true, skipLoader: true },
-          );
-          unauthorized = relRes?.status === 403;
+          rels = await getRelations(table).catch(() => []);
+          relRes = { ok: Array.isArray(rels) };
         } catch (err) {
           relRes = { ok: false, status: 0, error: err };
         }
         if (relRes?.ok) {
-          rels = await relRes.json().catch(() => {
-            if (!canceled) {
-              addToast(
-                t('failed_parse_table_relations', 'Failed to parse table relations'),
-                'error',
-              );
-            }
-            return [];
-          });
+          // loaded from global relation cache/store
         } else {
           let customList = [];
           try {
