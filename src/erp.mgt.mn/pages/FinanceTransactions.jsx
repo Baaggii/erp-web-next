@@ -25,6 +25,7 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
+import { apiGetJsonCached } from '../utils/apiClient.js';
 
 if (typeof window !== 'undefined') {
   window.showTemporaryRequesterUI =
@@ -522,18 +523,7 @@ useEffect(() => {
     }
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
-    fetch(url, { credentials: 'include', skipLoader: true })
-      .then((res) => {
-        if (canceled) return {};
-        if (!res.ok) {
-          addToast('Failed to load transaction forms', 'error');
-          return {};
-        }
-        return res.json().catch(() => {
-          addToast('Failed to parse transaction forms', 'error');
-          return {};
-        });
-      })
+    apiGetJsonCached(url, { skipLoader: true }, { ttlMs: 20_000 })
       .then((data) => {
         if (canceled) return;
         const filtered = {};
@@ -627,18 +617,11 @@ useEffect(() => {
       return;
     }
     let canceled = false;
-    fetch(
+    apiGetJsonCached(
       `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
-      { credentials: 'include', skipLoader: true },
+      { skipLoader: true },
+      { ttlMs: 20_000 },
     )
-      .then((res) => {
-        if (canceled) return null;
-        if (!res.ok) {
-          addToast('Failed to load transaction configuration', 'error');
-          return null;
-        }
-        return res.json().catch(() => null);
-      })
       .then((cfg) => {
         if (canceled) return;
         if (cfg && cfg.moduleKey) {
