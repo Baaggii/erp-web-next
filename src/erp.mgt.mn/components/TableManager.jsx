@@ -1344,7 +1344,22 @@ const TableManager = forwardRef(function TableManager({
   const fieldTypeMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
-      map[c.name] = resolveFieldKind(c, { includeJson: true });
+      const typ = (c.type || c.columnType || c.dataType || c.DATA_TYPE || '')
+        .toLowerCase();
+      const comment = (c.columnComment || '').toLowerCase();
+      if (typ.includes('json') || comment.includes('json_array')) {
+        map[c.name] = 'json';
+      } else if (typ.match(/int|decimal|numeric|double|float|real|number|bigint/)) {
+        map[c.name] = 'number';
+      } else if (typ.includes('timestamp') || typ.includes('datetime')) {
+        map[c.name] = 'datetime';
+      } else if (typ.includes('date')) {
+        map[c.name] = 'date';
+      } else if (typ.includes('time')) {
+        map[c.name] = 'time';
+      } else {
+        map[c.name] = 'string';
+      }
     });
     return map;
   }, [columnMeta]);
