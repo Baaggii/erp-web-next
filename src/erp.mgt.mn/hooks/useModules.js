@@ -3,7 +3,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { useTxnModules } from './useTxnModules.js';
-import { fetchQuery } from './apiQueryCache.js';
 
 const cache = {
   data: null,
@@ -41,16 +40,8 @@ export function useModules() {
   async function fetchModules(signature = txnSignature) {
     try {
       // Server returns modules already filtered by license and permission.
-      const resRows = await fetchQuery({
-        queryKey: ['modules', branch ?? null, department ?? null, generalConfig?.general?.reportProcPrefix || '', signature],
-        staleTime: 10 * 60_000,
-        cacheTime: 30 * 60_000,
-        queryFn: async () => {
-          const res = await fetch('/api/modules', { credentials: 'include' });
-          return res.ok ? res.json() : [];
-        },
-      });
-      let rows = resRows;
+      const res = await fetch('/api/modules', { credentials: 'include' });
+      let rows = res.ok ? await res.json() : [];
       if (!Array.isArray(rows)) rows = [];
       rows = rows
         .filter((m) => m && typeof m === 'object')
