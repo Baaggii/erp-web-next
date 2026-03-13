@@ -12,7 +12,6 @@ import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LoadingProvider } from './context/LoadingContext.jsx';
 import { I18nProvider } from './context/I18nContext.jsx';
-import { SessionProvider } from './context/SessionContext.jsx';
 import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
 import RequireAdmin from './components/RequireAdmin.jsx';
@@ -79,9 +78,8 @@ export default function App() {
   return (
     <I18nProvider>
       <ToastProvider>
-        <SessionProvider>
-          <AuthContextProvider>
-            <TxnSessionProvider>
+        <AuthContextProvider>
+          <TxnSessionProvider>
             <LoadingProvider>
               <TabProvider>
                 <HashRouter>
@@ -98,9 +96,8 @@ export default function App() {
                 </HashRouter>
               </TabProvider>
             </LoadingProvider>
-            </TxnSessionProvider>
-          </AuthContextProvider>
-        </SessionProvider>
+          </TxnSessionProvider>
+        </AuthContextProvider>
       </ToastProvider>
     </I18nProvider>
   );

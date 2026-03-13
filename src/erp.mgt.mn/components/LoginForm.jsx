@@ -2,7 +2,6 @@
 import React, { useState, useContext } from 'react';
 import { login } from '../hooks/useAuth.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { useSession } from '../context/SessionContext.jsx';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
@@ -61,7 +60,6 @@ export default function LoginForm() {
     setWorkplacePositionMap,
     setPermissions,
   } = useContext(AuthContext);
-  const { initializeSession } = useSession();
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
@@ -194,7 +192,6 @@ export default function LoginForm() {
       } catch (err) {
         console.warn('Failed to resolve workplace positions after login', err);
       }
-      await initializeSession(loggedIn.company ?? enrichedSession?.company_id ?? 1);
       refreshCompanyModules(loggedIn.company);
       refreshModules();
       refreshTxnModules();

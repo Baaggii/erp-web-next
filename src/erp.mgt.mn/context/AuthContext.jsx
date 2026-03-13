@@ -11,7 +11,6 @@ import React, {
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
-import { initSession } from '../core/initSession.js';
 import {
   deriveWorkplacePositionsFromAssignments,
   resolveWorkplacePositionMap,
@@ -132,15 +131,35 @@ export default function AuthContextProvider({ children }) {
 
   const loadProfile = useCallback(async () => {
     try {
-      const sessionBootstrap = await initSession(company ?? 1);
-      if (sessionBootstrap?.user) {
-        applyProfile(sessionBootstrap.user);
-        const nextSettings = sessionBootstrap.settings || {};
-        trackSetState('AuthContext.setUserSettings');
-        setUserSettings(nextSettings);
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        applyProfile(data);
         try {
-          localStorage.setItem('erp_user_settings', JSON.stringify(nextSettings));
-        } catch {}
+          const resSettings = await fetch(`${API_BASE}/user/settings`, {
+            credentials: 'include',
+            skipErrorToast: true,
+          });
+          if (resSettings.ok) {
+            const s = await resSettings.json();
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(s);
+            try {
+              localStorage.setItem('erp_user_settings', JSON.stringify(s));
+            } catch {}
+          } else {
+            const stored = localStorage.getItem('erp_user_settings');
+            trackSetState('AuthContext.setUserSettings');
+            setUserSettings(stored ? JSON.parse(stored) : {});
+          }
+        } catch {
+          const stored = localStorage.getItem('erp_user_settings');
+          trackSetState('AuthContext.setUserSettings');
+          setUserSettings(stored ? JSON.parse(stored) : {});
+        }
       } else {
         applyUnauthenticated();
       }
@@ -148,7 +167,7 @@ export default function AuthContextProvider({ children }) {
       console.error('Unable to fetch profile:', err);
       applyUnauthenticated();
     }
-  }, [applyProfile, applyUnauthenticated, company]);
+  }, [applyProfile, applyUnauthenticated]);
 
   // Persist employment IDs across reloads
   useEffect(() => {
