@@ -70,6 +70,24 @@ function PageSkeleton() {
   );
 }
 
+function ModuleSkeleton({ label }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100%',
+        padding: '1rem',
+        opacity: 0.75,
+      }}
+      aria-busy="true"
+    >
+      Loading {label || 'module'}…
+    </div>
+  );
+}
+
 export default function App() {
   useEffect(() => {
     debugLog('Component mounted: App');
@@ -189,6 +207,10 @@ function AuthedApp() {
         element = mod.children.length > 0 ? <Outlet /> : <div>{mod.label}</div>;
       }
 
+      if (elementFactory) {
+        element = <Suspense fallback={<ModuleSkeleton label={mod.label} />}>{element}</Suspense>;
+      }
+
       if (!mod.parent_key && mod.module_key === 'dashboard') {
         return <Route key={mod.module_key} index element={element} />;
       }
@@ -212,29 +234,35 @@ function AuthedApp() {
 
   return (
     <ErrorBoundary>
-      <Suspense fallback={<PageSkeleton />}>
-        <Routes>
-          <Route path="/" element={<ERPLayout />}>
-            <Route path="requests" element={<RequestsPage />} />
-            <Route element={<RequireAdmin />}>
-              <Route
-                path="settings/posapi-endpoints"
-                element={<PosApiAdminPage />}
-              />
-            </Route>
-            <Route path="accounting-periods" element={<AccountingPeriodsPage />} />
-            {roots.map(renderRoute)}
+      <Routes>
+        <Route path="/" element={<ERPLayout />}>
+          <Route
+            path="requests"
+            element={<Suspense fallback={<ModuleSkeleton label="requests" />}><RequestsPage /></Suspense>}
+          />
+          <Route element={<RequireAdmin />}>
+            <Route
+              path="settings/posapi-endpoints"
+              element={<Suspense fallback={<ModuleSkeleton label="POS API endpoints" />}><PosApiAdminPage /></Suspense>}
+            />
           </Route>
           <Route
-            path="inventory-demo"
-            element={
-              <AppLayout title="Inventory">
-                <InventoryPage />
-              </AppLayout>
-            }
+            path="accounting-periods"
+            element={<Suspense fallback={<ModuleSkeleton label="accounting periods" />}><AccountingPeriodsPage /></Suspense>}
           />
-        </Routes>
-      </Suspense>
+          {roots.map(renderRoute)}
+        </Route>
+        <Route
+          path="inventory-demo"
+          element={
+            <AppLayout title="Inventory">
+              <Suspense fallback={<ModuleSkeleton label="inventory" />}>
+                <InventoryPage />
+              </Suspense>
+            </AppLayout>
+          }
+        />
+      </Routes>
     </ErrorBoundary>
   );
 }
