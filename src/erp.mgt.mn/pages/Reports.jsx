@@ -150,14 +150,21 @@ function formatBulkUpdateValue(value) {
   }
 }
 
-  function normalizeSqlDiagnosticValue(value) {
+function normalizeSqlDiagnosticValue(value) {
   const normalized = stringifyDiagnosticValue(value);
   if (typeof normalized !== 'string') return null;
   const trimmed = normalized.trim();
   return trimmed.length ? trimmed : null;
 }
 
-  const REPORT_REQUEST_TABLE = 'report_transaction_locks';
+const INTERNAL_COLS = new Set([
+  '__row_ids',
+  '__drilldown_report',
+  '__drilldown_level',
+  '__detail_report',
+]);
+
+const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 const DEFAULT_REPORT_CAPABILITIES = {
   showTotalRowCount: true,
