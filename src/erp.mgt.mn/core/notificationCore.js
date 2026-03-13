@@ -1,5 +1,5 @@
 export function resolveModuleKey(info) {
-  return info?.moduleKey || info?.module_key || info?.module || info?.modulekey || '';
+  return info?.moduleKey || '';
 }
 
 export function normalizeText(value) {

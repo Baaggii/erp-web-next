@@ -25,11 +25,13 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
-import { apiGetJsonCached } from '../utils/apiClient.js';
+import { cachedFetch } from '../core/apiCache.js';
+import { getTransactionForms } from '../core/transactionFormsStore.js';
 import {
   resolveModuleKey
 } from '../core/notificationCore.js';
 import {
+  getParamName,
   normalizeParamName,
   isLikelyDateField,
   isStartDateParam,
@@ -417,10 +419,6 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     let canceled = false;
     setConfigsLoaded(false);
-    const params = new URLSearchParams();
-    if (moduleKey) params.set('moduleKey', moduleKey);
-    if (branch != null) params.set('branchId', branch);
-    if (department != null) params.set('departmentId', department);
     const userRightId =
       user?.userLevel ??
       user?.userlevel_id ??
@@ -436,12 +434,12 @@ useEffect(() => {
       user?.userlevel_name ??
       user?.userlevelName ??
       null;
-  const workplaceId =
+    const workplaceId =
     workplace ??
     session?.workplace_id ??
     session?.workplaceId ??
     null;
-  const workplacePositionId =
+    const workplacePositionId =
     resolveWorkplacePositionForContext({
       workplaceId,
       session,
@@ -456,21 +454,7 @@ useEffect(() => {
       session?.position ??
       user?.position ??
       null;
-    if (userRightId != null && `${userRightId}`.trim() !== '') {
-      params.set('userRightId', userRightId);
-    }
-    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
-      params.set('workplaceId', workplaceId);
-    }
-    if (positionId != null && `${positionId}`.trim() !== '') {
-      params.set('positionId', positionId);
-    }
-    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
-      params.set('workplacePositionId', workplacePositionId);
-    }
-    const query = params.toString();
-    const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
-    apiGetJsonCached(url, { skipLoader: true }, { ttlMs: 20_000 })
+    getTransactionForms()
       .then((data) => {
         if (canceled) return;
         const filtered = {};
@@ -564,12 +548,9 @@ useEffect(() => {
       return;
     }
     let canceled = false;
-    apiGetJsonCached(
-      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
-      { skipLoader: true },
-      { ttlMs: 20_000 },
-    )
-      .then((cfg) => {
+    getTransactionForms()
+      .then((forms) => {
+        const cfg = forms?.[name];
         if (canceled) return;
         if (cfg && cfg.moduleKey) {
           const prefix = reportProcPrefix;
@@ -737,11 +718,8 @@ useEffect(() => {
       setManualParams({});
       return;
     }
-    fetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`, {
-      credentials: 'include',
-    })
-      .then((res) => (res.ok ? res.json() : { parameters: [] }))
-      .then((data) => setProcParams(data.parameters || []))
+    cachedFetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params`)
+      .then((data) => setProcParams(Array.isArray(data?.parameters) ? data.parameters : []))
       .catch(() => setProcParams([]));
   }, [selectedProc]);
 
@@ -823,7 +801,7 @@ useEffect(() => {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      const key = getParamName(p) || String(i);
+      const key = getParamName(p);
       return auto ?? manualParams[key] ?? null;
     });
   }, [procParams, autoParams, manualParams]);
@@ -892,7 +870,7 @@ useEffect(() => {
       return;
     }
     const paramMap = procParams.reduce((acc, p, i) => {
-      const key = getParamName(p) || String(i);
+      const key = getParamName(p);
       acc[key] = finalParams[i];
       return acc;
     }, {});
@@ -1060,7 +1038,7 @@ useEffect(() => {
                       if (managedIndices.has(i)) return null;
                       if (autoParams[i] !== null) return null;
                       const name = getParamName(p);
-                      const key = name || String(i);
+                      const key = name;
                       const val = manualParams[key] || '';
                       return (
                         <AutoSizingTextInput
