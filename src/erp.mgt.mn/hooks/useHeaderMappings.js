@@ -2,8 +2,20 @@ import { useContext, useEffect, useState } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
 import { cachedFetch } from '../core/apiCache.js';
 
-export function clearHeaderMappingsCache() {
-  // global mappings are loaded once from HeaderMappingsProvider
+// Cache translations by "locale|header" so different locales don't collide.
+const cache = {};
+const listeners = new Set();
+
+// Allow external callers to clear the cache and trigger a refresh.
+export function clearHeaderMappingsCache(headers) {
+  if (!headers) {
+    Object.keys(cache).forEach((k) => delete cache[k]);
+  } else {
+    Object.keys(cache).forEach((k) => {
+      if (headers.some((h) => k.endsWith(`|${h}`))) delete cache[k];
+    });
+  }
+  listeners.forEach((fn) => fn());
 }
 
 export default function useHeaderMappings(headers = [], locale, options = {}) {
@@ -34,8 +46,6 @@ export default function useHeaderMappings(headers = [], locale, options = {}) {
 
     const langsToTry = [currentLang, ...(fallbackLangs || [])];
 
-  return useMemo(() => {
-    const unique = Array.from(new Set((headers || []).filter(Boolean)));
     const result = {};
 
     async function load() {

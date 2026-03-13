@@ -12,7 +12,6 @@ import { TxnSessionProvider } from './context/TxnSessionContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LoadingProvider } from './context/LoadingContext.jsx';
 import { I18nProvider } from './context/I18nContext.jsx';
-import { HeaderMappingsProvider } from './context/HeaderMappingsContext.jsx';
 import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
 import RequireAdmin from './components/RequireAdmin.jsx';
@@ -89,14 +88,7 @@ export default function App() {
                       <Routes>
                         <Route path="/login" element={<LoginPage />} />
                         <Route element={<RequireAuth />}>
-                          <Route
-                            path="/*"
-                            element={(
-                              <HeaderMappingsProvider>
-                                <AuthedApp />
-                              </HeaderMappingsProvider>
-                            )}
-                          />
+                          <Route path="/*" element={<AuthedApp />} />
                         </Route>
                       </Routes>
                     </Suspense>

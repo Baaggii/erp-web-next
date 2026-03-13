@@ -108,8 +108,6 @@ export default function DashboardPage() {
   useTour('dashboard');
 
   const prevTab = useRef('general');
-  const workflowInitRef = useRef(false);
-  const transactionsInitRef = useRef(false);
   const allowedTabs = useRef(new Set(['general', 'activity', 'audition', 'plans']));
   const acceptedNewCount = outgoing?.accepted?.newCount ?? 0;
   const declinedNewCount = outgoing?.declined?.newCount ?? 0;
@@ -135,9 +133,6 @@ export default function DashboardPage() {
   }, [markSeen]);
 
   useEffect(() => {
-    if (workflowInitRef.current) return;
-    workflowInitRef.current = true;
-
     let cancelled = false;
 
     const normalizeTab = (tabValue) => {
@@ -204,19 +199,13 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-    if (transactionsInitRef.current) return;
-    transactionsInitRef.current = true;
-
     let cancelled = false;
-    cachedFetch(
-      '/api/tables/code_transaction?perPage=500',
-      {
-        credentials: 'include',
-        skipErrorToast: true,
-        skipLoader: true,
-      },
-      { ttlMs: 60_000 },
-    )
+    fetch('/api/tables/code_transaction?perPage=500', {
+      credentials: 'include',
+      skipErrorToast: true,
+      skipLoader: true,
+    })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
       .then((data) => {
         if (cancelled) return;
         setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
