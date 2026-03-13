@@ -1716,7 +1716,7 @@ export default function ERPLayout() {
     });
     return map;
   }, [modules]);
-  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
+  const headerMap = useHeaderMappings(modules.map((m) => m.module_key), undefined, { enabled: false });
   const titleMap = useMemo(() => {
     const map = { "/": t("dashboard", "Dashboard") };
     const getModuleLabel = (mod) =>
@@ -3210,7 +3210,7 @@ export default function ERPLayout() {
     cache,
     resetTabs,
   } = useTabs();
-  const txnModules = useTxnModules();
+  const txnModules = useTxnModules({ enabled: false });
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -4173,10 +4173,10 @@ function Sidebar({ onOpen, open, isMobile }) {
   const location = useLocation();
   const navigate = useNavigate();
   const modules = useModules();
-  const txnModules = useTxnModules();
+  const txnModules = useTxnModules({ enabled: false });
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
-  const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
+  const headerMap = useHeaderMappings(modules.map((m) => m.module_key), undefined, { enabled: false });
   const { hasNew, anyHasNew, notificationColors, temporary } = useContext(PendingRequestContext);
   const hasTemporaryNew = Boolean(temporary?.hasNew);
 
