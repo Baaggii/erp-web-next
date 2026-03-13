@@ -12,10 +12,10 @@ import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from './NotificationDots
 export default function HeaderMenu({ onOpen }) {
   const { permissions: perms } = useContext(AuthContext);
   const modules = useModules();
-  const txnModules = useTxnModules();
+  const txnModules = useTxnModules({ enabled: false });
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
-  const headerMap = useHeaderMappings(items.map((m) => m.module_key));
+  const headerMap = useHeaderMappings(items.map((m) => m.module_key), undefined, { enabled: false });
   const { hasNew, anyHasNew, notificationColors, temporary } = usePendingRequests();
   const hasTemporaryNew = Boolean(temporary?.hasNew);
 

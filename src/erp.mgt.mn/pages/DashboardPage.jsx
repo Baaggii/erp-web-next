@@ -11,6 +11,7 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -107,6 +108,8 @@ export default function DashboardPage() {
   useTour('dashboard');
 
   const prevTab = useRef('general');
+  const workflowInitRef = useRef(false);
+  const transactionsInitRef = useRef(false);
   const allowedTabs = useRef(new Set(['general', 'activity', 'audition', 'plans']));
   const acceptedNewCount = outgoing?.accepted?.newCount ?? 0;
   const declinedNewCount = outgoing?.declined?.newCount ?? 0;
@@ -132,6 +135,9 @@ export default function DashboardPage() {
   }, [markSeen]);
 
   useEffect(() => {
+    if (workflowInitRef.current) return;
+    workflowInitRef.current = true;
+
     let cancelled = false;
 
     const normalizeTab = (tabValue) => {
@@ -156,12 +162,8 @@ export default function DashboardPage() {
     };
 
     Promise.allSettled([
-      fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
-      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
+      cachedFetch('/api/report_access', { credentials: 'include', skipLoader: true }, 5 * 60 * 1000),
+      Promise.resolve({}),
     ]).then(([reportResult, transactionResult]) => {
       if (cancelled) return;
       const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
@@ -202,13 +204,19 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
+    if (transactionsInitRef.current) return;
+    transactionsInitRef.current = true;
+
     let cancelled = false;
-    fetch('/api/tables/code_transaction?perPage=500', {
-      credentials: 'include',
-      skipErrorToast: true,
-      skipLoader: true,
-    })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
+    cachedFetch(
+      '/api/tables/code_transaction?perPage=500',
+      {
+        credentials: 'include',
+        skipErrorToast: true,
+        skipLoader: true,
+      },
+      { ttlMs: 60_000 },
+    )
       .then((data) => {
         if (cancelled) return;
         setCodeTransactions(Array.isArray(data?.rows) ? data.rows : []);
