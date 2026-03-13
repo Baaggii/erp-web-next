@@ -11,9 +11,6 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
-import { getTransactionForms } from '../core/transactionFormsCache.js';
-import { getTableRelations } from '../core/relationCache.js';
-import { getDisplayFieldsBatch } from '../core/displayFieldsCache.js';
 
 const ARROW_SEPARATOR = '→';
 const TRANSACTION_NAME_KEYS = [
@@ -610,9 +607,34 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       const cacheKey = table.toLowerCase();
       if (relationMapCache.current.has(cacheKey)) return;
       try {
-        const map = await getTableRelations(table);
+        const res = await fetch(`/api/tables/${encodeURIComponent(table)}/relations`, {
+          credentials: 'include',
+          skipErrorToast: true,
+          skipLoader: true,
+        });
+        if (!res.ok) {
+          relationMapCache.current.set(cacheKey, {});
+          setRelationMapVersion((prev) => prev + 1);
+          return;
+        }
+        const list = await res.json().catch(() => []);
+        const map = {};
+        if (Array.isArray(list)) {
+          list.forEach((entry) => {
+            const col = entry?.COLUMN_NAME;
+            const refTable = entry?.REFERENCED_TABLE_NAME;
+            const refColumn = entry?.REFERENCED_COLUMN_NAME;
+            if (!col || !refTable || !refColumn) return;
+            map[col.toLowerCase()] = {
+              table: refTable,
+              column: refColumn,
+              filterColumn: entry?.filterColumn,
+              filterValue: entry?.filterValue,
+            };
+          });
+        }
         if (!cancelled) {
-          relationMapCache.current.set(cacheKey, map || {});
+          relationMapCache.current.set(cacheKey, map);
           setRelationMapVersion((prev) => prev + 1);
         }
       } catch {
@@ -679,8 +701,20 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
         return relationConfigCache.current.get(cacheKey);
       }
       try {
-        const batch = await getDisplayFieldsBatch([relation.table]);
-        const cfg = batch?.[relation.table] || {};
+        const params = new URLSearchParams({ table: relation.table });
+        if (relation.column) params.set('targetColumn', relation.column);
+        if (relation.filterColumn) params.set('filterColumn', relation.filterColumn);
+        if (
+          relation.filterColumn &&
+          relation.filterValue !== undefined &&
+          relation.filterValue !== null
+        ) {
+          params.set('filterValue', String(relation.filterValue));
+        }
+        const res = await fetch(`/api/display_fields?${params.toString()}`, {
+          credentials: 'include',
+        });
+        const cfg = res.ok ? await res.json().catch(() => ({})) : {};
         const normalized = {
           idField:
             typeof cfg?.idField === 'string' && cfg.idField.trim()
@@ -861,6 +895,9 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
     if (allowedFormsCache.current) return allowedFormsCache.current;
     if (allowedFormsPromise.current) return allowedFormsPromise.current;
 
+    const params = new URLSearchParams();
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     const userRightId =
       user?.userLevel ??
       user?.userlevel_id ??
@@ -892,7 +929,25 @@ export default function TransactionNotificationWidget({ filterMode = 'activity' 
       session?.position ??
       user?.position ??
       null;
-    const request = getTransactionForms()
+    if (userRightId != null && `${userRightId}`.trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    if (workplaceId != null && `${workplaceId}`.trim() !== '') {
+      params.set('workplaceId', workplaceId);
+    }
+    if (positionId != null && `${positionId}`.trim() !== '') {
+      params.set('positionId', positionId);
+    }
+    if (workplacePositionId != null && `${workplacePositionId}`.trim() !== '') {
+      params.set('workplacePositionId', workplacePositionId);
+    }
+
+    const query = params.toString();
+    const request = fetch(
+      `/api/transaction_forms${query ? `?${query}` : ''}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         const filtered = {};
         const branchId = branch != null ? String(branch) : null;
