@@ -277,6 +277,7 @@ io.on("connection", (socket) => {
 });
 
 app.set("io", io);
+const serviceStartTime = Date.now();
 setNotificationEmitter(io);
 setUnifiedNotificationEmitter(io);
 setUnifiedNotificationStore(pool);
@@ -302,7 +303,12 @@ app.get("/api/auth/health", async (req, res, next) => {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
-    res.json({ status: "ok" });
+    res.json({
+      status: "ok",
+      service: "erp-api",
+      db: "connected",
+      uptime: Math.floor((Date.now() - serviceStartTime) / 1000),
+    });
   } catch (err) {
     next(err);
   }

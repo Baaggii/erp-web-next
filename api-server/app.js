@@ -49,6 +49,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const serviceStartTime = Date.now();
 app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -91,7 +92,12 @@ app.get("/api/auth/health", async (req, res, next) => {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
-    res.json({ status: "ok" });
+    res.json({
+      status: "ok",
+      service: "erp-api",
+      db: "connected",
+      uptime: Math.floor((Date.now() - serviceStartTime) / 1000),
+    });
   } catch (err) {
     next(err);
   }
