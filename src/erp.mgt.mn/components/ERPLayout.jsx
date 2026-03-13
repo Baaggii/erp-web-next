@@ -930,7 +930,6 @@ export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   useWebPushNotifications({ user, userSettings, generalConfig });
-  const headerMap = {};
   const { t } = useContext(LangContext);
   const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
