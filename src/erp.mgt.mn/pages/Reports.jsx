@@ -198,6 +198,38 @@ function isCountColumn(name) {
   return normalized === 'count' || normalized === 'count()' || normalized.startsWith('count(');
 }
 
+function parseDrilldownLevel(value) {
+  const level = Number.parseInt(value, 10);
+  return Number.isFinite(level) && level >= 0 ? level : 0;
+}
+
+function resolveTempTableByLevel(drilldownCapabilities, level = 0) {
+  const direct = drilldownCapabilities?.detailTempTable;
+  const grouped = drilldownCapabilities?.detailTempTables;
+  const source = grouped ?? direct;
+  if (!source) return '';
+
+  if (typeof source === 'string') {
+    return source.trim();
+  }
+
+  if (Array.isArray(source)) {
+    if (!source.length) return '';
+    const normalizedLevel = Math.max(0, level);
+    const candidate = source[normalizedLevel] ?? source[source.length - 1];
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  if (typeof source === 'object') {
+    const key = String(Math.max(0, level));
+    const fallback = source.default ?? source['*'] ?? source[0] ?? source['0'];
+    const candidate = source[key] ?? fallback;
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  }
+
+  return '';
+}
+
 export default function Reports() {
   const { company, branch, department, position, workplace, user, session } =
     useContext(AuthContext);
