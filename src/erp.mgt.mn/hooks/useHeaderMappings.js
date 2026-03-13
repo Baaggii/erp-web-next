@@ -1,5 +1,9 @@
 import { useContext, useEffect, useState } from 'react';
 import I18nContext from '../context/I18nContext.jsx';
+import {
+  getHeaderMappingsForLanguage,
+  clearHeaderMappingsLanguageCache,
+} from '../core/headerMappingsCache.js';
 
 // Cache translations by "locale|header" so different locales don't collide.
 const cache = {};
@@ -9,6 +13,7 @@ const listeners = new Set();
 export function clearHeaderMappingsCache(headers) {
   if (!headers) {
     Object.keys(cache).forEach((k) => delete cache[k]);
+    clearHeaderMappingsLanguageCache();
   } else {
     Object.keys(cache).forEach((k) => {
       if (headers.some((h) => k.endsWith(`|${h}`))) delete cache[k];
@@ -46,16 +51,12 @@ export default function useHeaderMappings(headers = [], locale) {
         const keyFor = (h) => `${lng}|${h}`;
         const missing = unique.filter((h) => cache[keyFor(h)] === undefined);
         if (missing.length > 0) {
-          const params = new URLSearchParams();
-          params.set('headers', missing.join(','));
-          if (lng) params.set('lang', lng);
           try {
-            const res = await fetch(`/api/header_mappings?${params.toString()}`, {
-              credentials: 'include',
-            });
-            const data = res.ok ? await res.json() : {};
-            Object.entries(data).forEach(([k, v]) => {
-              cache[keyFor(k)] = v;
+            const langMappings = await getHeaderMappingsForLanguage(lng);
+            missing.forEach((header) => {
+              if (Object.prototype.hasOwnProperty.call(langMappings, header)) {
+                cache[keyFor(header)] = langMappings[header];
+              }
             });
           } catch {
             // ignore network errors

@@ -11,6 +11,7 @@ import { useTransactionNotifications } from '../context/TransactionNotificationC
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { getTransactionForms } from '../core/transactionFormsCache.js';
 
 
 const TRANSACTION_NAME_KEYS = [
@@ -159,9 +160,7 @@ export default function DashboardPage() {
       fetch('/api/report_access', { credentials: 'include', skipLoader: true }).then((res) =>
         res.ok ? res.json() : {},
       ),
-      fetch('/api/transaction_forms', { credentials: 'include', skipLoader: true }).then((res) =>
-        res.ok ? res.json() : {},
-      ),
+      getTransactionForms(),
     ]).then(([reportResult, transactionResult]) => {
       if (cancelled) return;
       const reportData = reportResult.status === 'fulfilled' ? reportResult.value || {} : {};
