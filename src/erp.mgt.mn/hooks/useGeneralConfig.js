@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getOrFetchQuery, invalidateQueryCache } from '../utils/queryCache.js';
 
 const cache = { data: null };
-
-export function clearGeneralConfigCache() {
-  cache.data = null;
-  invalidateQueryCache('general_config');
-}
 
 export function updateCache(data) {
   cache.data = data;
@@ -26,17 +20,15 @@ export default function useGeneralConfig() {
         window.erpDebug = !!cache.data.general.debugLoggingEnabled;
       }
     } else {
-      getOrFetchQuery('general_config', async () => {
-        const res = await fetch('/api/general_config', { credentials: 'include' });
-        return res.ok ? res.json() : {};
-      })
-        .then((data) => {
+      fetch('/api/general_config', { credentials: 'include' })
+        .then(res => (res.ok ? res.json() : {}))
+        .then(data => {
           updateCache(data);
           setCfg(data);
         })
         .catch(() => setCfg({}));
     }
-    const handler = (e) => {
+    const handler = e => {
       setCfg(e.detail);
       if (e.detail?.general) {
         window.erpDebug = !!e.detail.general.debugLoggingEnabled;
