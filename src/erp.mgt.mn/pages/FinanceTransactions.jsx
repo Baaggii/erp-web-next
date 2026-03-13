@@ -26,6 +26,12 @@ import {
 } from '../utils/moduleAccess.js';
 import { resolveWorkplacePositionForContext } from '../utils/workplaceResolver.js';
 import { apiGetJsonCached } from '../utils/apiClient.js';
+import {
+  normalizeParamName,
+  isLikelyDateField,
+  isStartDateParam,
+  isEndDateParam,
+} from '../core/paramUtils.js';
 
 if (typeof window !== 'undefined') {
   window.showTemporaryRequesterUI =
@@ -34,64 +40,6 @@ if (typeof window !== 'undefined') {
     window.showTemporaryReviewerUI || (() => {});
   window.showTemporaryTransactionsUI =
     window.showTemporaryTransactionsUI || (() => {});
-}
-
-const DATE_PARAM_ALLOWLIST = new Set([
-  'startdt',
-  'enddt',
-  'fromdt',
-  'todt',
-  'startdatetime',
-  'enddatetime',
-  'fromdatetime',
-  'todatetime',
-]);
-
-function normalizeParamName(name) {
-  return String(name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function getParamName(param) {
-  if (!param) return '';
-  if (typeof param === 'string') return param;
-  if (typeof param === 'object') {
-    if (param.name) return param.name;
-    if (param.parameterName) return param.parameterName;
-  }
-  return '';
-}
-
-function getParamType(param) {
-  if (param && typeof param === 'object') {
-    if (typeof param.dataType === 'string') return param.dataType;
-    if (typeof param.type === 'string') return param.type;
-  }
-  return '';
-}
-
-function isLikelyDateField(param) {
-  const name = getParamName(param);
-  const normalized = normalizeParamName(name);
-  if (!normalized) return false;
-  if (normalized.includes('date')) return true;
-  if (DATE_PARAM_ALLOWLIST.has(normalized)) return true;
-  const paramType = getParamType(param).toLowerCase();
-  if (paramType.includes('date')) return true;
-  return false;
-}
-
-function isStartDateParam(param) {
-  if (!isLikelyDateField(param)) return false;
-  const normalized = normalizeParamName(getParamName(param));
-  return normalized.includes('start') || normalized.includes('from');
-}
-
-function isEndDateParam(param) {
-  if (!isLikelyDateField(param)) return false;
-  const normalized = normalizeParamName(getParamName(param));
-  return normalized.includes('end') || normalized.includes('to');
 }
 
 function isEqual(a, b) {

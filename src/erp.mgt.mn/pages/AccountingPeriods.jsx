@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import ReportTable from '../components/ReportTable.jsx';
+import { normalizeParamName } from '../core/paramUtils.js';
 
 const DEFAULT_REPORT_PROCS = [
   'dynrep_1_sp_trial_balance_expandable',
@@ -18,9 +19,6 @@ const INTERNAL_COLS = new Set([
 const REPORT_FRAME_MIN_HEIGHT = '26rem';
 const REPORT_FRAME_MAX_HEIGHT = 'max(26rem, min(72vh, calc(100vh - 16rem)))';
 
-function normalizeParamName(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
 
 function normalizeNumericId(value) {
   if (value == null) return null;

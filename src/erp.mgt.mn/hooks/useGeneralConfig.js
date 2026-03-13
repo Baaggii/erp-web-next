@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cachedFetch } from '../core/apiCache.js';
 
 const cache = { data: null };
 
@@ -20,8 +21,7 @@ export default function useGeneralConfig() {
         window.erpDebug = !!cache.data.general.debugLoggingEnabled;
       }
     } else {
-      fetch('/api/general_config', { credentials: 'include' })
-        .then(res => (res.ok ? res.json() : {}))
+      cachedFetch('/api/general_config')
         .then(data => {
           updateCache(data);
           setCfg(data);
