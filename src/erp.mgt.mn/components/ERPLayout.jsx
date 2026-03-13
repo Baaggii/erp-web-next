@@ -34,44 +34,8 @@ import { buildOptionsForRows } from "../utils/buildAsyncSelectOptions.js";
 import NotificationDots, { DEFAULT_NOTIFICATION_COLOR } from "./NotificationDots.jsx";
 import TransactionNotificationDropdown from "./TransactionNotificationDropdown.jsx";
 import useTransactionNotifications from "../hooks/useTransactionNotifications.js";
-import LazyHydrate from "./LazyHydrate.jsx";
+import MessagingWidget from "./MessagingWidget.jsx";
 import useWebPushNotifications from "../hooks/useWebPushNotifications.js";
-
-
-const MessagingWidgetPanel = React.lazy(() => import("./MessagingWidget.jsx"));
-
-function MessagingLauncher() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1100 }}>
-      {!isOpen ? (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          style={{
-            border: 'none',
-            borderRadius: '9999px',
-            padding: '0.6rem 1rem',
-            background: '#2563eb',
-            color: '#fff',
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(37, 99, 235, 0.35)',
-          }}
-        >
-          Messages
-        </button>
-      ) : (
-        // Mounting this panel only after user intent avoids executing messaging/socket code on initial load.
-        <React.Suspense fallback={null}>
-          <LazyHydrate mode="immediate">
-            <MessagingWidgetPanel onClose={() => setIsOpen(false)} />
-          </LazyHydrate>
-        </React.Suspense>
-      )}
-    </div>
-  );
-}
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -3707,7 +3671,7 @@ export default function ERPLayout() {
                 <MainWindow title={windowTitle} />
               </div>
               {generalConfig.general?.aiApiEnabled && <AskAIFloat />}
-              <MessagingLauncher />
+              <MessagingWidget />
             </div>
           </PendingRequestContext.Provider>
         </TransactionNotificationContext.Provider>
