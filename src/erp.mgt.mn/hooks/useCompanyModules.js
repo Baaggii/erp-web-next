@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
+import { getOrFetchQuery, invalidateQueryCache } from '../utils/queryCache.js';
 
 const cache = {};
 const emitter = new EventTarget();
 
 export function refreshCompanyModules(companyId) {
-  if (companyId != null) delete cache[companyId];
+  if (companyId != null) {
+    delete cache[companyId];
+    invalidateQueryCache(`company_modules:${companyId}`);
+  }
   emitter.dispatchEvent(new Event('refresh'));
 }
 
@@ -13,10 +17,12 @@ export function useCompanyModules(companyId) {
 
   async function fetchModules(id) {
     try {
-      const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`, {
-        credentials: 'include',
+      const rows = await getOrFetchQuery(`company_modules:${id}`, async () => {
+        const res = await fetch(`/api/company_modules?companyId=${encodeURIComponent(id)}`, {
+          credentials: 'include',
+        });
+        return res.ok ? res.json() : [];
       });
-      const rows = res.ok ? await res.json() : [];
       const map = {};
       rows.forEach((r) => {
         if (Number(r.company_id) === Number(id) && r.licensed) {
