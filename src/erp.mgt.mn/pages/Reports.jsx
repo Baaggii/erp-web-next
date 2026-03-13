@@ -24,87 +24,14 @@ import {
   normalizeSnapshotRecord,
   resolveSnapshotSource,
 } from '../utils/normalizeSnapshot.js';
-
-const DATE_PARAM_ALLOWLIST = new Set([
-  'startdt',
-  'enddt',
-  'fromdt',
-  'todt',
-  'startdatetime',
-  'enddatetime',
-  'fromdatetime',
-  'todatetime',
-]);
-const INTERNAL_COLS = new Set([
-  '__row_ids',
-  '__row_count',
-  '__row_granularity',
-  '__drilldown_report',
-  '__drilldown_level',
-  '__bulk_table',
-  '__bulk_pk',
-  '__bulk_field',
-  '__bulk_value',
-  '__bulk_allowed',
-]);
-
-function parseDrilldownLevel(value) {
-  const level = Number.parseInt(value, 10);
-  return Number.isFinite(level) && level >= 0 ? level : 0;
-}
-
-function resolveTempTableByLevel(drilldownCapabilities, level = 0) {
-  const direct = drilldownCapabilities?.detailTempTable;
-  const grouped = drilldownCapabilities?.detailTempTables;
-  const source = grouped ?? direct;
-  if (!source) return '';
-
-  if (typeof source === 'string') {
-    return source.trim();
-  }
-
-  if (Array.isArray(source)) {
-    if (!source.length) return '';
-    const normalizedLevel = Math.max(0, level);
-    const candidate = source[normalizedLevel] ?? source[source.length - 1];
-    return typeof candidate === 'string' ? candidate.trim() : '';
-  }
-
-  if (typeof source === 'object') {
-    const key = String(Math.max(0, level));
-    const fallback = source.default ?? source['*'] ?? source[0] ?? source['0'];
-    const candidate = source[key] ?? fallback;
-    return typeof candidate === 'string' ? candidate.trim() : '';
-  }
-
-  return '';
-}
-
-function normalizeParamName(name) {
-  return String(name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function isLikelyDateField(name) {
-  const normalized = normalizeParamName(name);
-  if (!normalized) return false;
-  if (normalized.includes('date')) return true;
-  if (DATE_PARAM_ALLOWLIST.has(normalized)) return true;
-  return false;
-}
-
-function isStartDateParam(name) {
-  if (!isLikelyDateField(name)) return false;
-  const normalized = normalizeParamName(name);
-  return normalized.includes('start') || normalized.includes('from');
-}
-
-function isEndDateParam(name) {
-  if (!isLikelyDateField(name)) return false;
-  const normalized = normalizeParamName(name);
-  return normalized.includes('end') || normalized.includes('to');
-}
+import {
+  getParamName,
+  normalizeParamName,
+  isLikelyDateField,
+  isStartDateParam,
+  isEndDateParam,
+} from '../core/paramUtils.js';
+import { cachedFetch } from '../core/apiCache.js';
 
 function normalizeNumericId(value) {
   if (value == null) return null;
@@ -223,14 +150,21 @@ function formatBulkUpdateValue(value) {
   }
 }
 
-  function normalizeSqlDiagnosticValue(value) {
+function normalizeSqlDiagnosticValue(value) {
   const normalized = stringifyDiagnosticValue(value);
   if (typeof normalized !== 'string') return null;
   const trimmed = normalized.trim();
   return trimmed.length ? trimmed : null;
 }
 
-  const REPORT_REQUEST_TABLE = 'report_transaction_locks';
+const INTERNAL_COLS = new Set([
+  '__row_ids',
+  '__drilldown_report',
+  '__drilldown_level',
+  '__detail_report',
+]);
+
+const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 const DEFAULT_REPORT_CAPABILITIES = {
   showTotalRowCount: true,
@@ -465,57 +399,44 @@ export default function Reports() {
       return list;
     }, []);
 
-    const clustersByWorkplace = new Map();
+    const options = [];
+    const seenWorkplaceIds = new Set();
+
     normalizedAssignments.forEach((assignment) => {
       const normalizedWorkplaceId = assignment.workplace_id;
-      if (normalizedWorkplaceId == null) return;
-      if (!clustersByWorkplace.has(normalizedWorkplaceId)) {
-        clustersByWorkplace.set(normalizedWorkplaceId, []);
+      if (normalizedWorkplaceId == null || seenWorkplaceIds.has(normalizedWorkplaceId)) {
+        return;
       }
-      clustersByWorkplace.get(normalizedWorkplaceId).push(assignment);
+
+      const value = String(normalizedWorkplaceId);
+      const idParts = [];
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
+      }
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+
+      options.push({
+        value,
+        label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
+        workplaceId: normalizedWorkplaceId,
+      });
+
+      seenWorkplaceIds.add(normalizedWorkplaceId);
     });
-
-    const options = Array.from(clustersByWorkplace.entries()).map(
-      ([workplaceId, cluster]) => {
-        const anchor = cluster[0] || {};
-        const value = String(workplaceId);
-        const idLabel = `#${workplaceId}`;
-        const baseName = anchor.workplace_name
-          ? String(anchor.workplace_name).trim()
-          : '';
-        const contextSet = new Set();
-        cluster.forEach((assignment) => {
-          const contextParts = [];
-          if (assignment.department_name) {
-            contextParts.push(String(assignment.department_name).trim());
-          }
-          if (assignment.branch_name) {
-            contextParts.push(String(assignment.branch_name).trim());
-          }
-          const context = contextParts.filter(Boolean).join(' / ');
-          if (context) contextSet.add(context);
-        });
-        const contexts = Array.from(contextSet);
-        const contextLabel = contexts.slice(0, 2).join(', ');
-        const labelParts = [idLabel, baseName, contextLabel].filter(
-          (part) => part && part.length,
-        );
-        const clusterSuffix =
-          cluster.length > 1 ? ` (${cluster.length} assignments)` : '';
-
-        return {
-          value,
-          label: `${
-            labelParts.length ? labelParts.join(' – ') : `Session ${value}`
-          }${clusterSuffix}`,
-          workplaceId,
-        };
-      },
-    );
-
-    const seenWorkplaceIds = new Set(
-      Array.from(clustersByWorkplace.keys()),
-    );
 
     const fallbackWorkplaceId = normalizeNumericId(
       session?.workplace_id ?? normalizeNumericId(workplace),
@@ -579,7 +500,7 @@ export default function Reports() {
   const normalizedProcParams = useMemo(() => {
     return procParams.map((param) => ({
       original: param,
-      normalized: typeof param === 'string' ? normalizeParamName(param) : '',
+      normalized: normalizeParamName(getParamName(param)),
     }));
   }, [procParams]);
 
@@ -1308,13 +1229,7 @@ export default function Reports() {
     if (branch) params.set('branchId', branch);
     if (department) params.set('departmentId', department);
     if (prefix) params.set('prefix', prefix);
-    fetch(
-      `/api/report_procedures${
-        params.toString() ? `?${params.toString()}` : ''
-      }`,
-      { credentials: 'include' },
-    )
-      .then((res) => (res.ok ? res.json() : { procedures: [] }))
+    cachedFetch(`/api/report_procedures${params.toString() ? `?${params.toString()}` : ''}`)
       .then((data) => {
         const list = Array.isArray(data.procedures)
           ? data.procedures.map((p) =>
@@ -1335,16 +1250,21 @@ export default function Reports() {
     const params = new URLSearchParams();
     if (branch) params.set('branchId', branch);
     if (department) params.set('departmentId', department);
-    fetch(
-      `/api/procedures/${encodeURIComponent(selectedProc)}/params${
-        params.toString() ? `?${params.toString()}` : ''
-      }`,
-      {
-        credentials: 'include',
-      },
-    )
-      .then((res) => (res.ok ? res.json() : { parameters: [] }))
-      .then((data) => setProcParams(data.parameters || []))
+    cachedFetch(`/api/procedures/${encodeURIComponent(selectedProc)}/params${params.toString() ? `?${params.toString()}` : ''}`)
+      .then((data) => {
+        const list = Array.isArray(data?.parameters) ? data.parameters : [];
+        setProcParams(
+          list
+            .map((param) => {
+              if (typeof param === 'string') return param;
+              if (param && typeof param === 'object' && typeof param.name === 'string') {
+                return { name: param.name, dataType: param.dataType };
+              }
+              return null;
+            })
+            .filter(Boolean),
+        );
+      })
       .catch(() => setProcParams([]));
   }, [selectedProc, branch, department]);
 
@@ -1558,7 +1478,7 @@ export default function Reports() {
       if (startIndices.has(index)) return startDate || null;
       if (endIndices.has(index)) return endDate || null;
       const name =
-        typeof p === 'string' ? normalizeParamName(p) : '';
+        normalizeParamName(getParamName(p));
       if (!name) return null;
       if (
         name.includes('sessionworkplace') ||
@@ -1648,14 +1568,11 @@ export default function Reports() {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      const rawValue = auto ?? manualParams[p] ?? null;
+      const rawValue = auto ?? manualParams[getParamName(p)] ?? null;
       if (rawValue === null || rawValue === undefined) {
         return rawValue;
       }
-      if (typeof p !== 'string') {
-        return rawValue;
-      }
-      const normalizedName = normalizeParamName(p);
+      const normalizedName = normalizeParamName(getParamName(p));
       if (!normalizedName) {
         return rawValue;
       }
@@ -1789,7 +1706,8 @@ export default function Reports() {
       return;
     }
     const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = finalParams[i];
+      const paramName = getParamName(p);
+      acc[paramName] = finalParams[i];
       return acc;
     }, {});
     const label = getLabel(selectedProc);
@@ -2337,7 +2255,11 @@ export default function Reports() {
           { credentials: 'include' },
         );
         const data = res.ok ? await res.json().catch(() => ({})) : {};
-        const list = Array.isArray(data.parameters) ? data.parameters : [];
+        const list = Array.isArray(data.parameters)
+          ? data.parameters
+              .map((param) => getParamName(param))
+              .filter((name) => typeof name === 'string' && name.trim().length > 0)
+          : [];
         drilldownParamCacheRef.current.set(reportName, list);
         return list;
       } catch {
@@ -2354,7 +2276,7 @@ export default function Reports() {
       const paramNames = await fetchDrilldownParams(reportName);
       if (!paramNames.length) return [rowIdsValue];
       return paramNames.map((param) => {
-        const normalized = normalizeParamName(param);
+        const normalized = normalizeParamName(getParamName(param));
         if (!normalized) return null;
         if (normalized.includes('rowid')) return rowIdsValue;
         if (normalized.includes('company')) return sessionDefaults.companyId;
@@ -4267,21 +4189,22 @@ export default function Reports() {
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
               if (autoParams[i] !== null) return null;
-              const val = manualParams[p] || '';
-              const inputRef = manualInputRefs.current[p];
+              const paramName = getParamName(p);
+              const val = manualParams[paramName] || '';
+              const inputRef = manualInputRefs.current[paramName];
               return (
                 <AutoSizingTextInput
-                  key={p}
+                  key={paramName}
                   type="text"
-                  placeholder={p}
+                  placeholder={paramName}
                   value={val}
                   onChange={(e) =>
-                    handleManualParamChange(p, e.target.value)
+                    handleManualParamChange(paramName, e.target.value)
                   }
                   style={{ marginLeft: '0.5rem' }}
                   ref={inputRef}
                   onKeyDown={(event) =>
-                    handleParameterKeyDown(event, inputRef, p)
+                    handleParameterKeyDown(event, inputRef, paramName)
                   }
                 />
               );
